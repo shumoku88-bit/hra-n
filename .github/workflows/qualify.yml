@@ -1,0 +1,25 @@
+name: HRA-N Qualification CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  qualify:
+    name: Formal Proof, Unit Tests & Qualification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Alire & SPARK Toolchain
+        uses: alire-project/setup-alire@v3
+        with:
+          toolchain: gnat_native gnatprove
+
+      - name: Run Qualification Pipeline (SPARK SMT Proof + Tests)
+        run: |
+          ./tools/qualify
