@@ -2,7 +2,7 @@
 
 [![SPARK Level 2](https://img.shields.io/badge/SPARK-Level%202%20Silver%2FGold-green.svg)](https://www.adacore.com/about-spark)
 [![SMT Proved](https://img.shields.io/badge/Checks%20Proved-100%25%20(282%2F282)-brightgreen.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-420%20Passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-431%20Passed-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/Style-Ada%20Quality%20%26%20Style-blue.svg)]()
 [![License](https://img.shields.io/badge/License-MIT%20%2F%20Apache--2.0-blue.svg)]()
 
@@ -129,6 +129,12 @@ hra-n scheduled retire scheduled-14
 ```bash
 # Project open/discharged/unresolved relation state from retained provenance
 hra-n relations
+
+# Retain a relation sourced by an existing Effect
+hra-n relations add e0219 f0089 E2H friend-k 100
+
+# Attach exact discharge evidence to an existing later Event
+hra-n relations discharge e0186 relation-1 40
 ```
 
 ### 9. Verify Repository Integrity
@@ -150,7 +156,7 @@ HRA-N enforces a strict one-command qualification gate:
 
 The qualification pipeline executes three mandatory phases:
 1. **SPARK Formal Proof**: 282 checks proved by Why3, Alt-Ergo, CVC5, and Z3 with zero warnings and zero unproved obligations.
-2. **Unit Test Suite**: 420 unit and integration tests covering arithmetic overflow prevention, manifest parsing, scheduled lifecycle, double-reversal prevention, POSIX lock contention, accounting role projection, envelope budget window projection, catalog presentation evidence, relation discharge admission, and publisher durability.
+2. **Unit Test Suite**: 431 unit and integration tests covering arithmetic overflow prevention, manifest parsing, scheduled lifecycle, double-reversal prevention, POSIX lock contention, accounting role projection, envelope budget window projection, catalog presentation evidence, relation discharge admission, and publisher durability.
 3. **Production Build**: Compiles optimized production binary with full style checks.
 
 ---

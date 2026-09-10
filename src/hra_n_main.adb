@@ -386,19 +386,102 @@ begin
 
       --  Dispatch inspection and reporting commands.
       if Command = "relations" then
-         declare
-            Relations_Ok : Boolean;
-         begin
-            HRA_N.UI.Relation_CLI.Display_Relations
-              (Authority_Dir => Auth_Dir,
-               Manifest      => Manifest_Res.Manifest,
-               Events        => Event_Res.Events,
-               Success       => Relations_Ok);
-            if not Relations_Ok then
-               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-            end if;
+         if Rem_Args = 0 then
+            declare
+               Relations_Ok : Boolean;
+            begin
+               HRA_N.UI.Relation_CLI.Display_Relations
+                 (Authority_Dir => Auth_Dir,
+                  Manifest      => Manifest_Res.Manifest,
+                  Events        => Event_Res.Events,
+                  Success       => Relations_Ok);
+               if not Relations_Ok then
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               end if;
+               return;
+            end;
+         elsif Ada.Command_Line.Argument (Command_Idx + 1) = "add"
+           and then Rem_Args = 6
+         then
+            declare
+               Direction_Text : constant String :=
+                 Ada.Command_Line.Argument (Command_Idx + 4);
+               Direction : Relation_Direction;
+               Amount : Quanta_Type;
+            begin
+               if Direction_Text = "E2H" then
+                  Direction := External_To_Household;
+               elsif Direction_Text = "H2E" then
+                  Direction := Household_To_External;
+               else
+                  Put_Line ("hra-n: relation direction must be E2H or H2E");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  return;
+               end if;
+               Amount := Quanta_Type'Value
+                 (Ada.Command_Line.Argument (Command_Idx + 6));
+               declare
+                  Pub : constant Relation_Publish_Result := Publish_Relation_Unit
+                    (Authority_Dir => Auth_Dir,
+                     Source_Event  => Ada.Command_Line.Argument (Command_Idx + 2),
+                     Source_Effect => Ada.Command_Line.Argument (Command_Idx + 3),
+                     Direction     => Direction,
+                     External_Id   => Ada.Command_Line.Argument (Command_Idx + 5),
+                     Quantity      => Amount);
+               begin
+                  if Pub.Success then
+                     Put_Line ("[OK] Published RelationUnit: " &
+                       Pub.Relation_Id (1 .. Pub.Id_Len));
+                  else
+                     Put_Line ("[ERROR] " &
+                       Pub.Error_Reason (1 .. Pub.Error_Len));
+                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  end if;
+               end;
+               return;
+            exception
+               when others =>
+                  Put_Line ("hra-n: relation quantity must be a positive integer");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  return;
+            end;
+         elsif Ada.Command_Line.Argument (Command_Idx + 1) = "discharge"
+           and then Rem_Args = 4
+         then
+            begin
+               declare
+                  Amount : constant Quanta_Type := Quanta_Type'Value
+                    (Ada.Command_Line.Argument (Command_Idx + 4));
+                  Pub : constant Relation_Publish_Result :=
+                    Publish_Relation_Discharge
+                      (Authority_Dir => Auth_Dir,
+                       Event_Id      => Ada.Command_Line.Argument (Command_Idx + 2),
+                       Target_Id     => Ada.Command_Line.Argument (Command_Idx + 3),
+                       Quantity      => Amount);
+               begin
+                  if Pub.Success then
+                     Put_Line ("[OK] Published discharge for: " &
+                       Pub.Relation_Id (1 .. Pub.Id_Len));
+                  else
+                     Put_Line ("[ERROR] " &
+                       Pub.Error_Reason (1 .. Pub.Error_Len));
+                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  end if;
+               end;
+               return;
+            exception
+               when others =>
+                  Put_Line ("hra-n: discharge quantity must be a positive integer");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  return;
+            end;
+         else
+            Put_Line ("Usage: hra-n relations");
+            Put_Line ("   or: hra-n relations add <EVENT> <EFFECT> <E2H|H2E> <EXTERNAL> <QUANTITY>");
+            Put_Line ("   or: hra-n relations discharge <EVENT> <RELATION> <QUANTITY>");
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
             return;
-         end;
+         end if;
       elsif Command = "statement" or else Command = "report" then
          declare
             Role_Res : constant HRA_N.Storage.Accounting_Role_Reader.Read_Result :=

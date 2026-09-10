@@ -17,6 +17,10 @@ with HRA_N.Core.Admission;          use HRA_N.Core.Admission;
 with HRA_N.Core.Event;              use HRA_N.Core.Event;
 with HRA_N.Storage.Event_Reader;           use HRA_N.Storage.Event_Reader;
 with HRA_N.Storage.Actual_Reversal_Writer; use HRA_N.Storage.Actual_Reversal_Writer;
+with HRA_N.Core.Relation;                    use HRA_N.Core.Relation;
+with HRA_N.Storage.Relation_Reader;          use HRA_N.Storage.Relation_Reader;
+with HRA_N.Storage.Relation_Writer;          use HRA_N.Storage.Relation_Writer;
+with HRA_N.Application.Relation_Frontier;    use HRA_N.Application.Relation_Frontier;
 
 package body HRA_N.Application.Publisher is
 
@@ -31,6 +35,18 @@ package body HRA_N.Application.Publisher is
       Result.Error_Reason (1 .. Len) := Msg (Msg'First .. Msg'First + Len - 1);
       return Result;
    end Set_Error;
+
+   function Set_Relation_Error
+     (Result : in out Relation_Publish_Result;
+      Msg    : String) return Relation_Publish_Result
+   is
+      Len : constant Natural := Natural'Min (Msg'Length, Result.Error_Reason'Length);
+   begin
+      Result.Success      := False;
+      Result.Error_Len    := Len;
+      Result.Error_Reason (1 .. Len) := Msg (Msg'First .. Msg'First + Len - 1);
+      return Result;
+   end Set_Relation_Error;
 
    function Read_Entire_File (Path : String) return Unbounded_String is
       package SIO renames Ada.Streams.Stream_IO;
@@ -174,6 +190,8 @@ package body HRA_N.Application.Publisher is
       New_Event_Text : String;
       New_Val_Text   : String;
       New_Desc_Text  : String;
+      New_Unit_Text  : String := "";
+      New_Discharge_Text : String := "";
       Err_Buf        : in out String;
       Err_Len        : in out Natural) return Boolean
    is
@@ -181,6 +199,14 @@ package body HRA_N.Application.Publisher is
       New_Event_Sha : constant String := Compute_Sha256_Hex (New_Event_Text);
       New_Val_Sha   : constant String := Compute_Sha256_Hex (New_Val_Text);
       New_Desc_Sha  : constant String := Compute_Sha256_Hex (New_Desc_Text);
+      New_Unit_Sha  : constant String :=
+        (if New_Unit_Text'Length > 0
+         then Compute_Sha256_Hex (New_Unit_Text)
+         else Man_Res.Manifest (Family_Relation_Unit).Digest);
+      New_Discharge_Sha : constant String :=
+        (if New_Discharge_Text'Length > 0
+         then Compute_Sha256_Hex (New_Discharge_Text)
+         else Man_Res.Manifest (Family_Relation_Discharge).Digest);
 
       --  Target paths
       New_Event_Path : constant String :=
@@ -189,6 +215,11 @@ package body HRA_N.Application.Publisher is
         Authority_Dir & "/objects/ActualValidity/" & New_Val_Sha & ".loam";
       New_Desc_Path  : constant String :=
         Authority_Dir & "/objects/EventDescription/" & New_Desc_Sha & ".loam";
+      New_Unit_Path  : constant String :=
+        Authority_Dir & "/objects/RelationUnit/" & New_Unit_Sha & ".loam";
+      New_Discharge_Path : constant String :=
+        Authority_Dir & "/objects/RelationDischarge/" &
+        New_Discharge_Sha & ".loam";
 
       --  Old CURRENT sha and recovery path
       Old_Manifest_Sha  : constant String := Compute_Sha256_Hex (To_String (Curr_Content));
@@ -204,16 +235,11 @@ package body HRA_N.Application.Publisher is
         ASCII.HT & New_Val_Sha & ASCII.LF &
         "EventDescription" & ASCII.HT & "objects/EventDescription/" & New_Desc_Sha & ".loam" &
         ASCII.HT & New_Desc_Sha & ASCII.LF &
-        "RelationUnit" & ASCII.HT &
-        Man_Res.Manifest (Family_Relation_Unit).Rel_Path
-          (1 .. Man_Res.Manifest (Family_Relation_Unit).Path_Len) &
-        ASCII.HT &
-        Man_Res.Manifest (Family_Relation_Unit).Digest (1 .. 64) & ASCII.LF &
-        "RelationDischarge" & ASCII.HT &
-        Man_Res.Manifest (Family_Relation_Discharge).Rel_Path
-          (1 .. Man_Res.Manifest (Family_Relation_Discharge).Path_Len) &
-        ASCII.HT &
-        Man_Res.Manifest (Family_Relation_Discharge).Digest (1 .. 64) & ASCII.LF &
+        "RelationUnit" & ASCII.HT & "objects/RelationUnit/" &
+        New_Unit_Sha & ".loam" & ASCII.HT & New_Unit_Sha & ASCII.LF &
+        "RelationDischarge" & ASCII.HT & "objects/RelationDischarge/" &
+        New_Discharge_Sha & ".loam" & ASCII.HT &
+        New_Discharge_Sha & ASCII.LF &
         "LocusAdmission" & ASCII.HT &
         Man_Res.Manifest (Family_Locus_Admission).Rel_Path
           (1 .. Man_Res.Manifest (Family_Locus_Admission).Path_Len) &
@@ -221,15 +247,40 @@ package body HRA_N.Application.Publisher is
         Man_Res.Manifest (Family_Locus_Admission).Digest (1 .. 64) & ASCII.LF;
    begin
       --  1. Write new content-addressed immutable objects
-      if not Write_File_Atomically (New_Event_Path, New_Event_Text, Err_Buf, Err_Len) then
+      if not Ada.Directories.Exists (New_Event_Path)
+        and then not Write_File_Atomically
+          (New_Event_Path, New_Event_Text, Err_Buf, Err_Len)
+      then
          return False;
       end if;
 
-      if not Write_File_Atomically (New_Val_Path, New_Val_Text, Err_Buf, Err_Len) then
+      if not Ada.Directories.Exists (New_Val_Path)
+        and then not Write_File_Atomically
+          (New_Val_Path, New_Val_Text, Err_Buf, Err_Len)
+      then
          return False;
       end if;
 
-      if not Write_File_Atomically (New_Desc_Path, New_Desc_Text, Err_Buf, Err_Len) then
+      if not Ada.Directories.Exists (New_Desc_Path)
+        and then not Write_File_Atomically
+          (New_Desc_Path, New_Desc_Text, Err_Buf, Err_Len)
+      then
+         return False;
+      end if;
+
+      if New_Unit_Text'Length > 0
+        and then not Ada.Directories.Exists (New_Unit_Path)
+        and then not Write_File_Atomically
+          (New_Unit_Path, New_Unit_Text, Err_Buf, Err_Len)
+      then
+         return False;
+      end if;
+
+      if New_Discharge_Text'Length > 0
+        and then not Ada.Directories.Exists (New_Discharge_Path)
+        and then not Write_File_Atomically
+          (New_Discharge_Path, New_Discharge_Text, Err_Buf, Err_Len)
+      then
          return False;
       end if;
 
@@ -639,5 +690,313 @@ package body HRA_N.Application.Publisher is
          Release_Lock (Lock);
          return Set_Error (Result, "Unexpected exception during reversal");
    end Publish_Reversal;
+
+   function Extract_Max_Relation_Number (Memory : Unit_Memory) return Natural is
+      Prefix : constant String := "relation-";
+      Maximum : Natural := 0;
+   begin
+      for I in 1 .. Memory.Count loop
+         declare
+            Tok : constant Token_Text := Memory.Units (I).Id;
+         begin
+            if Tok.Length > Prefix'Length
+              and then Tok.Value (1 .. Prefix'Length) = Prefix
+            then
+               begin
+                  declare
+                     Number : constant Natural := Natural'Value
+                       (Tok.Value (Prefix'Length + 1 .. Tok.Length));
+                  begin
+                     Maximum := Natural'Max (Maximum, Number);
+                  end;
+               exception
+                  when others =>
+                     null;
+               end;
+            end if;
+         end;
+      end loop;
+      return Maximum;
+   end Extract_Max_Relation_Number;
+
+   function Event_Id_Exists
+     (Events : Event_Vectors.Vector;
+      Name   : String) return Boolean
+   is
+   begin
+      for Ev of Events loop
+         if Id (Ev).Token.Length = Name'Length
+           and then Id (Ev).Token.Value (1 .. Name'Length) = Name
+         then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end Event_Id_Exists;
+
+   function Publish_Relation_Unit
+     (Authority_Dir : String;
+      Source_Event  : String;
+      Source_Effect : String;
+      Direction     : Relation_Direction;
+      External_Id   : String;
+      Quantity      : Quanta_Type;
+      Explicit_Id   : String := "") return Relation_Publish_Result
+   is
+      Result : Relation_Publish_Result;
+      Lock : Lock_Handle;
+      Manifest_Path : constant String := Authority_Dir & "/CURRENT";
+      Man_Res : Read_Manifest_Result;
+      Failed_Fam : Manifest_Family;
+      Err_Buf : String (1 .. 128) := [others => ' '];
+      Err_Len : Natural := 0;
+   begin
+      if Quantity <= 0 then
+         return Set_Relation_Error (Result, "Relation quantity must be positive");
+      elsif Source_Event'Length not in 1 .. Max_Token_Length
+        or else Source_Effect'Length not in 1 .. Max_Token_Length
+        or else External_Id'Length not in 1 .. Max_Token_Length
+        or else Explicit_Id'Length > Max_Token_Length
+      then
+         return Set_Relation_Error (Result, "Invalid relation identity token length");
+      end if;
+
+      if not Acquire_Exclusive_Lock
+        (Authority_Dir & "/CURRENT.loam-writer-lock", Lock)
+      then
+         return Set_Relation_Error (Result, "Failed to acquire writer ownership lock");
+      end if;
+
+      Man_Res := Read_Manifest_File (Manifest_Path);
+      if not Man_Res.Success
+        or else not Verify_All_Objects (Authority_Dir, Man_Res.Manifest, Failed_Fam)
+      then
+         Release_Lock (Lock);
+         return Set_Relation_Error (Result, "Relation publication preflight failed");
+      end if;
+
+      declare
+         Event_Path : constant String := Authority_Dir & "/" &
+           Man_Res.Manifest (Family_Event).Rel_Path
+             (1 .. Man_Res.Manifest (Family_Event).Path_Len);
+         Unit_Path : constant String := Authority_Dir & "/" &
+           Man_Res.Manifest (Family_Relation_Unit).Rel_Path
+             (1 .. Man_Res.Manifest (Family_Relation_Unit).Path_Len);
+         Discharge_Path : constant String := Authority_Dir & "/" &
+           Man_Res.Manifest (Family_Relation_Discharge).Rel_Path
+             (1 .. Man_Res.Manifest (Family_Relation_Discharge).Path_Len);
+         Event_Read : constant Read_Result := Read_Event_Memory_File (Event_Path);
+         Unit_Read : constant Unit_Read_Result := Read_Relation_Unit_File (Unit_Path);
+         Discharge_Read : constant Discharge_Read_Result :=
+           Read_Relation_Discharge_File (Discharge_Path);
+      begin
+         if not Event_Read.Success or else not Unit_Read.Success
+           or else not Discharge_Read.Success
+           or else Unit_Read.Memory.Count = Max_Relation_Units
+         then
+            Release_Lock (Lock);
+            return Set_Relation_Error (Result, "Failed to acquire relation frontier");
+         end if;
+
+         declare
+            Next_Id : constant String :=
+              (if Explicit_Id'Length > 0 then Explicit_Id
+               else "relation-" & Natural_Image
+                 (Extract_Max_Relation_Number (Unit_Read.Memory) + 1));
+            Existing : Relation_Unit;
+            Already_Used : Boolean;
+            Candidate : Unit_Memory := Unit_Read.Memory;
+            External : constant Relation_Endpoint :=
+              External_Endpoint (Make_Token (External_Id));
+            Projection : Outstanding_Result;
+            Event_Text : constant String := To_String (Read_Entire_File (Event_Path));
+            Val_Path : constant String := Authority_Dir & "/" &
+              Man_Res.Manifest (Family_Actual_Validity).Rel_Path
+                (1 .. Man_Res.Manifest (Family_Actual_Validity).Path_Len);
+            Desc_Path : constant String := Authority_Dir & "/" &
+              Man_Res.Manifest (Family_Event_Description).Rel_Path
+                (1 .. Man_Res.Manifest (Family_Event_Description).Path_Len);
+            Val_Text : constant String := To_String (Read_Entire_File (Val_Path));
+            Desc_Text : constant String := To_String (Read_Entire_File (Desc_Path));
+            Curr_Text : constant Unbounded_String := Read_Entire_File (Manifest_Path);
+         begin
+            Find_Unit (Candidate, Make_Token (Next_Id), Existing, Already_Used);
+            if Already_Used then
+               Release_Lock (Lock);
+               return Set_Relation_Error (Result, "Relation identity already exists");
+            end if;
+
+            Candidate.Count := Candidate.Count + 1;
+            Candidate.Units (Candidate.Count) :=
+              (Id            => Make_Token (Next_Id),
+               Source_Event  => (Token => Make_Token (Source_Event)),
+               Source_Effect => (Token => Make_Token (Source_Effect)),
+               Debtor        =>
+                 (if Direction = External_To_Household
+                  then External else Household_Endpoint),
+               Creditor      =>
+                 (if Direction = External_To_Household
+                  then Household_Endpoint else External),
+               Quantity      => Quantity);
+
+            Project_Outstanding
+              (Event_Read.Events, Candidate, Discharge_Read.Memory,
+               Make_Token (Next_Id), Projection);
+            if Projection.State /= Relation_Open then
+               Release_Lock (Lock);
+               return Set_Relation_Error
+                 (Result, "Relation candidate did not justify an open frontier");
+            end if;
+
+            if Event_Text'Length = 0 or else Val_Text'Length = 0
+              or else Desc_Text'Length = 0 or else Length (Curr_Text) = 0
+              or else not Commit_Authority_Update
+                (Authority_Dir       => Authority_Dir,
+                 Manifest_Path       => Manifest_Path,
+                 Man_Res             => Man_Res,
+                 Curr_Content        => Curr_Text,
+                 New_Event_Text      => Event_Text,
+                 New_Val_Text        => Val_Text,
+                 New_Desc_Text       => Desc_Text,
+                 New_Unit_Text       => Encode_Relation_Units (Candidate),
+                 New_Discharge_Text  => "",
+                 Err_Buf             => Err_Buf,
+                 Err_Len             => Err_Len)
+            then
+               Release_Lock (Lock);
+               return Set_Relation_Error (Result, "Relation authority commit failed");
+            end if;
+
+            Release_Lock (Lock);
+            Result.Success := True;
+            Result.Id_Len := Next_Id'Length;
+            Result.Relation_Id (1 .. Result.Id_Len) := Next_Id;
+            return Result;
+         end;
+      end;
+   exception
+      when others =>
+         Release_Lock (Lock);
+         return Set_Relation_Error (Result, "Unexpected relation publication failure");
+   end Publish_Relation_Unit;
+
+   function Publish_Relation_Discharge
+     (Authority_Dir : String;
+      Event_Id      : String;
+      Target_Id     : String;
+      Quantity      : Quanta_Type) return Relation_Publish_Result
+   is
+      Result : Relation_Publish_Result;
+      Lock : Lock_Handle;
+      Manifest_Path : constant String := Authority_Dir & "/CURRENT";
+      Man_Res : Read_Manifest_Result;
+      Failed_Fam : Manifest_Family;
+      Err_Buf : String (1 .. 128) := [others => ' '];
+      Err_Len : Natural := 0;
+   begin
+      if Quantity <= 0
+        or else Event_Id'Length not in 1 .. Max_Token_Length
+        or else Target_Id'Length not in 1 .. Max_Token_Length
+      then
+         return Set_Relation_Error (Result, "Invalid relation discharge fields");
+      end if;
+
+      if not Acquire_Exclusive_Lock
+        (Authority_Dir & "/CURRENT.loam-writer-lock", Lock)
+      then
+         return Set_Relation_Error (Result, "Failed to acquire writer ownership lock");
+      end if;
+
+      Man_Res := Read_Manifest_File (Manifest_Path);
+      if not Man_Res.Success
+        or else not Verify_All_Objects (Authority_Dir, Man_Res.Manifest, Failed_Fam)
+      then
+         Release_Lock (Lock);
+         return Set_Relation_Error (Result, "Discharge publication preflight failed");
+      end if;
+
+      declare
+         Event_Path : constant String := Authority_Dir & "/" &
+           Man_Res.Manifest (Family_Event).Rel_Path
+             (1 .. Man_Res.Manifest (Family_Event).Path_Len);
+         Unit_Path : constant String := Authority_Dir & "/" &
+           Man_Res.Manifest (Family_Relation_Unit).Rel_Path
+             (1 .. Man_Res.Manifest (Family_Relation_Unit).Path_Len);
+         Discharge_Path : constant String := Authority_Dir & "/" &
+           Man_Res.Manifest (Family_Relation_Discharge).Rel_Path
+             (1 .. Man_Res.Manifest (Family_Relation_Discharge).Path_Len);
+         Event_Read : constant Read_Result := Read_Event_Memory_File (Event_Path);
+         Unit_Read : constant Unit_Read_Result := Read_Relation_Unit_File (Unit_Path);
+         Discharge_Read : constant Discharge_Read_Result :=
+           Read_Relation_Discharge_File (Discharge_Path);
+      begin
+         if not Event_Read.Success or else not Unit_Read.Success
+           or else not Discharge_Read.Success
+           or else Discharge_Read.Memory.Count = Max_Relation_Discharges
+           or else not Event_Id_Exists (Event_Read.Events, Event_Id)
+         then
+            Release_Lock (Lock);
+            return Set_Relation_Error (Result, "Discharge event/frontier unavailable");
+         end if;
+
+         declare
+            Candidate : Discharge_Memory := Discharge_Read.Memory;
+            Projection : Outstanding_Result;
+            Event_Text : constant String := To_String (Read_Entire_File (Event_Path));
+            Val_Path : constant String := Authority_Dir & "/" &
+              Man_Res.Manifest (Family_Actual_Validity).Rel_Path
+                (1 .. Man_Res.Manifest (Family_Actual_Validity).Path_Len);
+            Desc_Path : constant String := Authority_Dir & "/" &
+              Man_Res.Manifest (Family_Event_Description).Rel_Path
+                (1 .. Man_Res.Manifest (Family_Event_Description).Path_Len);
+            Val_Text : constant String := To_String (Read_Entire_File (Val_Path));
+            Desc_Text : constant String := To_String (Read_Entire_File (Desc_Path));
+            Curr_Text : constant Unbounded_String := Read_Entire_File (Manifest_Path);
+         begin
+            Candidate.Count := Candidate.Count + 1;
+            Candidate.Discharges (Candidate.Count) :=
+              (Event    => (Token => Make_Token (Event_Id)),
+               Target   => Make_Token (Target_Id),
+               Quantity => Quantity);
+            Project_Outstanding
+              (Event_Read.Events, Unit_Read.Memory, Candidate,
+               Make_Token (Target_Id), Projection);
+            if Projection.State not in Relation_Open | Relation_Discharged then
+               Release_Lock (Lock);
+               return Set_Relation_Error
+                 (Result, "Discharge candidate did not justify a current frontier");
+            end if;
+
+            if Event_Text'Length = 0 or else Val_Text'Length = 0
+              or else Desc_Text'Length = 0 or else Length (Curr_Text) = 0
+              or else not Commit_Authority_Update
+                (Authority_Dir       => Authority_Dir,
+                 Manifest_Path       => Manifest_Path,
+                 Man_Res             => Man_Res,
+                 Curr_Content        => Curr_Text,
+                 New_Event_Text      => Event_Text,
+                 New_Val_Text        => Val_Text,
+                 New_Desc_Text       => Desc_Text,
+                 New_Unit_Text       => "",
+                 New_Discharge_Text  => Encode_Relation_Discharges (Candidate),
+                 Err_Buf             => Err_Buf,
+                 Err_Len             => Err_Len)
+            then
+               Release_Lock (Lock);
+               return Set_Relation_Error (Result, "Discharge authority commit failed");
+            end if;
+
+            Release_Lock (Lock);
+            Result.Success := True;
+            Result.Id_Len := Target_Id'Length;
+            Result.Relation_Id (1 .. Result.Id_Len) := Target_Id;
+            return Result;
+         end;
+      end;
+   exception
+      when others =>
+         Release_Lock (Lock);
+         return Set_Relation_Error (Result, "Unexpected discharge publication failure");
+   end Publish_Relation_Discharge;
 
 end HRA_N.Application.Publisher;

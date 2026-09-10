@@ -11,6 +11,17 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 
 package HRA_N.Application.Publisher is
 
+   type Relation_Direction is
+     (External_To_Household, Household_To_External);
+
+   type Relation_Publish_Result is record
+      Success      : Boolean           := False;
+      Relation_Id  : String (1 .. 64) := [others => ' '];
+      Id_Len       : Natural           := 0;
+      Error_Reason : String (1 .. 128) := [others => ' '];
+      Error_Len    : Natural           := 0;
+   end record;
+
    type Publish_Result is record
       Success      : Boolean             := False;
       Event_Id_Str : String (1 .. 64)    := [others => ' '];
@@ -38,5 +49,23 @@ package HRA_N.Application.Publisher is
       Valid_On        : Date_Type;
       Description     : String := "";
       Reversals_Path  : String := "") return Publish_Result;
+
+   function Publish_Relation_Unit
+     (Authority_Dir : String;
+      Source_Event  : String;
+      Source_Effect : String;
+      Direction     : Relation_Direction;
+      External_Id   : String;
+      Quantity      : Quanta_Type;
+      Explicit_Id   : String := "") return Relation_Publish_Result;
+
+   --  Attach exact discharge evidence to an already-published later Event.
+   --  Missing Events are rejected by this interactive publication boundary;
+   --  pre-Event residue remains supported by the raw reader/frontier.
+   function Publish_Relation_Discharge
+     (Authority_Dir : String;
+      Event_Id      : String;
+      Target_Id     : String;
+      Quantity      : Quanta_Type) return Relation_Publish_Result;
 
 end HRA_N.Application.Publisher;

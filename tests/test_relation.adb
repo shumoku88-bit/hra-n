@@ -4,6 +4,7 @@
 
 with Ada.Directories;
 with Ada.Text_IO; use Ada.Text_IO;
+with GNAT.OS_Lib;
 
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
@@ -11,13 +12,16 @@ with HRA_N.Core.Relation; use HRA_N.Core.Relation;
 with HRA_N.Storage.Event_Reader; use HRA_N.Storage.Event_Reader;
 with HRA_N.Storage.Manifest; use HRA_N.Storage.Manifest;
 with HRA_N.Storage.Relation_Reader; use HRA_N.Storage.Relation_Reader;
+with HRA_N.Storage.Relation_Writer; use HRA_N.Storage.Relation_Writer;
 with HRA_N.Application.Relation_Frontier;
 use HRA_N.Application.Relation_Frontier;
+with HRA_N.Application.Publisher; use HRA_N.Application.Publisher;
 with Test_Support; use Test_Support;
 
 package body Test_Relation is
 
    Sandbox_Dir : constant String := "/tmp/hra_n_test_relation";
+   Publish_Dir : constant String := "/tmp/hra_n_test_relation_publish";
 
    procedure Write_File (Path, Content : String) is
       File : File_Type;
@@ -52,6 +56,27 @@ package body Test_Relation is
        Debtor        => Household_Endpoint,
        Creditor      => External_Endpoint (Make_Token ("friend")),
        Quantity      => 100));
+
+   procedure Setup_Publish_Sandbox is
+      Success : Boolean;
+      Args : GNAT.OS_Lib.Argument_List (1 .. 3);
+   begin
+      if Ada.Directories.Exists (Publish_Dir) then
+         Args (1) := new String'("-rf");
+         Args (2) := new String'(Publish_Dir);
+         GNAT.OS_Lib.Spawn ("/bin/rm", Args (1 .. 2), Success);
+         GNAT.OS_Lib.Free (Args (1));
+         GNAT.OS_Lib.Free (Args (2));
+      end if;
+      Ada.Directories.Create_Path (Publish_Dir);
+      Args (1) := new String'("-R");
+      Args (2) := new String'(Real_Data_Dir & "/movement-authority/");
+      Args (3) := new String'(Publish_Dir & "/");
+      GNAT.OS_Lib.Spawn ("/bin/cp", Args, Success);
+      GNAT.OS_Lib.Free (Args (1));
+      GNAT.OS_Lib.Free (Args (2));
+      GNAT.OS_Lib.Free (Args (3));
+   end Setup_Publish_Sandbox;
 
    procedure Run is
       Units      : Unit_Memory;
@@ -89,6 +114,21 @@ package body Test_Relation is
       Assert (Found and then Value.Quantity = 100, "Find_Unit resolves exact quantity");
       Find_Unit (Units, Make_Token ("absent"), Value, Found);
       Assert (not Found, "Find_Unit reports missing identity honestly");
+      Assert
+        (Encode_Relation_Units (Units) =
+         "LOAM-RELATION-UNIT-MEMORY" & HT & "1" & LF &
+         "RELATION" & HT & "r1" & HT & "e-source" & HT & "k1" & HT &
+         "H" & HT & HT & "E" & HT & "friend" & HT & "100" & LF,
+         "RelationUnit encoder has exact Loam byte format");
+      Discharges.Count := 1;
+      Discharges.Discharges (1) :=
+        (Event => (Token => Make_Token ("e-pay")),
+         Target => Make_Token ("r1"), Quantity => 40);
+      Assert
+        (Encode_Relation_Discharges (Discharges) =
+         "LOAM-RELATION-DISCHARGE-MEMORY" & HT & "1" & LF &
+         "DISCHARGE" & HT & "e-pay" & HT & "r1" & HT & "40" & LF,
+         "RelationDischarge encoder has exact Loam byte format");
 
       ----------------------------------------------------------------------
       --  2. Persistence readers: syntax only, raw semantic evidence retained
@@ -280,6 +320,92 @@ package body Test_Relation is
                        "Production RelationUnit empty memory parses");
                Assert (D_Read.Success and then D_Read.Memory.Count = 0,
                        "Production RelationDischarge empty memory parses");
+            end;
+         end;
+
+         -------------------------------------------------------------------
+         --  5. Content-addressed relation publication under writer lock
+         -------------------------------------------------------------------
+         Setup_Publish_Sandbox;
+         declare
+            Unit_Pub : constant Relation_Publish_Result := Publish_Relation_Unit
+              (Authority_Dir => Publish_Dir,
+               Source_Event  => "e0219",
+               Source_Effect => "f0089",
+               Direction     => External_To_Household,
+               External_Id   => "friend-k",
+               Quantity      => 100);
+         begin
+            Assert (Unit_Pub.Success, "Relation unit publisher succeeds");
+            Assert (Unit_Pub.Relation_Id (1 .. Unit_Pub.Id_Len) = "relation-1",
+                    "Publisher allocates fresh relation-1 identity");
+
+            declare
+               Bad : constant Relation_Publish_Result := Publish_Relation_Unit
+                 (Authority_Dir => Publish_Dir,
+                  Source_Event  => "missing-event",
+                  Source_Effect => "missing-effect",
+                  Direction     => Household_To_External,
+                  External_Id   => "friend-k",
+                  Quantity      => 10);
+            begin
+               Assert (not Bad.Success, "Publisher rejects unresolved source Effect");
+            end;
+
+            declare
+               Dis_Pub : constant Relation_Publish_Result :=
+                 Publish_Relation_Discharge
+                   (Authority_Dir => Publish_Dir,
+                    Event_Id      => "e0186",
+                    Target_Id     => "relation-1",
+                    Quantity      => 40);
+            begin
+               Assert (Dis_Pub.Success, "Relation discharge publisher succeeds");
+            end;
+
+            declare
+               Duplicate : constant Relation_Publish_Result :=
+                 Publish_Relation_Discharge
+                   (Authority_Dir => Publish_Dir,
+                    Event_Id      => "e0186",
+                    Target_Id     => "relation-1",
+                    Quantity      => 10);
+            begin
+               Assert (not Duplicate.Success,
+                       "Publisher rejects duplicate active Event-target discharge");
+            end;
+
+            declare
+               Updated : constant Read_Manifest_Result :=
+                 Read_Manifest_File (Publish_Dir & "/CURRENT");
+               Failed : Manifest_Family;
+               U_Item : constant Manifest_Item :=
+                 Updated.Manifest (Family_Relation_Unit);
+               D_Item : constant Manifest_Item :=
+                 Updated.Manifest (Family_Relation_Discharge);
+               U_Read : constant Unit_Read_Result := Read_Relation_Unit_File
+                 (Publish_Dir & "/" & U_Item.Rel_Path (1 .. U_Item.Path_Len));
+               D_Read : constant Discharge_Read_Result :=
+                 Read_Relation_Discharge_File
+                   (Publish_Dir & "/" & D_Item.Rel_Path (1 .. D_Item.Path_Len));
+               E_Item : constant Manifest_Item := Updated.Manifest (Family_Event);
+               E_Read : constant Read_Result := Read_Event_Memory_File
+                 (Publish_Dir & "/" & E_Item.Rel_Path (1 .. E_Item.Path_Len));
+               Out_Res : Outstanding_Result;
+            begin
+               Assert (Updated.Success and then
+                       Verify_All_Objects (Publish_Dir, Updated.Manifest, Failed),
+                       "Published relation manifest retains six-family integrity");
+               Assert (U_Read.Success and then U_Read.Memory.Count = 1,
+                       "Published RelationUnit object contains one unit");
+               Assert (D_Read.Success and then D_Read.Memory.Count = 1,
+                       "Published RelationDischarge object contains one row");
+               Project_Outstanding
+                 (E_Read.Events, U_Read.Memory, D_Read.Memory,
+                  Make_Token ("relation-1"), Out_Res);
+               Assert (Out_Res.State = Relation_Open
+                       and then Out_Res.Outstanding_Quantity = 60,
+                       "Published evidence projects exact 60 outstanding");
             end;
          end;
       end if;
