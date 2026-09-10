@@ -4,9 +4,12 @@
 
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
+with HRA_N.Application.Actual_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Home_Query;
 with HRA_N.Application.Review; use HRA_N.Application.Review;
+with HRA_N.UI.Actual_TUI;
+with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with Terminal_Interface.Curses;
 
 package body HRA_N.UI.Home_TUI is
@@ -17,23 +20,6 @@ package body HRA_N.UI.Home_TUI is
 
    function Image (Value : Natural) return String is
      (Trim (Value'Image, Ada.Strings.Both));
-
-   procedure Put_Clipped
-     (Row  : Natural;
-      Text : String)
-   is
-      Rows : constant Natural := Natural (Curses.Lines);
-      Cols : constant Natural := Natural (Curses.Columns);
-      Len  : constant Natural :=
-        (if Cols > 1 then Natural'Min (Text'Length, Cols - 1) else 0);
-   begin
-      if Row < Rows and then Len > 0 then
-         Curses.Add
-           (Line   => Curses.Line_Position (Row),
-            Column => 0,
-            Str    => Text (Text'First .. Text'First + Len - 1));
-      end if;
-   end Put_Clipped;
 
    procedure Draw
      (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
@@ -81,10 +67,10 @@ package body HRA_N.UI.Home_TUI is
          Put_Clipped (11, "Snapshot   UNVERSIONED (read-only)");
       end if;
 
-      if Natural (Curses.Lines) > 2 then
+      if Rows > 2 then
          Put_Clipped
-           (Natural (Curses.Lines) - 2,
-            "h/l or arrows: day   g: today   r: reload   q: quit");
+           (Rows - 2,
+            "h/l: day   Enter: selected day   a: Actual   g: today   q: quit");
       end if;
       Curses.Refresh;
    end Draw;
@@ -112,6 +98,19 @@ package body HRA_N.UI.Home_TUI is
          begin
             if Key = Character'Pos ('q') or else Key = Character'Pos ('Q') then
                Running := False;
+            elsif Key = Integer (Curses.KEY_ENTER)
+              or else Key = Integer (Curses.Key_Enter_Or_Send)
+              or else Key = Character'Pos (ASCII.LF)
+            then
+               HRA_N.UI.Actual_TUI.Run
+                 (Paths,
+                  Selected,
+                  HRA_N.Application.Actual_Query.Scope_Selected_Day);
+            elsif Key = Character'Pos ('a') or else Key = Character'Pos ('A') then
+               HRA_N.UI.Actual_TUI.Run
+                 (Paths,
+                  Selected,
+                  HRA_N.Application.Actual_Query.Scope_All);
             elsif Key = Character'Pos ('h') or else Key = Integer (Curses.KEY_LEFT) then
                if Selected.Year > Year_Type'First
                  or else Selected.Month > Month_Type'First

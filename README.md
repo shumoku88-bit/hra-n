@@ -74,9 +74,10 @@ hra-n -d /path/to/household home
 hra-n -d /path/to/household tui
 ```
 
-The TUI supports day navigation, return-to-today, reload, resize/redraw, and
-clean quit. Both renderers consume the same shared frontend query; Actual,
-Scheduled, balances, budget, and report workspaces are added from that boundary.
+The TUI supports day navigation, Selected Day and all-Actual workspaces,
+chronology toggling, row selection, return-to-today, reload, resize/redraw, and
+clean quit. Both renderers consume shared frontend queries; Scheduled, balances,
+budget, and report workspaces are added from that boundary.
 
 The combined repository gate is:
 

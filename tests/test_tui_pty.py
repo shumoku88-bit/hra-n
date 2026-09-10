@@ -15,6 +15,17 @@ import termios
 import time
 
 
+def read_until(fd: int, output: bytearray, needle: bytes, timeout: float = 8.0) -> None:
+    start = len(output)
+    deadline = time.monotonic() + timeout
+    while needle not in output[start:] and time.monotonic() < deadline:
+        ready, _, _ = select.select([fd], [], [], 0.2)
+        if ready:
+            output.extend(os.read(fd, 4096))
+    if needle not in output[start:]:
+        raise AssertionError(f"TUI did not render {needle!r}")
+
+
 def main() -> None:
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     harness = os.path.join(root, "tests", "bin", "tui_harness")
@@ -34,16 +45,20 @@ def main() -> None:
             os.execve(harness, [harness, household], env)
 
         output = bytearray()
-        deadline = time.monotonic() + 8.0
-        while b"HRA-N HOME" not in output and time.monotonic() < deadline:
-            ready, _, _ = select.select([fd], [], [], 0.2)
-            if ready:
-                output.extend(os.read(fd, 4096))
-
-        if b"HRA-N HOME" not in output:
+        try:
+            read_until(fd, output, b"HRA-N HOME")
+            os.write(fd, b"\n")
+            read_until(fd, output, b"SELECTED DAY")
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
+            os.write(fd, b"a")
+            read_until(fd, output, b"ACTUAL  ALL CURRENT")
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
+        except Exception:
             os.kill(pid, signal.SIGKILL)
             os.waitpid(pid, 0)
-            raise AssertionError("Home TUI did not render")
+            raise
 
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
         os.kill(pid, signal.SIGWINCH)
@@ -75,7 +90,7 @@ def main() -> None:
         if not os.WIFEXITED(exit_status) or os.WEXITSTATUS(exit_status) != 0:
             raise AssertionError(f"Home TUI exited unsuccessfully: {exit_status}")
 
-        print("TUI PTY: startup, resize, redraw, and quit passed")
+        print("TUI PTY: Home, Selected Day, Actual, resize, redraw, and quit passed")
     finally:
         shutil.rmtree(household, ignore_errors=True)
 
