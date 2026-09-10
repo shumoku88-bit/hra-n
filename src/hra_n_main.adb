@@ -5,12 +5,14 @@
 
 with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Containers;
-with HRA_N.Core.Types;             use HRA_N.Core.Types;
-with HRA_N.Core.Event;             use HRA_N.Core.Event;
-with HRA_N.Core.Coverage;          use HRA_N.Core.Coverage;
-with HRA_N.Storage.Manifest;       use HRA_N.Storage.Manifest;
-with HRA_N.Storage.Event_Reader;   use HRA_N.Storage.Event_Reader;
+with HRA_N.Core.Types;              use HRA_N.Core.Types;
+with HRA_N.Core.Event;              use HRA_N.Core.Event;
+with HRA_N.Core.Coverage;           use HRA_N.Core.Coverage;
+with HRA_N.Core.Validity;           use HRA_N.Core.Validity;
+with HRA_N.Storage.Manifest;        use HRA_N.Storage.Manifest;
+with HRA_N.Storage.Event_Reader;    use HRA_N.Storage.Event_Reader;
 with HRA_N.Storage.Coverage_Reader; use HRA_N.Storage.Coverage_Reader;
+with HRA_N.Storage.Validity_Reader; use HRA_N.Storage.Validity_Reader;
 
 procedure HRA_N_Main is
    Data_Dir : constant String := "/Users/user/Projects/moko/loam-data";
@@ -19,12 +21,17 @@ procedure HRA_N_Main is
    Manifest_Res : Read_Manifest_Result;
    Event_Res    : Read_Result;
    Coverage_Res : Read_Coverage_Result;
+   Validity_Res : Read_Validity_Result;
    Failed_Fam   : Manifest_Family;
    JPY          : constant Measure_Id := (Token => Make_Token ("jpy"));
+
+   Dated_Event_Count : Natural := 0;
+   Found_Date        : Date_Type;
+   Found             : Boolean;
 begin
    Put_Line ("============================================================");
    Put_Line (" HRA-N: Verified Household Engine");
-   Put_Line (" Authority-Governed Zero-Origin Balance Projection");
+   Put_Line (" Authority-Governed Reckon and Review Baseline");
    Put_Line ("============================================================");
 
    -- 1. Load and Verify Manifest Authority (CURRENT)
@@ -62,7 +69,36 @@ begin
                 Ada.Containers.Count_Type'Image (Event_Res.Events.Length));
    end;
 
-   -- 3. Load Zero-Origin Coverage Evidence
+   -- 3. Load Actual Validity Evidence via Manifest
+   declare
+      Val_Rel : constant String :=
+        Manifest_Res.Manifest (Family_Actual_Validity).Rel_Path
+          (1 .. Manifest_Res.Manifest (Family_Actual_Validity).Path_Len);
+      Val_Full : constant String := Auth_Dir & "/" & Val_Rel;
+   begin
+      Put_Line ("Loading authoritative actual validity: " & Val_Rel);
+      Validity_Res := Read_Validity_File (Val_Full);
+      if not Validity_Res.Success then
+         Put_Line ("[ERROR] Failed to load validity: " &
+                   Validity_Res.Error_Reason (1 .. Validity_Res.Error_Len));
+         return;
+      end if;
+      Put_Line ("  Admitted validity facts: " &
+                Validity_Count_Type'Image (Entry_Count (Validity_Res.Memory)));
+   end;
+
+   -- Check that each admitted event has an exact occurrence date fact
+   for Ev of Event_Res.Events loop
+      Find_Occurrence_Date (Validity_Res.Memory, Id (Ev), Found_Date, Found);
+      if Found then
+         Dated_Event_Count := Dated_Event_Count + 1;
+      end if;
+   end loop;
+   Put_Line ("  Events linked to valid occurrence dates: " &
+             Natural'Image (Dated_Event_Count) & " /" &
+             Ada.Containers.Count_Type'Image (Event_Res.Events.Length));
+
+   -- 4. Load Zero-Origin Coverage Evidence
    Put_Line ("Loading zero-origin coverage evidence: " & Data_Dir & "/zero-origin-coverage.loam");
    Coverage_Res := Read_Coverage_File (Data_Dir & "/zero-origin-coverage.loam");
    if not Coverage_Res.Success then
@@ -106,7 +142,7 @@ begin
       end;
    end loop;
 
-   -- 4. Fail-Closed Verification on Uncovered Loci
+   -- 5. Fail-Closed Verification on Uncovered Loci
    Put_Line ("------------------------------------------------------------");
    Put_Line (" Fail-Closed Verification (Querying Uncovered Loci):");
    Put_Line ("------------------------------------------------------------");
@@ -126,6 +162,6 @@ begin
 
    Put_Line ("============================================================");
    Put_Line (" Complete authority manifest, cryptographic integrity,");
-   Put_Line (" and mathematical balance laws verified.");
+   Put_Line (" temporal occurrence validity, and balance laws verified.");
    Put_Line ("============================================================");
 end HRA_N_Main;

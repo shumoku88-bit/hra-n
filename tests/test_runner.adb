@@ -12,6 +12,7 @@ with Test_Event;
 with Test_Event_Reader;
 with Test_Coverage;
 with Test_Manifest;
+with Test_Validity;
 
 procedure Test_Runner is
 begin
@@ -36,6 +37,9 @@ begin
 
    Put_Line ("--> Running Test_Manifest...");
    Test_Manifest.Run;
+
+   Put_Line ("--> Running Test_Validity...");
+   Test_Validity.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");
