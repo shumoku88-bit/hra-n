@@ -12,12 +12,16 @@ with HRA_N.Core.Validity;                   use HRA_N.Core.Validity;
 with HRA_N.Core.Scheduled;                  use HRA_N.Core.Scheduled;
 with HRA_N.Core.Admission;                  use HRA_N.Core.Admission;
 with HRA_N.Storage.Manifest;                use HRA_N.Storage.Manifest;
+with HRA_N.Storage.Event_Reader;            use HRA_N.Storage.Event_Reader;
 with HRA_N.Storage.Locus_Reader;            use HRA_N.Storage.Locus_Reader;
 with HRA_N.Storage.Scheduled_Reader;        use HRA_N.Storage.Scheduled_Reader;
 with HRA_N.Storage.Validity_Reader;         use HRA_N.Storage.Validity_Reader;
+with HRA_N.Storage.Balance_View_Reader;     use HRA_N.Storage.Balance_View_Reader;
 with HRA_N.Application.Review;              use HRA_N.Application.Review;
 with HRA_N.Application.Scheduled_Publisher; use HRA_N.Application.Scheduled_Publisher;
 with HRA_N.Application.Scheduled_Routing_Publisher;
+with HRA_N.Application.Scheduled_Inspection; use HRA_N.Application.Scheduled_Inspection;
+with HRA_N.Application.Scheduled_Replacement_Publisher; use HRA_N.Application.Scheduled_Replacement_Publisher;
 with HRA_N.UI.Output;                       use HRA_N.UI.Output;
 
 package body HRA_N.UI.Scheduled_Cli is
@@ -783,5 +787,403 @@ package body HRA_N.UI.Scheduled_Cli is
          end;
       end;
    end Route_Scheduled;
+
+   procedure Load_Context
+     (Scheduled_Path : String;
+      Authority_Dir  : String;
+      Lifecycle      : out Scheduled_Lifecycle;
+      Events         : out Event_Vectors.Vector;
+      Error_Msg      : out String;
+      Error_Len      : out Natural;
+      Success        : out Boolean)
+   is
+      Sched_Res  : constant Read_Scheduled_Result :=
+        Read_Scheduled_File (Scheduled_Path);
+      Man_Res    : constant Read_Manifest_Result :=
+        Read_Manifest_File (Authority_Dir & "/CURRENT");
+      Failed_Fam : Manifest_Family;
+   begin
+      Success := False;
+      Error_Len := 0;
+
+      if not Sched_Res.Success then
+         Error_Len := Natural'Min (Sched_Res.Error_Len, Error_Msg'Length);
+         Error_Msg (Error_Msg'First .. Error_Msg'First + Error_Len - 1) :=
+           Sched_Res.Error_Reason (Sched_Res.Error_Reason'First .. Sched_Res.Error_Reason'First + Error_Len - 1);
+         return;
+      end if;
+
+      if not Man_Res.Success then
+         Error_Len := Natural'Min (Man_Res.Error_Len, Error_Msg'Length);
+         Error_Msg (Error_Msg'First .. Error_Msg'First + Error_Len - 1) :=
+           Man_Res.Error_Reason (Man_Res.Error_Reason'First .. Man_Res.Error_Reason'First + Error_Len - 1);
+         return;
+      end if;
+
+      if not Verify_All_Objects (Authority_Dir, Man_Res.Manifest, Failed_Fam) then
+         declare
+            Msg : constant String := "loam: authority object digest verification failed";
+         begin
+            Error_Len := Natural'Min (Msg'Length, Error_Msg'Length);
+            Error_Msg (Error_Msg'First .. Error_Msg'First + Error_Len - 1) :=
+              Msg (Msg'First .. Msg'First + Error_Len - 1);
+            return;
+         end;
+      end if;
+
+      declare
+         Ev_Rel : constant String :=
+           Man_Res.Manifest (Family_Event).Rel_Path
+             (1 .. Man_Res.Manifest (Family_Event).Path_Len);
+         Ev_Res : constant HRA_N.Storage.Event_Reader.Read_Result :=
+           Read_Event_Memory_File (Authority_Dir & "/" & Ev_Rel);
+      begin
+         if not Ev_Res.Success then
+            Error_Len := Natural'Min (Ev_Res.Error_Len, Error_Msg'Length);
+            Error_Msg (Error_Msg'First .. Error_Msg'First + Error_Len - 1) :=
+              Ev_Res.Error_Reason (Ev_Res.Error_Reason'First .. Ev_Res.Error_Reason'First + Error_Len - 1);
+            return;
+         end if;
+
+         Lifecycle := Sched_Res.Lifecycle;
+         Events    := Ev_Res.Events;
+         Success   := True;
+      end;
+   end Load_Context;
+
+   function Status_To_String (Status : Inspection_Status) return String is
+   begin
+      case Status is
+         when Status_Ok =>
+            return "ok";
+         when Status_Unknown_Completion_Scheduled =>
+            return "loam: Scheduled completion refers to an unknown Scheduled identity";
+         when Status_Unknown_Retirement_Scheduled =>
+            return "loam: Scheduled retirement refers to an unknown Scheduled identity";
+         when Status_Unknown_Replacement_Scheduled =>
+            return "loam: Scheduled replacement refers to an unknown Scheduled identity";
+         when Status_Invalid_Replacement_Graph =>
+            return "loam: Scheduled replacement graph is cyclic or otherwise invalid";
+         when Status_Conflicting_Terminal_Evidence =>
+            return "loam: Scheduled terminal evidence conflicts across completion, retirement, or replacement";
+         when Status_Target_Not_Open =>
+            return "loam: hypothetical Scheduled suppression target is not currently open";
+      end case;
+   end Status_To_String;
+
+   procedure Report_Day_Evidence
+     (Scheduled_Path : String;
+      Authority_Dir  : String;
+      Day_Str        : String;
+      Success        : out Boolean)
+   is
+      Day       : Date_Type;
+      Lifecycle : Scheduled_Lifecycle;
+      Events    : Event_Vectors.Vector;
+      Err       : String (1 .. 256) := [others => ' '];
+      Err_Len   : Natural := 0;
+      Ok        : Boolean;
+   begin
+      Success := False;
+      if not Parse_Iso_Date (Day_Str, Day) then
+         Put_Error_Line ("loam: Scheduled day evidence requires a real YYYY-MM-DD calendar date");
+         return;
+      end if;
+
+      Load_Context (Scheduled_Path, Authority_Dir, Lifecycle, Events, Err, Err_Len, Ok);
+      if not Ok then
+         Put_Error_Line (Err (1 .. Err_Len));
+         return;
+      end if;
+
+      declare
+         Res : constant Day_Evidence_Result :=
+           Query_Day_Evidence (Lifecycle, Events, Day);
+      begin
+         case Res.Kind is
+            when Evidence_Due =>
+               Put_Line ("DUE" & ASCII.HT & Day_Str);
+               for I in 1 .. Res.Count loop
+                  declare
+                     Occ      : constant Scheduled_Occurrence := Res.Occurrences (I);
+                     Id_Str   : constant String := Occ.Id.Token.Value (1 .. Occ.Id.Token.Length);
+                     Date_Str : constant String := Format_Iso_Date (Occ.Expected_Day);
+                     Meas_Str : constant String := Occ.Measure.Token.Value (1 .. Occ.Measure.Token.Length);
+                  begin
+                     Put_Line ("SCHEDULED" & ASCII.HT & Id_Str & ASCII.HT & Date_Str & ASCII.HT & Meas_Str);
+                     for C in 1 .. Occ.Changes.Count loop
+                        declare
+                           Chg     : constant Scheduled_Change := Occ.Changes.Values (C);
+                           Loc_Str : constant String := Chg.Locus.Token.Value (1 .. Chg.Locus.Token.Length);
+                           Amt_Str : constant String := Trim (Quanta_Type'Image (Chg.Amount), Ada.Strings.Both);
+                        begin
+                           Put_Line ("CHANGE" & ASCII.HT & Loc_Str & ASCII.HT & Amt_Str);
+                        end;
+                     end loop;
+                  end;
+               end loop;
+               Success := True;
+            when Evidence_Unknown =>
+               Put_Line ("UNKNOWN" & ASCII.HT & Day_Str);
+               Put_Line ("No explicit current-open Scheduled evidence is retained for this day.");
+               Put_Line ("This does not establish NOT_DUE; unmaterialized future obligations remain unknown.");
+               Success := True;
+            when Evidence_Refused =>
+               Put_Error_Line (Status_To_String (Res.Status));
+               Success := False;
+         end case;
+      end;
+   end Report_Day_Evidence;
+
+   procedure Print_Effects (List : Balance_Effects_List) is
+   begin
+      if List.Count = 0 then
+         Put_Line ("  (no balances selected)");
+      else
+         for I in 1 .. List.Count loop
+            declare
+               Eff     : constant Scheduled_Balance_Effect := List.Effects (I);
+               Loc_Str : constant String := Eff.Coordinate.Locus.Token.Value (1 .. Eff.Coordinate.Locus.Token.Length);
+               Amt_Str : constant String := Trim (Quanta_Type'Image (Eff.Quantity), Ada.Strings.Both);
+               Mea_Str : constant String := Eff.Coordinate.Measure.Token.Value (1 .. Eff.Coordinate.Measure.Token.Length);
+            begin
+               Put_Line ("  " & Loc_Str & ": " & Amt_Str & " " & Mea_Str);
+            end;
+         end loop;
+      end if;
+   end Print_Effects;
+
+   procedure Report_Balance_Effects
+     (Scheduled_Path    : String;
+      Authority_Dir     : String;
+      Balance_View_Path : String;
+      End_Exclusive_Str : String;
+      Success           : out Boolean)
+   is
+      End_D     : Date_Type;
+      Lifecycle : Scheduled_Lifecycle;
+      Events    : Event_Vectors.Vector;
+      Err       : String (1 .. 256) := [others => ' '];
+      Err_Len   : Natural := 0;
+      Ok        : Boolean;
+   begin
+      Success := False;
+      if not Parse_Iso_Date (End_Exclusive_Str, End_D) then
+         Put_Error_Line ("loam: Scheduled balance horizon must be a real YYYY-MM-DD calendar date");
+         return;
+      end if;
+
+      Load_Context (Scheduled_Path, Authority_Dir, Lifecycle, Events, Err, Err_Len, Ok);
+      if not Ok then
+         Put_Error_Line (Err (1 .. Err_Len));
+         return;
+      end if;
+
+      declare
+         BV_Res : constant Read_Balance_View_Result := Read_Balance_View_File (Balance_View_Path);
+      begin
+         if not BV_Res.Success then
+            Put_Error_Line ("loam: malformed or unsupported balance-view config");
+            return;
+         end if;
+
+         declare
+            Res : constant Balance_Effects_Result :=
+              Calculate_Balance_Effects (Lifecycle, Events, BV_Res.Coordinates, End_D);
+         begin
+            if Res.Status /= Status_Ok then
+               Put_Error_Line (Status_To_String (Res.Status));
+               return;
+            end if;
+
+            Put_Line ("Current-open Scheduled balance effects before " & End_Exclusive_Str & " (end-exclusive):");
+            Print_Effects (Res.Effects);
+            Put_Line ("Coverage: explicit current-open Scheduled evidence only; unmaterialized future obligations remain Unknown.");
+            Success := True;
+         end;
+      end;
+   end Report_Balance_Effects;
+
+   procedure Report_Suppression
+     (Scheduled_Path    : String;
+      Authority_Dir     : String;
+      Balance_View_Path : String;
+      End_Exclusive_Str : String;
+      Scheduled_Id_Str  : String;
+      Success           : out Boolean)
+   is
+      End_D     : Date_Type;
+      Lifecycle : Scheduled_Lifecycle;
+      Events    : Event_Vectors.Vector;
+      Err       : String (1 .. 256) := [others => ' '];
+      Err_Len   : Natural := 0;
+      Ok        : Boolean;
+   begin
+      Success := False;
+      if not Parse_Iso_Date (End_Exclusive_Str, End_D) then
+         Put_Error_Line ("loam: Scheduled suppression horizon must be a real YYYY-MM-DD calendar date");
+         return;
+      end if;
+
+      if Scheduled_Id_Str'Length = 0 or else Scheduled_Id_Str'Length > Max_Token_Length then
+         Put_Error_Line ("loam: Scheduled suppression target must be a non-empty Scheduled id");
+         return;
+      end if;
+
+      Load_Context (Scheduled_Path, Authority_Dir, Lifecycle, Events, Err, Err_Len, Ok);
+      if not Ok then
+         Put_Error_Line (Err (1 .. Err_Len));
+         return;
+      end if;
+
+      declare
+         BV_Res : constant Read_Balance_View_Result := Read_Balance_View_File (Balance_View_Path);
+      begin
+         if not BV_Res.Success then
+            Put_Error_Line ("loam: malformed or unsupported balance-view config");
+            return;
+         end if;
+
+         declare
+            Target_Id : constant Scheduled_Id := (Token => Make_Token (Scheduled_Id_Str));
+            Res       : constant Suppression_Comparison_Result :=
+              Compare_Suppression (Lifecycle, Events, BV_Res.Coordinates, End_D, Target_Id);
+         begin
+            if Res.Status = Status_Target_Not_Open then
+               Put_Error_Line ("loam: hypothetical Scheduled suppression target is not currently open: " & Scheduled_Id_Str);
+               return;
+            elsif Res.Status /= Status_Ok then
+               Put_Error_Line (Status_To_String (Res.Status));
+               return;
+            end if;
+
+            Put_Line ("Hypothetical Scheduled suppression before " & End_Exclusive_Str & " (end-exclusive):");
+            Put_Line ("Hypothesis: suppress Scheduled " & Scheduled_Id_Str);
+            Put_Line ("Baseline:");
+            Print_Effects (Res.Baseline);
+            Put_Line ("Projected:");
+            Print_Effects (Res.Projected);
+            Put_Line ("Coverage: explicit current-open Scheduled evidence only; unmaterialized future obligations remain Unknown.");
+            Success := True;
+         end;
+      end;
+   end Report_Suppression;
+
+   procedure Replace_Scheduled
+     (Scheduled_Path : String;
+      Authority_Dir  : String;
+      Target_Str     : String := "";
+      From_Locus     : String := "";
+      To_Locus       : String := "";
+      Amount_Str     : String := "";
+      Date_Str       : String := "";
+      Measure_Str    : String := "jpy")
+   is
+      Target      : String (1 .. 64) := [others => ' '];
+      Target_Len  : Natural := 0;
+      From        : String (1 .. 64) := [others => ' '];
+      From_Len    : Natural := 0;
+      To_L        : String (1 .. 64) := [others => ' '];
+      To_Len      : Natural := 0;
+      Amt_Raw     : String (1 .. 64) := [others => ' '];
+      Amt_Len     : Natural := 0;
+      Date_Raw    : String (1 .. 64) := [others => ' '];
+      Date_Len    : Natural := 0;
+      Amount      : Quanta_Type;
+      Parsed_D    : Date_Type;
+   begin
+      if Target_Str'Length > 0 then
+         Target_Len := Natural'Min (Target_Str'Length, Target'Length);
+         Target (1 .. Target_Len) := Target_Str (Target_Str'First .. Target_Str'First + Target_Len - 1);
+      else
+         declare
+            Prompted : constant String := Prompt_Line ("Scheduled ID to replace: ");
+         begin
+            Target_Len := Natural'Min (Prompted'Length, Target'Length);
+            Target (1 .. Target_Len) := Prompted (Prompted'First .. Prompted'First + Target_Len - 1);
+         end;
+      end if;
+
+      if From_Locus'Length > 0 then
+         From_Len := Natural'Min (From_Locus'Length, From'Length);
+         From (1 .. From_Len) := From_Locus (From_Locus'First .. From_Locus'First + From_Len - 1);
+      else
+         declare
+            Prompted : constant String := Prompt_Line ("From locus (source): ");
+         begin
+            From_Len := Natural'Min (Prompted'Length, From'Length);
+            From (1 .. From_Len) := Prompted (Prompted'First .. Prompted'First + From_Len - 1);
+         end;
+      end if;
+
+      if To_Locus'Length > 0 then
+         To_Len := Natural'Min (To_Locus'Length, To_L'Length);
+         To_L (1 .. To_Len) := To_Locus (To_Locus'First .. To_Locus'First + To_Len - 1);
+      else
+         declare
+            Prompted : constant String := Prompt_Line ("To locus (destination): ");
+         begin
+            To_Len := Natural'Min (Prompted'Length, To_L'Length);
+            To_L (1 .. To_Len) := Prompted (Prompted'First .. Prompted'First + To_Len - 1);
+         end;
+      end if;
+
+      if Amount_Str'Length > 0 then
+         Amt_Len := Natural'Min (Amount_Str'Length, Amt_Raw'Length);
+         Amt_Raw (1 .. Amt_Len) := Amount_Str (Amount_Str'First .. Amount_Str'First + Amt_Len - 1);
+      else
+         declare
+            Prompted : constant String := Prompt_Line ("Amount: ");
+         begin
+            Amt_Len := Natural'Min (Prompted'Length, Amt_Raw'Length);
+            Amt_Raw (1 .. Amt_Len) := Prompted (Prompted'First .. Prompted'First + Amt_Len - 1);
+         end;
+      end if;
+
+      if Date_Str'Length > 0 then
+         Date_Len := Natural'Min (Date_Str'Length, Date_Raw'Length);
+         Date_Raw (1 .. Date_Len) := Date_Str (Date_Str'First .. Date_Str'First + Date_Len - 1);
+      else
+         declare
+            Prompted : constant String := Prompt_Line ("Expected date (YYYY-MM-DD): ");
+         begin
+            Date_Len := Natural'Min (Prompted'Length, Date_Raw'Length);
+            Date_Raw (1 .. Date_Len) := Prompted (Prompted'First .. Prompted'First + Date_Len - 1);
+         end;
+      end if;
+
+      begin
+         Amount := Quanta_Type'Value (Amt_Raw (1 .. Amt_Len));
+      exception
+         when others =>
+            Put_Error_Line ("loam: invalid amount: " & Amt_Raw (1 .. Amt_Len));
+            return;
+      end;
+
+      if not Parse_Iso_Date (Date_Raw (1 .. Date_Len), Parsed_D) then
+         Put_Error_Line ("loam: replacement date must be a real calendar date in YYYY-MM-DD form");
+         return;
+      end if;
+
+      declare
+         Draft : constant Replacement_Draft :=
+           Make_Two_Party_Draft
+             (Source      => Target (1 .. Target_Len),
+              From_Locus  => From (1 .. From_Len),
+              To_Locus    => To_L (1 .. To_Len),
+              Amount      => Amount,
+              Valid_On    => Parsed_D,
+              Measure_Str => Measure_Str);
+         Receipt : constant Replacement_Receipt :=
+           Publish_Replacement (Scheduled_Path, Authority_Dir, Draft);
+      begin
+         if Receipt.Success then
+            Put_Line ("[OK] Replaced Scheduled " & Target (1 .. Target_Len) &
+                      " -> " & Receipt.Replacement.Token.Value (1 .. Receipt.Replacement.Token.Length));
+         else
+            Put_Error_Line ("[ERROR] " & Receipt.Error_Reason (1 .. Receipt.Error_Len));
+         end if;
+      end;
+   end Replace_Scheduled;
 
 end HRA_N.UI.Scheduled_Cli;

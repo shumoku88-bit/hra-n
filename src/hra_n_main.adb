@@ -467,12 +467,154 @@ begin
                   Target_Str     => Target_Arg);
                return;
             end;
+         elsif Rem_Args >= 1 and then Ada.Command_Line.Argument (Command_Idx + 1) = "replace" then
+            declare
+               Target_Arg  : constant String :=
+                 (if Rem_Args >= 2 then Ada.Command_Line.Argument (Command_Idx + 2) else "");
+               From_Arg    : constant String :=
+                 (if Rem_Args >= 3 then Ada.Command_Line.Argument (Command_Idx + 3) else "");
+               To_Arg      : constant String :=
+                 (if Rem_Args >= 4 then Ada.Command_Line.Argument (Command_Idx + 4) else "");
+               Amount_Arg  : constant String :=
+                 (if Rem_Args >= 5 then Ada.Command_Line.Argument (Command_Idx + 5) else "");
+               Date_Arg    : constant String :=
+                 (if Rem_Args >= 6 then Ada.Command_Line.Argument (Command_Idx + 6) else "");
+               Measure_Arg : constant String :=
+                 (if Rem_Args >= 7 then Ada.Command_Line.Argument (Command_Idx + 7) else "jpy");
+            begin
+               HRA_N.UI.Scheduled_Cli.Replace_Scheduled
+                 (Scheduled_Path => Scheduled_Path,
+                  Authority_Dir  => Auth_Dir,
+                  Target_Str     => Target_Arg,
+                  From_Locus     => From_Arg,
+                  To_Locus       => To_Arg,
+                  Amount_Str     => Amount_Arg,
+                  Date_Str       => Date_Arg,
+                  Measure_Str    => Measure_Arg);
+               return;
+            end;
+         elsif Rem_Args >= 1 and then (Ada.Command_Line.Argument (Command_Idx + 1) = "balance"
+                                       or else Ada.Command_Line.Argument (Command_Idx + 1) = "balance-effects") then
+            declare
+               Date_Arg : constant String :=
+                 (if Rem_Args >= 2 then Ada.Command_Line.Argument (Command_Idx + 2) else "");
+               Success  : Boolean;
+            begin
+               if Date_Arg'Length = 0 then
+                  Put_Line ("Usage: hra-n scheduled balance <YYYY-MM-DD>");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  return;
+               end if;
+               HRA_N.UI.Scheduled_Cli.Report_Balance_Effects
+                 (Scheduled_Path    => Scheduled_Path,
+                  Authority_Dir     => Auth_Dir,
+                  Balance_View_Path => Balance_View_Path_Str (Paths),
+                  End_Exclusive_Str => Date_Arg,
+                  Success           => Success);
+               if not Success then
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               end if;
+               return;
+            end;
+         elsif Rem_Args >= 1 and then Ada.Command_Line.Argument (Command_Idx + 1) = "day-evidence" then
+            declare
+               Date_Arg : constant String :=
+                 (if Rem_Args >= 2 then Ada.Command_Line.Argument (Command_Idx + 2) else "");
+               Success  : Boolean;
+            begin
+               if Date_Arg'Length = 0 then
+                  Put_Line ("Usage: hra-n scheduled day-evidence <YYYY-MM-DD>");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  return;
+               end if;
+               HRA_N.UI.Scheduled_Cli.Report_Day_Evidence
+                 (Scheduled_Path => Scheduled_Path,
+                  Authority_Dir  => Auth_Dir,
+                  Day_Str        => Date_Arg,
+                  Success        => Success);
+               if not Success then
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               end if;
+               return;
+            end;
+         elsif Rem_Args >= 1 and then Ada.Command_Line.Argument (Command_Idx + 1) = "suppression" then
+            declare
+               Date_Arg   : constant String :=
+                 (if Rem_Args >= 2 then Ada.Command_Line.Argument (Command_Idx + 2) else "");
+               Target_Arg : constant String :=
+                 (if Rem_Args >= 3 then Ada.Command_Line.Argument (Command_Idx + 3) else "");
+               Success    : Boolean;
+            begin
+               if Date_Arg'Length = 0 or else Target_Arg'Length = 0 then
+                  Put_Line ("Usage: hra-n scheduled suppression <YYYY-MM-DD> <scheduled-id>");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  return;
+               end if;
+               HRA_N.UI.Scheduled_Cli.Report_Suppression
+                 (Scheduled_Path    => Scheduled_Path,
+                  Authority_Dir     => Auth_Dir,
+                  Balance_View_Path => Balance_View_Path_Str (Paths),
+                  End_Exclusive_Str => Date_Arg,
+                  Scheduled_Id_Str  => Target_Arg,
+                  Success           => Success);
+               if not Success then
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               end if;
+               return;
+            end;
          else
             HRA_N.UI.Scheduled_Cli.Display_Open_Scheduled
               (Scheduled_Path => Scheduled_Path,
                Authority_Dir  => Auth_Dir);
             return;
          end if;
+      end if;
+
+      if Command = "day-evidence" then
+         declare
+            Date_Arg : constant String :=
+              (if Rem_Args >= 1 then Ada.Command_Line.Argument (Command_Idx + 1) else "");
+            Success  : Boolean;
+         begin
+            if Date_Arg'Length = 0 then
+               Put_Line ("Usage: hra-n day-evidence <YYYY-MM-DD>");
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               return;
+            end if;
+            HRA_N.UI.Scheduled_Cli.Report_Day_Evidence
+              (Scheduled_Path => Scheduled_Path,
+               Authority_Dir  => Auth_Dir,
+               Day_Str        => Date_Arg,
+               Success        => Success);
+            if not Success then
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+            end if;
+            return;
+         end;
+      end if;
+
+      if Command = "balance-effects" then
+         declare
+            Date_Arg : constant String :=
+              (if Rem_Args >= 1 then Ada.Command_Line.Argument (Command_Idx + 1) else "");
+            Success  : Boolean;
+         begin
+            if Date_Arg'Length = 0 then
+               Put_Line ("Usage: hra-n balance-effects <YYYY-MM-DD>");
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               return;
+            end if;
+            HRA_N.UI.Scheduled_Cli.Report_Balance_Effects
+              (Scheduled_Path    => Scheduled_Path,
+               Authority_Dir     => Auth_Dir,
+               Balance_View_Path => Balance_View_Path_Str (Paths),
+               End_Exclusive_Str => Date_Arg,
+               Success           => Success);
+            if not Success then
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+            end if;
+            return;
+         end;
       end if;
 
       --  1. Load and Verify Manifest Authority (CURRENT)

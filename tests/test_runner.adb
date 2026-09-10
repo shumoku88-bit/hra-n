@@ -33,6 +33,7 @@ with Test_Atomic_Writer;
 with Test_Authority_Transaction;
 with Test_Correction_Publisher;
 with Test_Actual_Validity_Publisher;
+with Test_Scheduled_Balance;
 
 procedure Test_Runner is
 begin
@@ -120,6 +121,9 @@ begin
 
    Put_Line ("--> Running Test_Actual_Validity_Publisher...");
    Test_Actual_Validity_Publisher.Run;
+
+   Put_Line ("--> Running Test_Scheduled_Balance...");
+   Test_Scheduled_Balance.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");

@@ -40,4 +40,19 @@ package HRA_N.Storage.Scheduled_Writer is
      (Scheduled_Path : String;
       Target         : Scheduled_Id) return Write_Scheduled_Result;
 
+   --  Append a replacement fact to a Scheduled lifecycle authority file.
+   function Append_Replacement
+     (Scheduled_Path : String;
+      Source         : Scheduled_Id;
+      Replacement    : Scheduled_Id) return Write_Scheduled_Result;
+
+   --  Serialize complete Scheduled_Lifecycle to canonical format string.
+   function Format_Scheduled_Lifecycle
+     (Lifecycle : Scheduled_Lifecycle) return String;
+
+   --  Atomically write complete Scheduled_Lifecycle to file.
+   function Write_Scheduled_Lifecycle
+     (Scheduled_Path : String;
+      Lifecycle      : Scheduled_Lifecycle) return Write_Scheduled_Result;
+
 end HRA_N.Storage.Scheduled_Writer;

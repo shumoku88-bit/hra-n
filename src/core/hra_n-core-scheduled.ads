@@ -138,4 +138,59 @@ is
      (Lifecycle : Scheduled_Lifecycle;
       Target    : Scheduled_Id) return Lookup_Result;
 
+   --  Check whether target scheduled ID exists among scheduled occurrences
+   function Sched_Exists
+     (Lifecycle : Scheduled_Lifecycle;
+      Target    : Scheduled_Id) return Boolean is
+     (for some I in 1 .. Lifecycle.Sched_Count =>
+        Equal_Token (Lifecycle.Sched_Items (I).Id.Token, Target.Token));
+
+   --  Structural integrity: every completion references a retained occurrence
+   function Completions_Reference_Known
+     (Lifecycle : Scheduled_Lifecycle) return Boolean is
+     (for all I in 1 .. Lifecycle.Comp_Count =>
+        Sched_Exists (Lifecycle, Lifecycle.Comp_Items (I).Scheduled));
+
+   --  Structural integrity: every retirement references a retained occurrence
+   function Retirements_Reference_Known
+     (Lifecycle : Scheduled_Lifecycle) return Boolean is
+     (for all I in 1 .. Lifecycle.Ret_Count =>
+        Sched_Exists (Lifecycle, Lifecycle.Ret_Items (I).Scheduled));
+
+   --  Structural integrity: every replacement references retained occurrences at both endpoints
+   function Replacements_Reference_Known
+     (Lifecycle : Scheduled_Lifecycle) return Boolean is
+     (for all I in 1 .. Lifecycle.Repl_Count =>
+        Sched_Exists (Lifecycle, Lifecycle.Repl_Items (I).Original)
+        and then Sched_Exists (Lifecycle, Lifecycle.Repl_Items (I).Replaced_By));
+
+   --  Terminal evidence compatibility: no scheduled ID has both completion and retirement
+   function Terminal_Evidence_Compatible
+     (Lifecycle : Scheduled_Lifecycle) return Boolean is
+     (for all I in 1 .. Lifecycle.Ret_Count =>
+        not Is_Completed (Lifecycle, Lifecycle.Ret_Items (I).Scheduled));
+
+   --  Replacement compatibility: no replacement source has completion or retirement
+   function Replacement_Terminal_Compatible
+     (Lifecycle : Scheduled_Lifecycle) return Boolean is
+     (for all I in 1 .. Lifecycle.Repl_Count =>
+        not Is_Completed (Lifecycle, Lifecycle.Repl_Items (I).Original)
+        and then not Is_Retired (Lifecycle, Lifecycle.Repl_Items (I).Original));
+
+   --  Replacements are one-to-one at both endpoints
+   function Replacements_Are_One_To_One
+     (Lifecycle : Scheduled_Lifecycle) return Boolean is
+     (for all I in 1 .. Lifecycle.Repl_Count =>
+        (for all J in I + 1 .. Lifecycle.Repl_Count =>
+           not Equal_Token (Lifecycle.Repl_Items (I).Original.Token,
+                            Lifecycle.Repl_Items (J).Original.Token)
+           and then
+           not Equal_Token (Lifecycle.Repl_Items (I).Replaced_By.Token,
+                            Lifecycle.Repl_Items (J).Replaced_By.Token)));
+
+   --  Sum of all changes at a specified locus in an occurrence
+   function Quantity_At
+     (Occ   : Scheduled_Occurrence;
+      Locus : Locus_Id) return Quanta_Type;
+
 end HRA_N.Core.Scheduled;
