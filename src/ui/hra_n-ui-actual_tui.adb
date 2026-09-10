@@ -2,6 +2,7 @@ with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Actual_Query; use HRA_N.Application.Actual_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
+with HRA_N.UI.Actual_Detail_TUI;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with Terminal_Interface.Curses;
 
@@ -74,7 +75,7 @@ package body HRA_N.UI.Actual_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "j/k: select   f: focus day/all   o: order   r: reload   b/Esc: home");
+            "j/k: select   Enter: detail   f: day/all   o: order   b/Esc: home");
       end if;
       Curses.Refresh;
    end Draw;
@@ -105,6 +106,25 @@ package body HRA_N.UI.Actual_TUI is
               or else Key = 27
             then
                Running := False;
+            elsif Key = Integer (Curses.KEY_ENTER)
+              or else Key = Integer (Curses.Key_Enter_Or_Send)
+              or else Key = Character'Pos (ASCII.LF)
+            then
+               declare
+                  Current : constant Actual_View :=
+                    Execute
+                      (Paths,
+                       (Scope        => Scope,
+                        Selected_Day => Selected_Day,
+                        Ordering     => Ordering));
+               begin
+                  if Current.Status /= Query_Rejected
+                    and then Cursor <= Current.Row_Count
+                  then
+                     HRA_N.UI.Actual_Detail_TUI.Run
+                       (Paths, Current.Rows (Cursor).Event_Id);
+                  end if;
+               end;
             elsif Key = Character'Pos ('j') or else Key = Integer (Curses.KEY_DOWN) then
                if Cursor < Count then
                   Cursor := Cursor + 1;

@@ -75,9 +75,11 @@ hra-n -d /path/to/household tui
 ```
 
 The TUI supports day navigation, Selected Day and all-Actual workspaces,
-chronology toggling, row selection, return-to-today, reload, resize/redraw, and
-clean quit. Both renderers consume shared frontend queries; Scheduled, balances,
-budget, and report workspaces are added from that boundary.
+chronology toggling, row selection, identity-revalidated Actual detail, return-to-
+today, reload, resize/redraw, and clean quit. Detail currently exposes date,
+description, and exact `(Locus, Measure, Amount)` effects. Write actions remain
+disabled while snapshots are unversioned. Scheduled, balances, budget, and report
+workspaces are added through the same shared query boundary.
 
 The combined repository gate is:
 

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import datetime
 import fcntl
 import os
 import pty
@@ -31,10 +32,11 @@ def main() -> None:
     harness = os.path.join(root, "tests", "bin", "tui_harness")
     household = tempfile.mkdtemp(prefix="hra_n_tui_")
     try:
+        today = datetime.date.today().isoformat()
         with open(os.path.join(household, "journal.hra"), "w", encoding="utf-8") as stream:
-            stream.write("# empty journal\n")
+            stream.write(f'TX e0001 {today} cash:-100 food:100 "PTY fixture"\n')
         with open(os.path.join(household, "policy.hra"), "w", encoding="utf-8") as stream:
-            stream.write("ROLE cash: ASSET\nZERO-ORIGIN cash:jpy\n")
+            stream.write("ROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n")
         with open(os.path.join(household, "scheduled.hra"), "w", encoding="utf-8") as stream:
             stream.write("# empty scheduled journal\n")
 
@@ -53,6 +55,10 @@ def main() -> None:
             read_until(fd, output, b"Evidence")
             os.write(fd, b"a")
             read_until(fd, output, b"ACTUAL  ALL CURRENT")
+            os.write(fd, b"\n")
+            read_until(fd, output, b"DETAIL")
+            os.write(fd, b"b")
+            read_until(fd, output, b"Order:")
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
         except Exception:
@@ -90,7 +96,7 @@ def main() -> None:
         if not os.WIFEXITED(exit_status) or os.WEXITSTATUS(exit_status) != 0:
             raise AssertionError(f"Home TUI exited unsuccessfully: {exit_status}")
 
-        print("TUI PTY: Home, Selected Day, Actual, resize, redraw, and quit passed")
+        print("TUI PTY: Home, Selected Day, Actual detail, resize, redraw, and quit passed")
     finally:
         shutil.rmtree(household, ignore_errors=True)
 

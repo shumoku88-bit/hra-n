@@ -3,6 +3,7 @@ with Test_Support; use Test_Support;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Actual_Query; use HRA_N.Application.Actual_Query;
+with HRA_N.Application.Actual_Detail_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Storage.Atomic_Writer; use HRA_N.Storage.Atomic_Writer;
@@ -65,6 +66,31 @@ package body Test_Actual_Query is
          Assert (Id_At (View, 1) = "e0001", "Oldest query starts with first day/source row");
          Assert (Id_At (View, 2) = "e0003", "Oldest query preserves equal-date source order");
          Assert (Id_At (View, 3) = "e0002", "Oldest query ends with later day");
+      end;
+
+      declare
+         Detail : constant HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+           HRA_N.Application.Actual_Detail_Query.Execute
+             (Paths, Make_Token ("e0003"));
+      begin
+         Assert (Detail.Status = Query_Complete, "Actual detail resolves selected identity");
+         Assert_Equal_Int (2, Long_Long_Integer (Detail.Effect_Count),
+                           "Actual detail retains every effect");
+         Assert (Detail.Effects (1).Amount = -300,
+                 "Actual detail retains exact signed amount");
+         Assert (Equal_Token (Detail.Effects (2).Locus, Make_Token ("food")),
+                 "Actual detail retains effect locus");
+         Assert (Detail.Description.Length = 5,
+                 "Actual detail retains description");
+      end;
+
+      declare
+         Missing : constant HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+           HRA_N.Application.Actual_Detail_Query.Execute
+             (Paths, Make_Token ("absent"));
+      begin
+         Assert (Missing.Status = Query_Rejected,
+                 "Actual detail rejects identity absent after re-read");
       end;
 
       declare
