@@ -32,6 +32,7 @@ with HRA_N.Storage.Boundary_Presets_Reader;
 with HRA_N.Application.Budget_Window;     use HRA_N.Application.Budget_Window;
 with HRA_N.UI.Budget_CLI;
 with HRA_N.UI.Relation_CLI;
+with HRA_N.UI.Status_CLI;
 
 procedure HRA_N_Main is
    Paths       : Path_Config;
@@ -407,7 +408,18 @@ begin
       end;
 
       --  Dispatch inspection and reporting commands.
-      if Command = "relations" then
+      if Command = "status" then
+         declare
+            Status_Ok : Boolean;
+         begin
+            HRA_N.UI.Status_CLI.Display_Status
+              (Paths => Paths, Events => Event_Res.Events, Success => Status_Ok);
+            if not Status_Ok then
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+            end if;
+            return;
+         end;
+      elsif Command = "relations" then
          if Rem_Args = 0 then
             declare
                Relations_Ok : Boolean;

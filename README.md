@@ -2,7 +2,7 @@
 
 [![SPARK Level 2](https://img.shields.io/badge/SPARK-Level%202%20Silver%2FGold-green.svg)](https://www.adacore.com/about-spark)
 [![SMT Proved](https://img.shields.io/badge/Checks%20Proved-100%25%20(291%2F291)-brightgreen.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-445%20Passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-459%20Passed-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/Style-Ada%20Quality%20%26%20Style-blue.svg)]()
 [![License](https://img.shields.io/badge/License-MIT%20%2F%20Apache--2.0-blue.svg)]()
 
@@ -30,6 +30,8 @@ It inherits the mathematical purity of **Loam**'s orthogonal ontology (zero-sum 
   Inspect, plan, register (`add`), execute (`complete`), and cancel (`retire`) recurring and future obligations with zero manual text file editing.
 - **Open Relation & Exact Discharge Tracking (`hra-n relations`)**:
   Resolve directional household/external obligations from their source Effects and derive exact outstanding quantity from independently retained discharge provenance. Missing later Events remain inert crash residue; conflicting active evidence fails closed instead of becoming a false balance.
+- **Evidence-Bounded Household Dashboard (`hra-n status`)**:
+  Integrates authority health, epistemic statement completeness, current-open Scheduled obligations, managed/unmanaged/unrouted commitment pressure, unresolved eligibility, and open relation state. Its commitment horizon comes from retained future evidence rather than an invented fixed number of days.
 - **Automatic Multi-Strategy Path Resolution**:
   Auto-detects active repositories via `-d / --data-dir`, `HRA_DATA_DIR` / `LOAM_DATA_DIR` environment variables, current working directory, or parent directory traversal.
 - **Self-Healing Diagnostics (`hra-n doctor`)**:
@@ -92,9 +94,12 @@ hra-n review /Lunch
 hra-n review u
 ```
 
-### 5. Inspect Account Balances
+### 5. Inspect Household Status and Account Balances
 
 ```bash
+# Integrated authority, statement, commitment, and relation dashboard
+hra-n status
+
 # Display affirmatively covered account balances
 hra-n summary
 ```
@@ -160,7 +165,7 @@ HRA-N enforces a strict one-command qualification gate:
 
 The qualification pipeline executes three mandatory phases:
 1. **SPARK Formal Proof**: 291 checks proved by Why3, Alt-Ergo, CVC5, and Z3 with zero warnings and zero unproved obligations.
-2. **Unit Test Suite**: 445 unit and integration tests covering arithmetic overflow prevention, manifest parsing, scheduled lifecycle, double-reversal prevention, POSIX lock contention, accounting role projection, envelope budget window projection, catalog presentation evidence, relation discharge admission, and publisher durability.
+2. **Unit Test Suite**: 459 unit and integration tests covering arithmetic overflow prevention, manifest parsing, scheduled lifecycle, double-reversal prevention, POSIX lock contention, accounting role projection, envelope budget window projection, catalog presentation evidence, relation discharge admission, and publisher durability.
 3. **Production Build**: Compiles optimized production binary with full style checks.
 
 ---
