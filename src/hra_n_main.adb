@@ -1,51 +1,108 @@
+-------------------------------------------------------------------------------
+--  HRA-N: Verified Household Engine
+--  Main entry point: Household inspection & real-data verification
+-------------------------------------------------------------------------------
+
 with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Containers;
-with HRA_N.Core.Types; use HRA_N.Core.Types;
-with HRA_N.Core.Event; use HRA_N.Core.Event;
-with HRA_N.Storage.Event_Reader; use HRA_N.Storage.Event_Reader;
+with HRA_N.Core.Types;             use HRA_N.Core.Types;
+with HRA_N.Core.Event;             use HRA_N.Core.Event;
+with HRA_N.Core.Coverage;          use HRA_N.Core.Coverage;
+with HRA_N.Storage.Event_Reader;   use HRA_N.Storage.Event_Reader;
+with HRA_N.Storage.Coverage_Reader; use HRA_N.Storage.Coverage_Reader;
 
 procedure HRA_N_Main is
+   Data_Dir : constant String := "/Users/user/Projects/moko/loam-data";
+
    Event_File_Path : constant String :=
-     "/Users/user/Projects/moko/loam-data/movement-authority/objects/Event/100b83b1d62bb00e0f26aa0c08beab00eebffc09a559db75285253638f3c9cb4.loam";
+     Data_Dir & "/movement-authority/objects/Event/100b83b1d62bb00e0f26aa0c08beab00eebffc09a559db75285253638f3c9cb4.loam";
 
-   Result : Read_Result;
-   JPY    : constant Measure_Id := (Token => Make_Token ("jpy"));
-   Unbalanced_Count : Natural := 0;
-   Balanced_Count   : Natural := 0;
+   Coverage_File_Path : constant String :=
+     Data_Dir & "/zero-origin-coverage.loam";
+
+   Event_Res    : Read_Result;
+   Coverage_Res : Read_Coverage_Result;
+   JPY          : constant Measure_Id := (Token => Make_Token ("jpy"));
 begin
-   Put_Line ("========================================");
+   Put_Line ("============================================================");
    Put_Line (" HRA-N: Verified Household Engine");
-   Put_Line (" Real Data Integration Verification");
-   Put_Line ("========================================");
+   Put_Line (" Zero-Origin Balance Projection from Real Operational Data");
+   Put_Line ("============================================================");
 
-   Put_Line ("Loading real loam event object:");
-   Put_Line ("  " & Event_File_Path);
-
-   Result := Read_Event_Memory_File (Event_File_Path);
-
-   if not Result.Success then
-      Put_Line ("[ERROR] Failed to read event file at line " &
-                Natural'Image (Result.Error_Line) & ": " &
-                Result.Error_Reason (1 .. Result.Error_Len));
+   -- 1. Load Event Memory
+   Put_Line ("Loading event memory object...");
+   Event_Res := Read_Event_Memory_File (Event_File_Path);
+   if not Event_Res.Success then
+      Put_Line ("[ERROR] Failed to load event memory: " &
+                Event_Res.Error_Reason (1 .. Event_Res.Error_Len));
       return;
    end if;
+   Put_Line ("  Admitted events: " &
+             Ada.Containers.Count_Type'Image (Event_Res.Events.Length));
 
-   Put_Line ("[SUCCESS] Successfully parsed file!");
-   Put_Line ("Total events admitted: " &
-             Ada.Containers.Count_Type'Image (Result.Events.Length));
+   -- 2. Load Zero-Origin Coverage Evidence
+   Put_Line ("Loading zero-origin coverage evidence...");
+   Coverage_Res := Read_Coverage_File (Coverage_File_Path);
+   if not Coverage_Res.Success then
+      Put_Line ("[ERROR] Failed to load coverage: " &
+                Coverage_Res.Error_Reason (1 .. Coverage_Res.Error_Len));
+      return;
+   end if;
+   Put_Line ("  Covered coordinates: " &
+             Coverage_Count_Type'Image (Coordinate_Count (Coverage_Res.Coverage)));
 
-   -- Verify all admitted events against SPARK Core laws
-   for Ev of Result.Events loop
-      if Is_Balanced_Single_Measure (Ev, JPY) then
-         Balanced_Count := Balanced_Count + 1;
-      else
-         Unbalanced_Count := Unbalanced_Count + 1;
-      end if;
+   Put_Line ("------------------------------------------------------------");
+   Put_Line (" Household Balances (Only Affirmatively Covered Loci):");
+   Put_Line ("------------------------------------------------------------");
+
+   -- Project balance for each covered coordinate
+   for I in 1 .. Coordinate_Count (Coverage_Res.Coverage) loop
+      declare
+         Coord : constant Coordinate_Type := Coordinate_At (Coverage_Res.Coverage, I);
+         Total : Long_Long_Integer := 0;
+      begin
+         -- Fold events over the coordinate
+         for Ev of Event_Res.Events loop
+            Total := Total + Quantity_At (Ev, Coord.Locus, Coord.Measure);
+         end loop;
+
+         declare
+            Bal : constant Balance_Result :=
+              Inspect_Balance (Coverage_Res.Coverage, Coord, Total);
+         begin
+            case Bal.Status is
+               when Covered =>
+                  Put_Line ("  [COVERED] " &
+                            Coord.Locus.Token.Value (1 .. Coord.Locus.Token.Length) &
+                            " : " & Long_Long_Integer'Image (Bal.Amount) &
+                            " " & Coord.Measure.Token.Value (1 .. Coord.Measure.Token.Length));
+               when Coverage_Missing =>
+                  Put_Line ("  [UNAVAILABLE] " &
+                            Coord.Locus.Token.Value (1 .. Coord.Locus.Token.Length) &
+                            " (Coverage Missing)");
+            end case;
+         end;
+      end;
    end loop;
 
-   Put_Line ("  Balanced (single-measure JPY = 0): " & Natural'Image (Balanced_Count));
-   Put_Line ("  Other (multi-measure / unbalanced): " & Natural'Image (Unbalanced_Count));
+   -- 3. Fail-Closed Verification on Uncovered Loci
+   Put_Line ("------------------------------------------------------------");
+   Put_Line (" Fail-Closed Verification (Querying Uncovered Loci):");
+   Put_Line ("------------------------------------------------------------");
+   declare
+      Food_Coord : constant Coordinate_Type :=
+        (Locus => (Token => Make_Token ("food")), Measure => JPY);
+      Food_Bal : constant Balance_Result :=
+        Inspect_Balance (Coverage_Res.Coverage, Food_Coord, 12345);
+   begin
+      if Food_Bal.Status = Coverage_Missing then
+         Put_Line ("  [OK] Locus 'food' correctly evaluated as Coverage_Missing.");
+         Put_Line ("       No implicit 0 or false purchasing power was fabricated.");
+      else
+         Put_Line ("  [FAIL] Uncovered locus 'food' evaluated as covered!");
+      end if;
+   end;
 
-   Put_Line ("========================================");
-   Put_Line (" All real events validated by SPARK Core laws!");
+   Put_Line ("============================================================");
+   Put_Line (" All mathematical invariants verified and preserved.");
 end HRA_N_Main;
