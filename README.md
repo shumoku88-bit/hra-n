@@ -65,16 +65,18 @@ The Ada implementation is being migrated to the new model. Existing checks are:
 ./tools/build
 ```
 
-The current read-only Home projection is available through the default entrance
-or explicitly:
+The current read-only Home projection is available as a one-shot view or as the
+first keyboard TUI slice:
 
 ```sh
 hra-n -d /path/to/household
 hra-n -d /path/to/household home
+hra-n -d /path/to/household tui
 ```
 
-It already uses the shared frontend query boundary, but remains a one-shot
-renderer until the keyboard TUI shell is connected.
+The TUI supports day navigation, return-to-today, reload, resize/redraw, and
+clean quit. Both renderers consume the same shared frontend query; Actual,
+Scheduled, balances, budget, and report workspaces are added from that boundary.
 
 The combined repository gate is:
 

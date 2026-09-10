@@ -5,4 +5,5 @@ project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_root"
 
 alr exec -- gprbuild -P tests/hra_n_tests.gpr -p
-exec "$project_root/tests/bin/test_runner"
+"$project_root/tests/bin/test_runner"
+python3 "$project_root/tests/test_tui_pty.py"

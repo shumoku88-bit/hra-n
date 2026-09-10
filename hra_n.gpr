@@ -1,3 +1,5 @@
+with "lib_adacurses";
+
 project HRA_N is
    for Languages use ("Ada");
    for Source_Dirs use ("src", "src/core", "src/storage", "src/application", "src/ui");

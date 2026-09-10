@@ -17,6 +17,7 @@ with HRA_N.Application.Budget_Window; use HRA_N.Application.Budget_Window;
 with HRA_N.Application.Review;        use HRA_N.Application.Review;
 with HRA_N.UI.Output;                 use HRA_N.UI.Output;
 with HRA_N.UI.Home_CLI;
+with HRA_N.UI.Home_TUI;
 with HRA_N.UI.Status_CLI;
 with HRA_N.UI.Statement_Cli;
 with HRA_N.UI.Budget_CLI;
@@ -305,8 +306,16 @@ begin
          return;
       end if;
 
-      --  Shared read-only Home projection. This is the production seam for the
-      --  upcoming keyboard TUI and external frontend adapters.
+      if Command = "tui" then
+         HRA_N.UI.Home_TUI.Run (Paths, Success);
+         if not Success then
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         end if;
+         return;
+      end if;
+
+      --  Shared read-only Home projection. The one-shot renderer and TUI use
+      --  the same application query.
       if Command = "home" then
          HRA_N.UI.Home_CLI.Display_Home (Paths, Success);
          if not Success then

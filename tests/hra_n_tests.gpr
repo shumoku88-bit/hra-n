@@ -5,7 +5,7 @@ project HRA_N_Tests is
    for Source_Dirs use (".");
    for Object_Dir use "obj";
    for Exec_Dir use "bin";
-   for Main use ("test_runner.adb");
+   for Main use ("test_runner.adb", "tui_harness.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use (
@@ -23,5 +23,6 @@ project HRA_N_Tests is
 
    package Builder is
       for Executable ("test_runner.adb") use "test_runner";
+      for Executable ("tui_harness.adb") use "tui_harness";
    end Builder;
 end HRA_N_Tests;

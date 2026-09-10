@@ -7,3 +7,6 @@ executables = ["hra_n_main"]
 
 [[depends-on]]
 gnatprove = "~16.1.0"
+
+[[depends-on]]
+ncursesada = "~6.5.0"
