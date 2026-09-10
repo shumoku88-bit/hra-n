@@ -17,6 +17,7 @@ with Test_Description;
 with Test_Review;
 with Test_Admission;
 with Test_Publisher;
+with Test_Doctor;
 
 procedure Test_Runner is
 begin
@@ -56,6 +57,9 @@ begin
 
    Put_Line ("--> Running Test_Publisher...");
    Test_Publisher.Run;
+
+   Put_Line ("--> Running Test_Doctor...");
+   Test_Doctor.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");

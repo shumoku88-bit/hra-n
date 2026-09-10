@@ -18,6 +18,7 @@ with HRA_N.Storage.Validity_Reader;   use HRA_N.Storage.Validity_Reader;
 with HRA_N.Storage.Description_Reader; use HRA_N.Storage.Description_Reader;
 with HRA_N.Application.Review;        use HRA_N.Application.Review;
 with HRA_N.Application.Publisher;     use HRA_N.Application.Publisher;
+with HRA_N.Application.Doctor;        use HRA_N.Application.Doctor;
 with HRA_N.UI.Output;                 use HRA_N.UI.Output;
 with HRA_N.UI.Interactive_Movement;
 
@@ -51,6 +52,23 @@ procedure HRA_N_Main is
    Command   : constant String  :=
      (if Arg_Count >= 1 then Ada.Command_Line.Argument (1) else "summary");
 begin
+   --  Branch: Doctor & Integrity Verification
+   if Command = "doctor" or else Command = "verify" then
+      declare
+         Doc_Report : Doctor_Report;
+      begin
+         Run_Doctor
+           (Authority_Dir => Auth_Dir,
+            Coverage_Path => Data_Dir & "/zero-origin-coverage.loam",
+            Report        => Doc_Report,
+            Quiet         => False);
+         if not Doc_Report.Overall_Healthy then
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         end if;
+         return;
+      end;
+   end if;
+
    --  Branch: Movement publication has its own exclusive lock and authority lifecycle
    if Command = "movement" then
       if Arg_Count = 1 then
