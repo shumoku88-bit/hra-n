@@ -17,10 +17,6 @@ package body Test_Description is
       Mem     : Description_Memory;
       Text    : Description_Text;
       Found   : Boolean;
-
-      Real_Path : constant String :=
-        "/Users/user/Projects/moko/loam-data/movement-authority/objects/EventDescription/" &
-        "31be8ee0f0e873b9bd389e7a7daaadb87f98d746d4be40249d61a900d6fd0bc4.loam";
    begin
       --  1. Unescape plain text
       Ok := Unescape_Text ("Hello World", Desc);
@@ -74,35 +70,40 @@ package body Test_Description is
       Assert (not Event_Ids_Are_Unique (Entries), "Duplicate EventId rejected (fail-closed)");
 
       --  6. Real file loading and validation
-      declare
-         Result : constant Read_Description_Result := Read_Description_File (Real_Path);
-      begin
-         Assert (Result.Success, "Real EventDescription file loads successfully");
-         Assert
-           (Entry_Count (Result.Memory) = 588,
-            "Loaded exact 588 event descriptions from real data");
+      if Real_Data_Available then
+         declare
+            Real_Path : constant String :=
+              Real_Data_Dir & "/movement-authority/objects/EventDescription/" &
+              "31be8ee0f0e873b9bd389e7a7daaadb87f98d746d4be40249d61a900d6fd0bc4.loam";
+            Result : constant Read_Description_Result := Read_Description_File (Real_Path);
+         begin
+            Assert (Result.Success, "Real EventDescription file loads successfully");
+            Assert
+              (Entry_Count (Result.Memory) = 588,
+               "Loaded exact 588 event descriptions from real data");
 
-         --  Spot-check ASCII entry: e0219 -> "Opening Balance"
-         Find_Description
-           (Result.Memory, (Token => Make_Token ("e0219")), Text, Found);
-         Assert (Found, "Spot check e0219 found");
-         Assert (To_String (Text) = "Opening Balance", "e0219 description is Opening Balance");
+            --  Spot-check ASCII entry: e0219 -> "Opening Balance"
+            Find_Description
+              (Result.Memory, (Token => Make_Token ("e0219")), Text, Found);
+            Assert (Found, "Spot check e0219 found");
+            Assert (To_String (Text) = "Opening Balance", "e0219 description is Opening Balance");
 
-         --  Spot-check UTF-8 entry: record-28 has 12 bytes (UTF-8 "コンビニ")
-         Find_Description
-           (Result.Memory, (Token => Make_Token ("record-28")), Text, Found);
-         Assert (Found, "Spot check record-28 found");
-         Assert (Text.Length = 12, "record-28 description has expected UTF-8 length (12 bytes)");
+            --  Spot-check UTF-8 entry: record-28 has 12 bytes (UTF-8 "コンビニ")
+            Find_Description
+              (Result.Memory, (Token => Make_Token ("record-28")), Text, Found);
+            Assert (Found, "Spot check record-28 found");
+            Assert (Text.Length = 12, "record-28 description has expected UTF-8 length (12 bytes)");
 
-         --  Spot-check scheduled-2 has non-empty description
-         Find_Description
-           (Result.Memory,
-            (Token => Make_Token ("scheduled-completion:scheduled-2")),
-            Text,
-            Found);
-         Assert (Found, "Spot check scheduled-completion:scheduled-2 found");
-         Assert (Text.Length > 0, "scheduled-2 description is non-empty");
-      end;
+            --  Spot-check scheduled-2 has non-empty description
+            Find_Description
+              (Result.Memory,
+               (Token => Make_Token ("scheduled-completion:scheduled-2")),
+               Text,
+               Found);
+            Assert (Found, "Spot check scheduled-completion:scheduled-2 found");
+            Assert (Text.Length > 0, "scheduled-2 description is non-empty");
+         end;
+      end if;
    end Run;
 
 end Test_Description;

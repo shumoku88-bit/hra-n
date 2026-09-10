@@ -19,8 +19,8 @@ package body Test_Scheduled is
    Sandbox_Dir   : constant String := "/tmp/hra_n_test_scheduled";
    Sandbox_Auth  : constant String := Sandbox_Dir & "/movement-authority";
    Sandbox_Sched : constant String := Sandbox_Dir & "/scheduled.loam";
-   Source_Auth   : constant String := "/Users/user/Projects/moko/loam-data/movement-authority";
-   Source_Sched  : constant String := "/Users/user/Projects/moko/loam-data/scheduled.loam";
+   function Source_Auth return String is (Real_Data_Dir & "/movement-authority");
+   function Source_Sched return String is (Real_Data_Dir & "/scheduled.loam");
 
    procedure Setup_Sandbox is
       Success : Boolean;
@@ -57,14 +57,21 @@ package body Test_Scheduled is
    end Setup_Sandbox;
 
    procedure Run is
-      Path : constant String := Source_Sched;
-      Res  : constant Read_Scheduled_Result := Read_Scheduled_File (Path);
    begin
-      if not Res.Success then
-         Ada.Text_IO.Put_Line ("Read_Scheduled_File failed at line " &
-                               Natural'Image (Res.Error_Line) & ": " &
-                               Res.Error_Reason (1 .. Res.Error_Len));
+      if not Real_Data_Available then
+         Ada.Text_IO.Put_Line ("    [SKIP] Real scheduled data not present (standalone CI mode)");
+         return;
       end if;
+
+      declare
+         Path : constant String := Source_Sched;
+         Res  : constant Read_Scheduled_Result := Read_Scheduled_File (Path);
+      begin
+         if not Res.Success then
+            Ada.Text_IO.Put_Line ("Read_Scheduled_File failed at line " &
+                                  Natural'Image (Res.Error_Line) & ": " &
+                                  Res.Error_Reason (1 .. Res.Error_Len));
+         end if;
 
       --  1. File load and parse
       Assert (Res.Success, "Real scheduled.loam loads successfully");
@@ -191,7 +198,7 @@ package body Test_Scheduled is
       begin
          Run_Doctor
            (Authority_Dir => Sandbox_Auth,
-            Coverage_Path => "/Users/user/Projects/moko/loam-data/zero-origin-coverage.loam",
+            Coverage_Path => Real_Data_Dir & "/zero-origin-coverage.loam",
             Report        => Doc_Report,
             Quiet         => True);
          Assert (Doc_Report.Overall_Healthy, "Sandbox authority remains 100% HEALTHY after scheduled completion");
@@ -280,6 +287,7 @@ package body Test_Scheduled is
          begin
             Assert (not Dup_Ret.Success, "Duplicate retirement safely rejected (fail-closed)");
          end;
+      end;
       end;
 
    end Run;

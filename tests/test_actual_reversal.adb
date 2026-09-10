@@ -20,9 +20,11 @@ package body Test_Actual_Reversal is
       Ok      : Boolean;
    begin
       --  1. Load real actual-reversals.loam from loam-data
-      Res := Read_Actual_Reversal_File ("/Users/user/Projects/moko/loam-data/actual-reversals.loam");
-      Assert (Res.Success, "Real actual-reversals.loam loads successfully");
-      Assert_Equal_Int (0, Long_Long_Integer (Entry_Count (Res.Memory)), "Real actual-reversals has 0 initial rows");
+      if Real_Data_Available then
+         Res := Read_Actual_Reversal_File (Real_Data_Dir & "/actual-reversals.loam");
+         Assert (Res.Success, "Real actual-reversals.loam loads successfully");
+         Assert_Equal_Int (0, Long_Long_Integer (Entry_Count (Res.Memory)), "Real actual-reversals has 0 initial rows");
+      end if;
 
       --  2. Setup clean test file
       if Ada.Directories.Exists (Test_File) then

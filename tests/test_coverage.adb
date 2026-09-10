@@ -55,15 +55,17 @@ package body Test_Coverage is
       end;
 
       -- Test 4: Real coverage file loading
-      declare
-         Real_Path : constant String :=
-           "/Users/user/Projects/moko/loam-data/zero-origin-coverage.loam";
-         Res_Real : constant Read_Coverage_Result := Read_Coverage_File (Real_Path);
-      begin
-         Assert (Res_Real.Success, "Real zero-origin-coverage.loam loaded successfully");
-         Assert_Equal_Int (5, Long_Long_Integer (Coordinate_Count (Res_Real.Coverage)),
-                           "Loaded exact 5 covered coordinates from real data");
-      end;
+      if Real_Data_Available then
+         declare
+            Real_Path : constant String :=
+              Real_Data_Dir & "/zero-origin-coverage.loam";
+            Res_Real : constant Read_Coverage_Result := Read_Coverage_File (Real_Path);
+         begin
+            Assert (Res_Real.Success, "Real zero-origin-coverage.loam loaded successfully");
+            Assert_Equal_Int (5, Long_Long_Integer (Coordinate_Count (Res_Real.Coverage)),
+                              "Loaded exact 5 covered coordinates from real data");
+         end;
+      end if;
    end Run;
 
 end Test_Coverage;

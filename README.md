@@ -1,8 +1,8 @@
 # HRA-N: Verified Household Engine
 
 [![SPARK Level 2](https://img.shields.io/badge/SPARK-Level%202%20Silver%2FGold-green.svg)](https://www.adacore.com/about-spark)
-[![SMT Proved](https://img.shields.io/badge/Checks%20Proved-100%25%20(191%2F191)-brightgreen.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-265%20Passed-brightgreen.svg)]()
+[![SMT Proved](https://img.shields.io/badge/Checks%20Proved-100%25%20(203%2F203)-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-289%20Passed-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/Style-Ada%20Quality%20%26%20Style-blue.svg)]()
 [![License](https://img.shields.io/badge/License-MIT%20%2F%20Apache--2.0-blue.svg)]()
 
@@ -16,6 +16,8 @@ It inherits the mathematical purity of **Loam**'s orthogonal ontology (zero-sum 
 
 - **100% Automated Formal Proof (SPARK Level 2)**:
   Every arithmetic operation, boundary condition, and invariant is formally proved against overflow, underflow, and runtime exceptions via SMT solvers (Why3, Alt-Ergo, CVC5, Z3). Zero runtime exceptions guaranteed.
+- **Formal Financial Statements & Accounting Role Projection (`hra-n report`)**:
+  Project raw event vectors into canonical 5-element financial statements (Balance Sheet: Assets, Liabilities, Equity; Profit & Loss: Income, Expense, Net Savings, Savings Rate). The fundamental accounting equation ($\text{Assets} = (\text{Liabilities} + \text{Equity}) + (\text{Income} - \text{Expense})$) holds with 100% mathematical coherence. Strict fail-closed detection catches unclassified accounts without guesswork.
 - **Bit-Exact Loam Parity (100% Exact Byte Parity)**:
   Operates interchangeably with production Loam v2 authority manifests. Records published by HRA-N are verified with identical byte output and zero diff by Loam's official toolchain.
 - **Single Native Binary with Zero Runtime Dependencies**:
@@ -23,7 +25,7 @@ It inherits the mathematical purity of **Loam**'s orthogonal ontology (zero-sum 
 - **Crash Consistency & Atomic Durability**:
   POSIX advisory `flock(LOCK_EX)` locks, sibling directory staging, explicit storage synchronization (`fsync`), and atomic replacement guarantee zero data corruption across sudden power loss or process termination.
 - **Immutable Reversal & Audit Trail (`hra-n movement revert`)**:
-  Correct mistaken entries through exact algebraic reversal vectors without physical deletion or history tampering. Double-reversals and reversal-of-reversals are rejected fail-closed.
+  Correct mistaken entries through exact algebraic reversal vectors with companion `actual-reversals.loam` sidecar tracking. Double-reversals and reversal-of-reversals are rejected fail-closed.
 - **Full Scheduled Obligation Lifecycle (`hra-n scheduled`)**:
   Inspect, plan, register (`add`), execute (`complete`), and cancel (`retire`) recurring and future obligations with zero manual text file editing.
 - **Automatic Multi-Strategy Path Resolution**:
@@ -88,14 +90,21 @@ hra-n review /Lunch
 hra-n review u
 ```
 
-### 5. Inspect Balances
+### 5. Inspect Account Balances
 
 ```bash
 # Display affirmatively covered account balances
 hra-n summary
 ```
 
-### 6. Manage Scheduled Obligations
+### 6. Generate Financial Statements (B/S & P/L Report)
+
+```bash
+# Display Balance Sheet (B/S), Profit & Loss (P/L), Net Worth, Savings Rate, and Coherence
+hra-n report
+```
+
+### 7. Manage Scheduled Obligations
 
 ```bash
 # List all pending scheduled obligations sorted by due date
@@ -113,7 +122,7 @@ hra-n scheduled complete scheduled-3 2026-09-15 "OpenAI ChatGPT Plus"
 hra-n scheduled retire scheduled-14
 ```
 
-### 7. Verify Repository Integrity
+### 8. Verify Repository Integrity
 
 ```bash
 # Run comprehensive cryptographic and mathematical invariant audit
@@ -124,15 +133,15 @@ hra-n doctor
 
 ## Qualification & Formal Verification
 
-HRA-N enforces a strict one-command qualification gate. Run:
+HRA-N enforces a strict one-command qualification gate:
 
 ```bash
 ./tools/qualify
 ```
 
 The qualification pipeline executes three mandatory phases:
-1. **SPARK Formal Proof**: 191 checks proved by Why3, Alt-Ergo, CVC5, and Z3 with zero warnings and zero unproved obligations.
-2. **Unit Test Suite**: 265 unit and integration tests covering arithmetic overflow prevention, manifest parsing, scheduled lifecycle, double-reversal prevention, POSIX lock contention, and publisher durability.
+1. **SPARK Formal Proof**: 203 checks proved by Why3, Alt-Ergo, CVC5, and Z3 with zero warnings and zero unproved obligations.
+2. **Unit Test Suite**: 289 unit and integration tests covering arithmetic overflow prevention, manifest parsing, scheduled lifecycle, double-reversal prevention, POSIX lock contention, accounting role projection, and publisher durability.
 3. **Production Build**: Compiles optimized production binary with full style checks.
 
 ---
@@ -149,4 +158,4 @@ HRA-N adheres strictly to the **Ada Quality and Style Guide (AQ&S)**:
 
 ## License
 
-Licensed under the Apache License, Version 2.0 or the MIT License, at your option.
+Licensed under the Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE)) or the MIT License ([LICENSE-MIT](LICENSE-MIT)), at your option.

@@ -21,9 +21,6 @@ package body Test_Validity is
 
       Entries : Validity_Entry_List;
 
-      Real_Path : constant String :=
-        "/Users/user/Projects/moko/loam-data/movement-authority/objects/ActualValidity/45bf193b0c6aa55b39a4c5085e3faf37cecf5d5f36d15c6dcb6f0a214f38ce89.loam";
-
       Res_Real : Read_Validity_Result;
    begin
       -- Test 1: Leap year calendar logic
@@ -84,10 +81,18 @@ package body Test_Validity is
       end;
 
       -- Test 7: Load real operational ActualValidity file
-      Res_Real := Read_Validity_File (Real_Path);
-      Assert (Res_Real.Success, "Real ActualValidity object file loads successfully");
-      Assert_Equal_Int (588, Long_Long_Integer (Entry_Count (Res_Real.Memory)),
-                        "Exact 588 validity facts loaded and unique");
+      if Real_Data_Available then
+         declare
+            Real_Path : constant String :=
+              Real_Data_Dir & "/movement-authority/objects/ActualValidity/" &
+              "45bf193b0c6aa55b39a4c5085e3faf37cecf5d5f36d15c6dcb6f0a214f38ce89.loam";
+         begin
+            Res_Real := Read_Validity_File (Real_Path);
+            Assert (Res_Real.Success, "Real ActualValidity object file loads successfully");
+            Assert_Equal_Int (588, Long_Long_Integer (Entry_Count (Res_Real.Memory)),
+                              "Exact 588 validity facts loaded and unique");
+         end;
+      end if;
    end Run;
 
 end Test_Validity;

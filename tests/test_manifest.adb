@@ -3,13 +3,14 @@
 --  Package body: Test_Manifest
 -------------------------------------------------------------------------------
 
+with Ada.Text_IO;           use Ada.Text_IO;
 with HRA_N.Storage.Manifest; use HRA_N.Storage.Manifest;
 with Test_Support;           use Test_Support;
 
 package body Test_Manifest is
 
    procedure Run is
-      Auth_Dir      : constant String := "/Users/user/Projects/moko/loam-data/movement-authority";
+      Auth_Dir      : constant String := Real_Data_Dir & "/movement-authority";
       Manifest_Path : constant String := Auth_Dir & "/CURRENT";
 
       Fam_Ev     : Manifest_Family;
@@ -17,7 +18,6 @@ package body Test_Manifest is
       Fam_Bad    : Manifest_Family;
       Ok         : Boolean;
       Res_Non    : constant Read_Manifest_Result := Read_Manifest_File ("/non/existent/CURRENT");
-      Res_Real   : constant Read_Manifest_Result := Read_Manifest_File (Manifest_Path);
       Failed_Fam : Manifest_Family;
    begin
       -- Test 1: Family parse and name round-trip
@@ -35,8 +35,16 @@ package body Test_Manifest is
       -- Test 2: Non-existent manifest fails closed
       Assert (not Res_Non.Success, "Non-existent manifest fails closed");
 
-      -- Test 3: Real manifest loading
-      Assert (Res_Real.Success, "Real CURRENT manifest loads successfully");
+      if not Real_Data_Available then
+         Put_Line ("    [SKIP] Real authority manifest not present (standalone CI mode)");
+         return;
+      end if;
+
+      declare
+         Res_Real : constant Read_Manifest_Result := Read_Manifest_File (Manifest_Path);
+      begin
+         -- Test 3: Real manifest loading
+         Assert (Res_Real.Success, "Real CURRENT manifest loads successfully");
       Assert (Res_Real.Manifest (Family_Event).Present, "Manifest contains Event object");
       Assert (Res_Real.Manifest (Family_Actual_Validity).Present, "Manifest contains ActualValidity object");
       Assert (Res_Real.Manifest (Family_Event_Description).Present, "Manifest contains EventDescription object");
@@ -66,6 +74,7 @@ package body Test_Manifest is
 
          Assert (not Verify_Object_Integrity (Auth_Dir, Tampered_Item),
                  "Tampered SHA-256 hash correctly rejected (tamper detection verified)");
+      end;
       end;
    end Run;
 

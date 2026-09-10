@@ -20,12 +20,13 @@ with HRA_N.Application.Publisher;     use HRA_N.Application.Publisher;
 with HRA_N.Application.Doctor;        use HRA_N.Application.Doctor;
 with HRA_N.Storage.Actual_Reversal_Reader;
 with HRA_N.Core.Actual_Reversal;      use HRA_N.Core.Actual_Reversal;
+with Ada.Text_IO;                    use Ada.Text_IO;
 with Test_Support;                    use Test_Support;
 
 package body Test_Publisher is
 
    Sandbox_Dir : constant String := "/tmp/hra_n_test_authority";
-   Source_Dir  : constant String := "/Users/user/Projects/moko/loam-data/movement-authority";
+   function Source_Dir return String is (Real_Data_Dir & "/movement-authority");
 
    procedure Setup_Sandbox is
       Success : Boolean;
@@ -60,6 +61,11 @@ package body Test_Publisher is
       Res : Publish_Result;
       D   : constant Date_Type := Make_Date (2026, 9, 10);
    begin
+      if not Real_Data_Available then
+         Put_Line ("    [SKIP] Real authority not present (standalone CI mode)");
+         return;
+      end if;
+
       Setup_Sandbox;
 
       --  1. Preflight rejection on unapproved locus
@@ -294,7 +300,7 @@ package body Test_Publisher is
       begin
          Run_Doctor
            (Authority_Dir => Sandbox_Dir,
-            Coverage_Path => "/Users/user/Projects/moko/loam-data/zero-origin-coverage.loam",
+            Coverage_Path => Real_Data_Dir & "/zero-origin-coverage.loam",
             Report        => Doc_Report,
             Quiet         => True);
          Assert (Doc_Report.Overall_Healthy, "Doctor audit 100% HEALTHY after movement reversal");

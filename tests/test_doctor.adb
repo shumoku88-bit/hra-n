@@ -1,13 +1,19 @@
-with Test_Support;                 use Test_Support;
-with HRA_N.Application.Doctor;     use HRA_N.Application.Doctor;
+with Ada.Text_IO;               use Ada.Text_IO;
+with Test_Support;              use Test_Support;
+with HRA_N.Application.Doctor;  use HRA_N.Application.Doctor;
 
 package body Test_Doctor is
 
    procedure Run is
-      Auth_Dir : constant String := "/Users/user/Projects/moko/loam-data/movement-authority";
-      Cov_Path : constant String := "/Users/user/Projects/moko/loam-data/zero-origin-coverage.loam";
+      Auth_Dir : constant String := Real_Data_Dir & "/movement-authority";
+      Cov_Path : constant String := Real_Data_Dir & "/zero-origin-coverage.loam";
       Report   : Doctor_Report;
    begin
+      if not Real_Data_Available then
+         Put_Line ("    [SKIP] Real authority not present (standalone CI mode)");
+         return;
+      end if;
+
       --  1. Real authority full health check (verbose to see diagnostics)
       Run_Doctor
         (Authority_Dir => Auth_Dir,

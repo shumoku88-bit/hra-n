@@ -25,4 +25,7 @@ package Test_Support is
 
    function All_Passed return Boolean;
 
+   function Real_Data_Available return Boolean;
+   function Real_Data_Dir return String;
+
 end Test_Support;

@@ -3,7 +3,9 @@
 --  Package body: Test_Support
 -------------------------------------------------------------------------------
 
-with Ada.Text_IO; use Ada.Text_IO;
+with Ada.Text_IO;               use Ada.Text_IO;
+with Ada.Directories;
+with Ada.Environment_Variables;
 
 package body Test_Support is
 
@@ -70,5 +72,22 @@ package body Test_Support is
    begin
       return Failed_Count = 0;
    end All_Passed;
+
+   function Real_Data_Dir return String is
+   begin
+      if Ada.Environment_Variables.Exists ("LOAM_DATA_DIR") then
+         return Ada.Environment_Variables.Value ("LOAM_DATA_DIR");
+      elsif Ada.Directories.Exists ("/Users/user/Projects/moko/loam-data") then
+         return "/Users/user/Projects/moko/loam-data";
+      else
+         return "";
+      end if;
+   end Real_Data_Dir;
+
+   function Real_Data_Available return Boolean is
+      D : constant String := Real_Data_Dir;
+   begin
+      return D'Length > 0 and then Ada.Directories.Exists (D & "/movement-authority/CURRENT");
+   end Real_Data_Available;
 
 end Test_Support;

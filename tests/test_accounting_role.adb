@@ -4,7 +4,6 @@
 
 with Test_Support;                           use Test_Support;
 with HRA_N.Core.Types;                       use HRA_N.Core.Types;
-with HRA_N.Core.Quantity;                    use HRA_N.Core.Quantity;
 with HRA_N.Core.Event;                       use HRA_N.Core.Event;
 with HRA_N.Core.Accounting_Role;             use HRA_N.Core.Accounting_Role;
 with HRA_N.Storage.Manifest;                 use HRA_N.Storage.Manifest;
@@ -44,34 +43,49 @@ package body Test_Accounting_Role is
       Found    : Boolean;
    begin
       --  1. Load real accounting-role.loam from loam-data
-      Role_Res := Read_Accounting_Role_File ("/Users/user/Projects/moko/loam-data/accounting-role.loam");
-      Assert (Role_Res.Success, "Real accounting-role.loam loads successfully");
-      Assert_Equal_Int (40, Long_Long_Integer (Entry_Count (Role_Res.Map)), "Loaded exact 40 accounting role mappings");
+      if Real_Data_Available then
+         Role_Res := Read_Accounting_Role_File (Real_Data_Dir & "/accounting-role.loam");
+         Assert (Role_Res.Success, "Real accounting-role.loam loads successfully");
+         Assert_Equal_Int (40, Long_Long_Integer (Entry_Count (Role_Res.Map)), "Loaded exact 40 accounting role mappings");
 
-      --  Verify key canonical account classifications
-      Find_Role (Role_Res.Map, (Token => Make_Token ("cash")), R, Found);
-      Assert (Found and then R = Role_Asset, "cash is classified as ASSET");
+         --  Verify key canonical account classifications
+         Find_Role (Role_Res.Map, (Token => Make_Token ("cash")), R, Found);
+         Assert (Found and then R = Role_Asset, "cash is classified as ASSET");
 
-      Find_Role (Role_Res.Map, (Token => Make_Token ("food")), R, Found);
-      Assert (Found and then R = Role_Expense, "food is classified as EXPENSE");
+         Find_Role (Role_Res.Map, (Token => Make_Token ("food")), R, Found);
+         Assert (Found and then R = Role_Expense, "food is classified as EXPENSE");
 
-      Find_Role (Role_Res.Map, (Token => Make_Token ("debt-friend-k")), R, Found);
-      Assert (Found and then R = Role_Liability, "debt-friend-k is classified as LIABILITY");
+         Find_Role (Role_Res.Map, (Token => Make_Token ("debt-friend-k")), R, Found);
+         Assert (Found and then R = Role_Liability, "debt-friend-k is classified as LIABILITY");
 
-      Find_Role (Role_Res.Map, (Token => Make_Token ("equity:opening-balances")), R, Found);
-      Assert (Found and then R = Role_Equity, "equity:opening-balances is classified as EQUITY");
+         Find_Role (Role_Res.Map, (Token => Make_Token ("equity:opening-balances")), R, Found);
+         Assert (Found and then R = Role_Equity, "equity:opening-balances is classified as EQUITY");
 
-      Find_Role (Role_Res.Map, (Token => Make_Token ("pension")), R, Found);
-      Assert (Found and then R = Role_Income, "pension is classified as INCOME");
+         Find_Role (Role_Res.Map, (Token => Make_Token ("pension")), R, Found);
+         Assert (Found and then R = Role_Income, "pension is classified as INCOME");
 
-      Find_Role (Role_Res.Map, (Token => Make_Token ("unregistered-account")), R, Found);
-      Assert (not Found, "Unregistered account is not found in role map");
+         Find_Role (Role_Res.Map, (Token => Make_Token ("unregistered-account")), R, Found);
+         Assert (not Found, "Unregistered account is not found in role map");
+      end if;
 
       --  2. Synthetic Scenario: 100% Mathematical Coherence Test
       declare
          Mock_Events : Event_Vectors.Vector;
+         Mock_Roles  : Role_Map;
          Rep         : Statement_Report;
       begin
+         Mock_Roles.Count := 5;
+         Mock_Roles.Entries (1) :=
+           (Locus => (Token => Make_Token ("cash")), Role => Role_Asset);
+         Mock_Roles.Entries (2) :=
+           (Locus => (Token => Make_Token ("equity:opening-balances")), Role => Role_Equity);
+         Mock_Roles.Entries (3) :=
+           (Locus => (Token => Make_Token ("lesson-income")), Role => Role_Income);
+         Mock_Roles.Entries (4) :=
+           (Locus => (Token => Make_Token ("debt-friend-k")), Role => Role_Liability);
+         Mock_Roles.Entries (5) :=
+           (Locus => (Token => Make_Token ("food")), Role => Role_Expense);
+
          --  Event 1: Opening balance 100,000 JPY from Equity into Cash
          Mock_Events.Append
            (Make_Simple_Event ("ev-1", "equity:opening-balances", "cash", 100_000));
@@ -88,7 +102,7 @@ package body Test_Accounting_Role is
          Mock_Events.Append
            (Make_Simple_Event ("ev-4", "cash", "food", 30_000));
 
-         Generate_Report (Mock_Events, Role_Res.Map, Rep);
+         Generate_Report (Mock_Events, Mock_Roles, Rep);
 
          Assert_Equal_Int (4, Long_Long_Integer (Rep.Total_Events), "Mock statement aggregated 4 events");
          Assert_Equal_Int (0, Long_Long_Integer (Rep.Unresolved_Count), "0 unresolved accounts in mock scenario");
@@ -121,37 +135,39 @@ package body Test_Accounting_Role is
       end;
 
       --  3. Real Production Household Authority Projection (588 events)
-      declare
-         Manifest_Res : constant Read_Manifest_Result :=
-           Read_Manifest_File ("/Users/user/Projects/moko/loam-data/movement-authority/CURRENT");
-         Event_Full   : constant String :=
-           "/Users/user/Projects/moko/loam-data/movement-authority/" &
-           Manifest_Res.Manifest (Family_Event).Rel_Path
-             (1 .. Manifest_Res.Manifest (Family_Event).Path_Len);
-         Event_Res    : constant HRA_N.Storage.Event_Reader.Read_Result :=
-           Read_Event_Memory_File (Event_Full);
-         Rep          : Statement_Report;
-         Imbalance    : Long_Long_Integer;
-      begin
-         Assert (Manifest_Res.Success, "Real manifest loaded for statement test");
-         Assert (Event_Res.Success, "Real event memory loaded for statement test");
-         Assert_Equal_Int (588, Long_Long_Integer (Event_Res.Events.Length), "Exact 588 real events loaded");
+      if Real_Data_Available then
+         declare
+            Manifest_Res : constant Read_Manifest_Result :=
+              Read_Manifest_File (Real_Data_Dir & "/movement-authority/CURRENT");
+            Event_Full   : constant String :=
+              Real_Data_Dir & "/movement-authority/" &
+              Manifest_Res.Manifest (Family_Event).Rel_Path
+                (1 .. Manifest_Res.Manifest (Family_Event).Path_Len);
+            Event_Res    : constant HRA_N.Storage.Event_Reader.Read_Result :=
+              Read_Event_Memory_File (Event_Full);
+            Rep          : Statement_Report;
+            Imbalance    : Long_Long_Integer;
+         begin
+            Assert (Manifest_Res.Success, "Real manifest loaded for statement test");
+            Assert (Event_Res.Success, "Real event memory loaded for statement test");
+            Assert_Equal_Int (588, Long_Long_Integer (Event_Res.Events.Length), "Exact 588 real events loaded");
 
-         Generate_Report (Event_Res.Events, Role_Res.Map, Rep);
+            Generate_Report (Event_Res.Events, Role_Res.Map, Rep);
 
-         Assert_Equal_Int (588, Long_Long_Integer (Rep.Total_Events), "Statement report aggregated exact 588 real events");
-         Assert_Equal_Int (3, Long_Long_Integer (Rep.Unresolved_Count), "Exact 3 historical unclassified accounts detected");
+            Assert_Equal_Int (588, Long_Long_Integer (Rep.Total_Events), "Statement report aggregated exact 588 real events");
+            Assert_Equal_Int (3, Long_Long_Integer (Rep.Unresolved_Count), "Exact 3 historical unclassified accounts detected");
 
-         --  Strict Conservation Invariant:
-         --  Assets - ((Liabilities + Equity) + (Income - Expense)) + Unresolved_Quanta = 0
-         Imbalance :=
-           Rep.Summary.Total_Assets -
-           ((Rep.Summary.Total_Liabilities + Rep.Summary.Total_Equity) +
-            (Rep.Summary.Total_Income - Rep.Summary.Total_Expense)) +
-           Rep.Summary.Unresolved_Quanta;
+            --  Strict Conservation Invariant:
+            --  Assets - ((Liabilities + Equity) + (Income - Expense)) + Unresolved_Quanta = 0
+            Imbalance :=
+              Rep.Summary.Total_Assets -
+              ((Rep.Summary.Total_Liabilities + Rep.Summary.Total_Equity) +
+               (Rep.Summary.Total_Income - Rep.Summary.Total_Expense)) +
+              Rep.Summary.Unresolved_Quanta;
 
-         Assert_Equal_Int (0, Imbalance, "Universal conservation law holds exactly to 0 quanta across real authority");
-      end;
+            Assert_Equal_Int (0, Imbalance, "Universal conservation law holds exactly to 0 quanta across real authority");
+         end;
+      end if;
 
    end Run;
 
