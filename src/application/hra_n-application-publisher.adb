@@ -7,10 +7,7 @@ with Ada.Directories;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
-with GNAT.SHA256;
-
 with HRA_N.Storage.Sync;            use HRA_N.Storage.Sync;
-with HRA_N.Storage.Atomic_Writer;   use HRA_N.Storage.Atomic_Writer;
 with HRA_N.Storage.Manifest;        use HRA_N.Storage.Manifest;
 with HRA_N.Storage.Locus_Reader;    use HRA_N.Storage.Locus_Reader;
 with HRA_N.Core.Admission;          use HRA_N.Core.Admission;
@@ -21,6 +18,7 @@ with HRA_N.Core.Relation;                    use HRA_N.Core.Relation;
 with HRA_N.Storage.Relation_Reader;          use HRA_N.Storage.Relation_Reader;
 with HRA_N.Storage.Relation_Writer;          use HRA_N.Storage.Relation_Writer;
 with HRA_N.Application.Relation_Frontier;    use HRA_N.Application.Relation_Frontier;
+with HRA_N.Application.Authority_Transaction;
 
 package body HRA_N.Application.Publisher is
 
@@ -84,31 +82,6 @@ package body HRA_N.Application.Publisher is
          end if;
          return Null_Unbounded_String;
    end Read_Entire_File;
-
-   function Compute_Sha256_Hex (Content : String) return String is
-      Ctx : GNAT.SHA256.Context := GNAT.SHA256.Initial_Context;
-      Hex : constant String :=
-        "0123456789abcdef";
-   begin
-      GNAT.SHA256.Update (Ctx, Content);
-      declare
-         Digest : constant GNAT.SHA256.Binary_Message_Digest :=
-           GNAT.SHA256.Digest (Ctx);
-         Result : String (1 .. 64);
-         Pos    : Positive := 1;
-      begin
-         for I in Digest'Range loop
-            declare
-               B : constant Natural := Natural (Digest (I));
-            begin
-               Result (Pos)     := Hex ((B / 16) + 1);
-               Result (Pos + 1) := Hex ((B mod 16) + 1);
-               Pos := Pos + 2;
-            end;
-         end loop;
-         return Result;
-      end;
-   end Compute_Sha256_Hex;
 
    function Escape_Text (S : String) return String is
       Result : Unbounded_String := Null_Unbounded_String;
@@ -195,110 +168,31 @@ package body HRA_N.Application.Publisher is
       Err_Buf        : in out String;
       Err_Len        : in out Natural) return Boolean
    is
-      --  Compute cryptographic SHA-256 for each new object
-      New_Event_Sha : constant String := Compute_Sha256_Hex (New_Event_Text);
-      New_Val_Sha   : constant String := Compute_Sha256_Hex (New_Val_Text);
-      New_Desc_Sha  : constant String := Compute_Sha256_Hex (New_Desc_Text);
-      New_Unit_Sha  : constant String :=
-        (if New_Unit_Text'Length > 0
-         then Compute_Sha256_Hex (New_Unit_Text)
-         else Man_Res.Manifest (Family_Relation_Unit).Digest);
-      New_Discharge_Sha : constant String :=
-        (if New_Discharge_Text'Length > 0
-         then Compute_Sha256_Hex (New_Discharge_Text)
-         else Man_Res.Manifest (Family_Relation_Discharge).Digest);
-
-      --  Target paths
-      New_Event_Path : constant String :=
-        Authority_Dir & "/objects/Event/" & New_Event_Sha & ".loam";
-      New_Val_Path   : constant String :=
-        Authority_Dir & "/objects/ActualValidity/" & New_Val_Sha & ".loam";
-      New_Desc_Path  : constant String :=
-        Authority_Dir & "/objects/EventDescription/" & New_Desc_Sha & ".loam";
-      New_Unit_Path  : constant String :=
-        Authority_Dir & "/objects/RelationUnit/" & New_Unit_Sha & ".loam";
-      New_Discharge_Path : constant String :=
-        Authority_Dir & "/objects/RelationDischarge/" &
-        New_Discharge_Sha & ".loam";
-
-      --  Old CURRENT sha and recovery path
-      Old_Manifest_Sha  : constant String := Compute_Sha256_Hex (To_String (Curr_Content));
-      Recovery_Man_Path : constant String :=
-        Authority_Dir & "/recovery/manifests/" & Old_Manifest_Sha & ".loam";
-
-      --  New CURRENT text
-      New_Manifest_Text : constant String :=
-        "LOAM-MOVEMENT-MANIFEST" & ASCII.HT & "2" & ASCII.LF &
-        "Event" & ASCII.HT & "objects/Event/" & New_Event_Sha & ".loam" &
-        ASCII.HT & New_Event_Sha & ASCII.LF &
-        "ActualValidity" & ASCII.HT & "objects/ActualValidity/" & New_Val_Sha & ".loam" &
-        ASCII.HT & New_Val_Sha & ASCII.LF &
-        "EventDescription" & ASCII.HT & "objects/EventDescription/" & New_Desc_Sha & ".loam" &
-        ASCII.HT & New_Desc_Sha & ASCII.LF &
-        "RelationUnit" & ASCII.HT & "objects/RelationUnit/" &
-        New_Unit_Sha & ".loam" & ASCII.HT & New_Unit_Sha & ASCII.LF &
-        "RelationDischarge" & ASCII.HT & "objects/RelationDischarge/" &
-        New_Discharge_Sha & ".loam" & ASCII.HT &
-        New_Discharge_Sha & ASCII.LF &
-        "LocusAdmission" & ASCII.HT &
-        Man_Res.Manifest (Family_Locus_Admission).Rel_Path
-          (1 .. Man_Res.Manifest (Family_Locus_Admission).Path_Len) &
-        ASCII.HT &
-        Man_Res.Manifest (Family_Locus_Admission).Digest (1 .. 64) & ASCII.LF;
+      pragma Unreferenced (Manifest_Path);
+      Updates : HRA_N.Application.Authority_Transaction.Update_Set :=
+        [others => (Changed => False, Content => Null_Unbounded_String)];
    begin
-      --  1. Write new content-addressed immutable objects
-      if not Ada.Directories.Exists (New_Event_Path)
-        and then not Write_File_Atomically
-          (New_Event_Path, New_Event_Text, Err_Buf, Err_Len)
-      then
-         return False;
+      Updates (Family_Event) :=
+        (Changed => True, Content => To_Unbounded_String (New_Event_Text));
+      Updates (Family_Actual_Validity) :=
+        (Changed => True, Content => To_Unbounded_String (New_Val_Text));
+      Updates (Family_Event_Description) :=
+        (Changed => True, Content => To_Unbounded_String (New_Desc_Text));
+      if New_Unit_Text'Length > 0 then
+         Updates (Family_Relation_Unit) :=
+           (Changed => True, Content => To_Unbounded_String (New_Unit_Text));
       end if;
-
-      if not Ada.Directories.Exists (New_Val_Path)
-        and then not Write_File_Atomically
-          (New_Val_Path, New_Val_Text, Err_Buf, Err_Len)
-      then
-         return False;
+      if New_Discharge_Text'Length > 0 then
+         Updates (Family_Relation_Discharge) :=
+           (Changed => True, Content => To_Unbounded_String (New_Discharge_Text));
       end if;
-
-      if not Ada.Directories.Exists (New_Desc_Path)
-        and then not Write_File_Atomically
-          (New_Desc_Path, New_Desc_Text, Err_Buf, Err_Len)
-      then
-         return False;
-      end if;
-
-      if New_Unit_Text'Length > 0
-        and then not Ada.Directories.Exists (New_Unit_Path)
-        and then not Write_File_Atomically
-          (New_Unit_Path, New_Unit_Text, Err_Buf, Err_Len)
-      then
-         return False;
-      end if;
-
-      if New_Discharge_Text'Length > 0
-        and then not Ada.Directories.Exists (New_Discharge_Path)
-        and then not Write_File_Atomically
-          (New_Discharge_Path, New_Discharge_Text, Err_Buf, Err_Len)
-      then
-         return False;
-      end if;
-
-      --  2. Retain old CURRENT manifest as immutable recovery candidate
-      if not Ada.Directories.Exists (Recovery_Man_Path) then
-         if not Write_File_Atomically
-           (Recovery_Man_Path, To_String (Curr_Content), Err_Buf, Err_Len)
-         then
-            return False;
-         end if;
-      end if;
-
-      --  3. Atomically replace CURRENT manifest
-      if not Write_File_Atomically (Manifest_Path, New_Manifest_Text, Err_Buf, Err_Len) then
-         return False;
-      end if;
-
-      return True;
+      return HRA_N.Application.Authority_Transaction.Commit
+        (Authority_Dir    => Authority_Dir,
+         Expected         => Man_Res.Manifest,
+         Expected_Current => To_String (Curr_Content),
+         Updates          => Updates,
+         Error_Msg        => Err_Buf,
+         Error_Len        => Err_Len);
    end Commit_Authority_Update;
 
    function Publish_Movement
