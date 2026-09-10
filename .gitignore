@@ -11,3 +11,4 @@ gnatprove/
 *.stderr
 .DS_Store
 config/
+.formal-tools/

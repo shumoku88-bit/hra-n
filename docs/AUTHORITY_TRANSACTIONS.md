@@ -2,7 +2,14 @@
 
 ## Status
 
-Normative design for all HRA-N writers that mutate the content-addressed
+**Historical pre-distillation protocol; not current design authority.** Its
+safety requirements remain design input, but its manifest families and sidecar
+topology no longer describe the canonical-ledger-v2 target. The replacement
+publication model is checked in
+[`../spec/tla/AuthorityPublication.tla`](../spec/tla/AuthorityPublication.tla)
+and [`../spec/spin/authority_publication.pml`](../spec/spin/authority_publication.pml).
+
+Formerly normative design for all HRA-N writers that mutate the content-addressed
 Movement authority or coordinate it with an independent sidecar authority.
 
 This document intentionally precedes the shared transaction implementation.

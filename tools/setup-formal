@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+tool_dir="$root/.formal-tools"
+tla_version="v1.7.4"
+tla_sha256="936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
+tla_jar="$tool_dir/tla2tools.jar"
+
+command -v curl >/dev/null || { echo "setup-formal: curl is required" >&2; exit 1; }
+command -v shasum >/dev/null || { echo "setup-formal: shasum is required" >&2; exit 1; }
+
+mkdir -p "$tool_dir"
+if [[ ! -f "$tla_jar" ]] ||
+   [[ "$(shasum -a 256 "$tla_jar" | awk '{print $1}')" != "$tla_sha256" ]]; then
+  stage="$tla_jar.stage"
+  rm -f "$stage"
+  curl -fL --retry 2 \
+    -o "$stage" \
+    "https://github.com/tlaplus/tlaplus/releases/download/$tla_version/tla2tools.jar"
+  actual="$(shasum -a 256 "$stage" | awk '{print $1}')"
+  if [[ "$actual" != "$tla_sha256" ]]; then
+    rm -f "$stage"
+    echo "setup-formal: tla2tools.jar checksum mismatch" >&2
+    exit 1
+  fi
+  mv "$stage" "$tla_jar"
+fi
+
+if ! command -v alloy >/dev/null; then
+  echo "setup-formal: Alloy CLI missing (Homebrew: brew install alloy-analyzer)" >&2
+fi
+if ! command -v spin >/dev/null; then
+  echo "setup-formal: SPIN missing (Homebrew: brew install spin)" >&2
+fi
+
+echo "Installed pinned TLC $tla_version at $tla_jar"

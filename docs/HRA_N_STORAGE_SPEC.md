@@ -1,8 +1,14 @@
 # HRA-N Storage Specification
 ## 統一3ファイル構成による個人会計・家計ストレージ仕様
 
-Status: **CANONICAL STORAGE SPECIFICATION v1.0**  
-Formal Verification: Machine-proved in [`spec/alloy/hra_n_storage_schema.als`](../spec/alloy/hra_n_storage_schema.als)
+Status: **HISTORICAL v1 DRAFT — NOT CURRENT DESIGN AUTHORITY**
+
+This document is retained as design input for the canonical-ledger-v2 work. Its
+bounded Alloy checks do not establish unbounded proof or Loam equivalence. The
+current claims policy and redesign authority is
+[`FORMAL_METHODS_STRATEGY.md`](FORMAL_METHODS_STRATEGY.md); the replacement
+relational model is
+[`canonical_ledger_v2.als`](../spec/alloy/canonical_ledger_v2.als).
 
 ---
 

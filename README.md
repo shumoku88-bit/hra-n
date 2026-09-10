@@ -1,5 +1,11 @@
 # HRA-N: Verified Household Engine
 
+> **Development status:** the canonical-ledger-v2 redesign is in progress.
+> Existing badges and feature descriptions below include evidence from the
+> pre-distillation implementation and are not current release claims. See
+> [`docs/FORMAL_METHODS_STRATEGY.md`](docs/FORMAL_METHODS_STRATEGY.md) for the
+> assurance and claims policy used by the redesign.
+
 [![SPARK Level 2](https://img.shields.io/badge/SPARK-Level%202%20Silver%2FGold-green.svg)](https://www.adacore.com/about-spark)
 [![SMT Proved](https://img.shields.io/badge/Checks%20Proved-100%25%20(295%2F295)-brightgreen.svg)]()
 [![Tests](https://img.shields.io/badge/Tests-469%20Passed-brightgreen.svg)]()

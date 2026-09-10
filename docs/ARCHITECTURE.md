@@ -1,5 +1,11 @@
 # HRA-N Architecture & Design Philosophy
 
+> **Status: historical pre-distillation architecture.** The object-store and
+> manifest topology below does not describe the current implementation or the
+> canonical-ledger-v2 target. See
+> [`FORMAL_METHODS_STRATEGY.md`](FORMAL_METHODS_STRATEGY.md) for current design
+> authority.
+
 ## 1. Vision & Core Philosophy
 
 **HRA-N** is a verified household reckon-and-review engine that combines:

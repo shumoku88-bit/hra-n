@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+mode="${1:-all}"
+
+die() {
+  printf 'formal: %s\n' "$*" >&2
+  exit 1
+}
+
+run_alloy() {
+  command -v alloy >/dev/null || die "Alloy CLI is required"
+  local out
+  out="$(mktemp -d "${TMPDIR:-/tmp}/hra-alloy.XXXXXX")"
+  trap 'rm -rf "$out"' RETURN
+  (
+    cd "$out"
+    alloy exec -f -s glucose -t none "$root/spec/alloy/canonical_ledger_v2.als"
+  )
+  rm -rf "$out"
+  trap - RETURN
+}
+
+find_java() {
+  if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
+    printf '%s\n' "$JAVA_HOME/bin/java"
+  elif [[ -x /usr/local/opt/openjdk/bin/java ]]; then
+    printf '%s\n' /usr/local/opt/openjdk/bin/java
+  elif command -v java >/dev/null; then
+    command -v java
+  else
+    return 1
+  fi
+}
+
+run_tla() {
+  local jar="${TLA2TOOLS_JAR:-$root/.formal-tools/tla2tools.jar}"
+  [[ -f "$jar" ]] || die "TLC not found; run ./tools/setup-formal"
+  local java
+  java="$(find_java)" || die "Java runtime is required for TLC"
+  (
+    cd "$root/spec/tla"
+    "$java" -XX:+UseParallelGC -cp "$jar" tlc2.TLC \
+      -cleanup -workers auto \
+      -config AuthorityPublication.cfg AuthorityPublication.tla
+  )
+}
+
+run_spin() {
+  command -v spin >/dev/null || die "SPIN is required (Homebrew: brew install spin)"
+  command -v cc >/dev/null || die "a C compiler is required for SPIN pan"
+  local out
+  out="$(mktemp -d "${TMPDIR:-/tmp}/hra-spin.XXXXXX")"
+  trap 'rm -rf "$out"' RETURN
+  cp "$root/spec/spin/authority_publication.pml" "$out/model.pml"
+  (
+    cd "$out"
+    spin -a model.pml
+    cc -O2 -o pan pan.c
+    ./pan -m10000
+  )
+  rm -rf "$out"
+  trap - RETURN
+}
+
+case "$mode" in
+  alloy) run_alloy ;;
+  tla)   run_tla ;;
+  spin)  run_spin ;;
+  all)
+    run_alloy
+    run_tla
+    run_spin
+    ;;
+  *) die "usage: ./tools/formal [all|alloy|tla|spin]" ;;
+esac

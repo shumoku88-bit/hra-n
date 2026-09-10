@@ -1,6 +1,12 @@
 # HRA-N: The Grand Distillation Charter
 ## 個人会計・家計エンジンの統一数理モデルと名作OSSへの設計図
 
+> **Status: historical design thesis.** この文書の「証明」は有限scopeの
+> Alloy反例探索を過大表現しており、現行のassurance claimではない。
+> canonical-ledger-v2のauthorityと形式手法の役割分担は
+> [`../../docs/FORMAL_METHODS_STRATEGY.md`](../../docs/FORMAL_METHODS_STRATEGY.md)
+> を参照すること。
+
 ---
 
 ## 1. 宣言: なぜ今、全体系の蒸留が必要なのか
