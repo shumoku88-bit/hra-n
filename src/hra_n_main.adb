@@ -20,9 +20,12 @@ with HRA_N.Application.Publisher;     use HRA_N.Application.Publisher;
 with HRA_N.Application.Doctor;        use HRA_N.Application.Doctor;
 with HRA_N.Application.Initializer;   use HRA_N.Application.Initializer;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
+with HRA_N.Storage.Accounting_Role_Reader;
+with HRA_N.Application.Statement;     use HRA_N.Application.Statement;
 with HRA_N.UI.Output;                 use HRA_N.UI.Output;
 with HRA_N.UI.Interactive_Movement;
 with HRA_N.UI.Scheduled_Cli;
+with HRA_N.UI.Statement_Cli;
 
 procedure HRA_N_Main is
    Paths       : Path_Config;
@@ -46,6 +49,7 @@ begin
       Scheduled_Path : constant String  := Scheduled_Path_Str (Paths);
       Coverage_Path  : constant String  := Coverage_Path_Str (Paths);
       Reversals_Path : constant String  := Reversals_Path_Str (Paths);
+      Role_Map_Path  : constant String  := Role_Map_Path_Str (Paths);
       Arg_Count      : constant Natural := Ada.Command_Line.Argument_Count;
       Rem_Args       : constant Natural :=
         (if Arg_Count >= Command_Idx then Arg_Count - Command_Idx else 0);
@@ -373,8 +377,25 @@ begin
          end if;
       end;
 
-      --  Dispatch command: "review" or "summary"
-      if Command = "review" then
+      --  Dispatch command: "statement", "report", "review", or "summary"
+      if Command = "statement" or else Command = "report" then
+         declare
+            Role_Res : constant HRA_N.Storage.Accounting_Role_Reader.Read_Result :=
+              HRA_N.Storage.Accounting_Role_Reader.Read_Accounting_Role_File (Role_Map_Path);
+            Rep      : Statement_Report;
+         begin
+            if not Role_Res.Success then
+               Put_Line ("[ERROR] Failed to load accounting roles: " &
+                         Role_Res.Error_Reason (1 .. Role_Res.Error_Len));
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               return;
+            end if;
+
+            Generate_Report (Event_Res.Events, Role_Res.Map, Rep);
+            HRA_N.UI.Statement_Cli.Display_Statement (Rep);
+            return;
+         end;
+      elsif Command = "review" then
          declare
             Query_Text : constant String :=
               (if Rem_Args >= 1 then Ada.Command_Line.Argument (Command_Idx + 1) else "t");

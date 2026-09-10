@@ -29,6 +29,9 @@ package HRA_N.Application.Path_Resolver is
 
       Reversals_Path : String (1 .. Max_Path_Length) := [others => ' '];
       Rev_Len        : Natural                       := 0;
+
+      Role_Map_Path  : String (1 .. Max_Path_Length) := [others => ' '];
+      Role_Len       : Natural                       := 0;
    end record;
 
    function Data_Dir_Str (Config : Path_Config) return String;
@@ -36,6 +39,7 @@ package HRA_N.Application.Path_Resolver is
    function Coverage_Path_Str (Config : Path_Config) return String;
    function Scheduled_Path_Str (Config : Path_Config) return String;
    function Reversals_Path_Str (Config : Path_Config) return String;
+   function Role_Map_Path_Str (Config : Path_Config) return String;
 
    --  Resolve authoritative paths with tiered precedence
    function Resolve_Paths (Explicit_Data_Dir : String := "") return Path_Config;
