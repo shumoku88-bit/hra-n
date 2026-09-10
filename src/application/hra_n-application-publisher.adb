@@ -169,7 +169,8 @@ package body HRA_N.Application.Publisher is
       To_Locus      : String;
       Amount        : Quanta_Type;
       Valid_On      : Date_Type;
-      Description   : String) return Publish_Result
+      Description   : String := "";
+      Explicit_Id   : String := "") return Publish_Result
    is
       Result    : Publish_Result;
       Lock_Path : constant String := Authority_Dir & "/CURRENT.loam-writer-lock";
@@ -269,12 +270,14 @@ package body HRA_N.Application.Publisher is
             return Set_Error (Result, "Failed to read one or more authority object contents");
          end if;
 
-         --  6. Determine next fresh EventId (record-N)
+         --  6. Determine next fresh EventId (Explicit_Id or record-N)
          declare
             Max_Record : constant Natural :=
               Extract_Max_Record_Number (To_String (Event_Content));
             Next_Num   : constant Natural := Max_Record + 1;
-            Next_Id    : constant String  := "record-" & Natural_Image (Next_Num);
+            Next_Id    : constant String  :=
+              (if Explicit_Id'Length > 0 then Explicit_Id
+               else "record-" & Natural_Image (Next_Num));
 
             --  New Event content
             New_Event_Append : constant String :=

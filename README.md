@@ -113,7 +113,20 @@ hra-n review u
 hra-n summary
 ```
 
-### 5. Verify Repository Integrity
+### 5. Inspect & Complete Scheduled Obligations
+
+```bash
+# List all pending scheduled obligations sorted by due date
+hra-n scheduled
+
+# Interactively select, review, and complete an obligation
+hra-n scheduled complete
+
+# Scripted one-action atomic completion
+hra-n scheduled complete scheduled-3 2026-09-15 "OpenAI ChatGPT Plus"
+```
+
+### 6. Verify Repository Integrity
 
 ```bash
 # Run comprehensive cryptographic and mathematical invariant audit
@@ -131,8 +144,8 @@ HRA-N enforces a strict one-command qualification gate. Run:
 ```
 
 The qualification pipeline executes three mandatory phases:
-1. **SPARK Formal Proof**: 168 checks proved by Why3, Alt-Ergo, CVC5, and Z3 with zero warnings and zero unproved obligations.
-2. **Unit Test Suite**: 177 unit and integration tests covering arithmetic overflow prevention, manifest parsing, POSIX lock contention, and publisher durability.
+1. **SPARK Formal Proof**: 179 checks proved by Why3, Alt-Ergo, CVC5, and Z3 with zero warnings and zero unproved obligations.
+2. **Unit Test Suite**: 212 unit and integration tests covering arithmetic overflow prevention, manifest parsing, scheduled lifecycle, POSIX lock contention, and publisher durability.
 3. **Production Build**: Compiles optimized production binary with full style checks.
 
 ---

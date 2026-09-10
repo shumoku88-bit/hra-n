@@ -22,6 +22,7 @@ with HRA_N.Application.Doctor;        use HRA_N.Application.Doctor;
 with HRA_N.Application.Initializer;   use HRA_N.Application.Initializer;
 with HRA_N.UI.Output;                 use HRA_N.UI.Output;
 with HRA_N.UI.Interactive_Movement;
+with HRA_N.UI.Scheduled_Cli;
 
 procedure HRA_N_Main is
    Data_Dir : constant String := "/Users/user/Projects/moko/loam-data";
@@ -40,6 +41,21 @@ procedure HRA_N_Main is
    end Resolve_Auth_Dir;
 
    Auth_Dir : constant String := Resolve_Auth_Dir;
+
+   function Resolve_Scheduled_Path return String is
+      Env_Val : constant String :=
+        (if Ada.Environment_Variables.Exists ("LOAM_SCHEDULED_PATH")
+         then Ada.Environment_Variables.Value ("LOAM_SCHEDULED_PATH")
+         else "");
+   begin
+      if Env_Val'Length > 0 then
+         return Env_Val;
+      else
+         return Data_Dir & "/scheduled.loam";
+      end if;
+   end Resolve_Scheduled_Path;
+
+   Scheduled_Path : constant String := Resolve_Scheduled_Path;
 
    Manifest_Res    : Read_Manifest_Result;
    Event_Res       : Read_Result;
@@ -181,6 +197,33 @@ begin
          end;
       end;
       return;
+   end if;
+
+   --  Branch: Scheduled movement inspection and atomic completion
+   if Command = "scheduled" or else Command = "open-scheduled" then
+      if Arg_Count >= 2 and then Ada.Command_Line.Argument (2) = "complete" then
+         declare
+            Target_Arg : constant String :=
+              (if Arg_Count >= 3 then Ada.Command_Line.Argument (3) else "");
+            Date_Arg   : constant String :=
+              (if Arg_Count >= 4 then Ada.Command_Line.Argument (4) else "");
+            Desc_Arg   : constant String :=
+              (if Arg_Count >= 5 then Ada.Command_Line.Argument (5) else "");
+         begin
+            HRA_N.UI.Scheduled_Cli.Complete_Scheduled
+              (Scheduled_Path  => Scheduled_Path,
+               Authority_Dir   => Auth_Dir,
+               Target_Str      => Target_Arg,
+               Date_Str        => Date_Arg,
+               Description_Str => Desc_Arg);
+            return;
+         end;
+      else
+         HRA_N.UI.Scheduled_Cli.Display_Open_Scheduled
+           (Scheduled_Path => Scheduled_Path,
+            Authority_Dir  => Auth_Dir);
+         return;
+      end if;
    end if;
 
    --  1. Load and Verify Manifest Authority (CURRENT)

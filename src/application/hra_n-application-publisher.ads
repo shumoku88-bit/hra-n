@@ -27,6 +27,7 @@ package HRA_N.Application.Publisher is
       To_Locus      : String;
       Amount        : Quanta_Type;
       Valid_On      : Date_Type;
-      Description   : String) return Publish_Result;
+      Description   : String := "";
+      Explicit_Id   : String := "") return Publish_Result;
 
 end HRA_N.Application.Publisher;
