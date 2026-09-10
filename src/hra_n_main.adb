@@ -19,6 +19,7 @@ with HRA_N.Storage.Description_Reader; use HRA_N.Storage.Description_Reader;
 with HRA_N.Application.Review;        use HRA_N.Application.Review;
 with HRA_N.Application.Publisher;     use HRA_N.Application.Publisher;
 with HRA_N.Application.Doctor;        use HRA_N.Application.Doctor;
+with HRA_N.Application.Initializer;   use HRA_N.Application.Initializer;
 with HRA_N.UI.Output;                 use HRA_N.UI.Output;
 with HRA_N.UI.Interactive_Movement;
 
@@ -52,6 +53,32 @@ procedure HRA_N_Main is
    Command   : constant String  :=
      (if Arg_Count >= 1 then Ada.Command_Line.Argument (1) else "summary");
 begin
+   --  Branch: Initializer for a new household authority
+   if Command = "init" then
+      declare
+         Target : constant String :=
+           (if Arg_Count >= 2 then Ada.Command_Line.Argument (2) else "./hra-data");
+         Init_Res : constant Init_Result :=
+           Initialize_Household (Target);
+      begin
+         if Init_Res.Success then
+            Put_Line ("============================================================");
+            Put_Line (" [OK] Initialized new household authority at: " & Target);
+            Put_Line ("      Created 6 cryptographic authority objects in CURRENT");
+            Put_Line ("      Configured initial LocusAdmission vocabulary (7 loci)");
+            Put_Line ("      Configured zero-origin coverage (cash, bank)");
+            Put_Line ("      Self-verifying Doctor audit: 100% HEALTHY");
+            Put_Line ("============================================================");
+            Put_Line ("Run 'hra-n movement' to record your first transaction!");
+         else
+            Put_Line ("[ERROR] Initialization failed: " &
+                      Init_Res.Error_Reason (1 .. Init_Res.Error_Len));
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         end if;
+         return;
+      end;
+   end if;
+
    --  Branch: Doctor & Integrity Verification
    if Command = "doctor" or else Command = "verify" then
       declare
