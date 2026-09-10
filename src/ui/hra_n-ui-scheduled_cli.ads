@@ -22,4 +22,20 @@ package HRA_N.UI.Scheduled_Cli is
       Date_Str        : String := "";
       Description_Str : String := "");
 
+   --  Add a new scheduled obligation (interactive or direct arguments).
+   procedure Add_Scheduled
+     (Scheduled_Path : String;
+      Authority_Dir  : String;
+      From_Locus     : String := "";
+      To_Locus       : String := "";
+      Amount_Str     : String := "";
+      Date_Str       : String := "";
+      Measure_Str    : String := "jpy");
+
+   --  Retire (cancel) an open scheduled obligation (interactive or direct argument).
+   procedure Retire_Scheduled
+     (Scheduled_Path : String;
+      Authority_Dir  : String;
+      Target_Str     : String := "");
+
 end HRA_N.UI.Scheduled_Cli;

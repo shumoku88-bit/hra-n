@@ -181,7 +181,7 @@ begin
          return;
       end if;
 
-      --  Branch: Scheduled movement inspection and atomic completion
+      --  Branch: Scheduled movement inspection, creation, completion, and retirement
       if Command = "scheduled" or else Command = "open-scheduled" then
          if Rem_Args >= 1 and then Ada.Command_Line.Argument (Command_Idx + 1) = "complete" then
             declare
@@ -198,6 +198,37 @@ begin
                   Target_Str      => Target_Arg,
                   Date_Str        => Date_Arg,
                   Description_Str => Desc_Arg);
+               return;
+            end;
+         elsif Rem_Args >= 1 and then Ada.Command_Line.Argument (Command_Idx + 1) = "add" then
+            declare
+               From_Arg   : constant String :=
+                 (if Rem_Args >= 2 then Ada.Command_Line.Argument (Command_Idx + 2) else "");
+               To_Arg     : constant String :=
+                 (if Rem_Args >= 3 then Ada.Command_Line.Argument (Command_Idx + 3) else "");
+               Amount_Arg : constant String :=
+                 (if Rem_Args >= 4 then Ada.Command_Line.Argument (Command_Idx + 4) else "");
+               Date_Arg   : constant String :=
+                 (if Rem_Args >= 5 then Ada.Command_Line.Argument (Command_Idx + 5) else "");
+            begin
+               HRA_N.UI.Scheduled_Cli.Add_Scheduled
+                 (Scheduled_Path => Scheduled_Path,
+                  Authority_Dir  => Auth_Dir,
+                  From_Locus     => From_Arg,
+                  To_Locus       => To_Arg,
+                  Amount_Str     => Amount_Arg,
+                  Date_Str       => Date_Arg);
+               return;
+            end;
+         elsif Rem_Args >= 1 and then Ada.Command_Line.Argument (Command_Idx + 1) = "retire" then
+            declare
+               Target_Arg : constant String :=
+                 (if Rem_Args >= 2 then Ada.Command_Line.Argument (Command_Idx + 2) else "");
+            begin
+               HRA_N.UI.Scheduled_Cli.Retire_Scheduled
+                 (Scheduled_Path => Scheduled_Path,
+                  Authority_Dir  => Auth_Dir,
+                  Target_Str     => Target_Arg);
                return;
             end;
          else

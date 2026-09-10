@@ -200,6 +200,88 @@ package body Test_Scheduled is
          Assert_Equal_Int (589, Long_Long_Integer (Doc_Report.Total_Descriptions), "Total descriptions incremented to 589");
       end;
 
+      --  10. Add new scheduled obligation: Fail-closed on unadmitted locus
+      declare
+         Bad_Res : constant Scheduled_Mutation_Result :=
+           Add_Scheduled_Obligation
+             (Scheduled_Path => Sandbox_Sched,
+              Authority_Dir  => Sandbox_Auth,
+              From_Locus     => "smbc",
+              To_Locus       => "crypto_unadmitted",
+              Amount         => 1000,
+              Valid_On       => (Year => 2026, Month => 10, Day => 20));
+      begin
+         Assert (not Bad_Res.Success, "Unadmitted locus rejected in scheduled add");
+      end;
+
+      --  11. Add new scheduled obligation: Success with auto-allocated sequential ID
+      declare
+         Add_Res : constant Scheduled_Mutation_Result :=
+           Add_Scheduled_Obligation
+             (Scheduled_Path => Sandbox_Sched,
+              Authority_Dir  => Sandbox_Auth,
+              From_Locus     => "smbc",
+              To_Locus       => "wifi",
+              Amount         => 5000,
+              Valid_On       => (Year => 2026, Month => 10, Day => 20));
+      begin
+         Assert (Add_Res.Success, "Adding scheduled obligation succeeds");
+         Assert (Add_Res.Target_Str (1 .. Add_Res.Target_Len) = "scheduled-14",
+                 "Allocated next sequential ID scheduled-14");
+
+         --  Verify reloaded lifecycle has 14 scheduled items and scheduled-14 is open
+         declare
+            Res3 : constant Read_Scheduled_Result := Read_Scheduled_File (Sandbox_Sched);
+            S14  : constant Scheduled_Id := (Token => Make_Token ("scheduled-14"));
+         begin
+            Assert (Res3.Success, "Reloading scheduled file after add succeeds");
+            Assert_Equal_Int (14, Long_Long_Integer (Res3.Lifecycle.Sched_Count), "Scheduled count incremented to 14");
+            Assert (Is_Current_Open (Res3.Lifecycle, S14), "scheduled-14 is current-open");
+         end;
+      end;
+
+      --  12. Retire scheduled obligation: Fail-closed on non-open item
+      declare
+         S1         : constant Scheduled_Id := (Token => Make_Token ("scheduled-1"));
+         Bad_Retire : constant Scheduled_Mutation_Result :=
+           Retire_Scheduled_Obligation
+             (Scheduled_Path => Sandbox_Sched,
+              Target_Id      => S1);
+      begin
+         Assert (not Bad_Retire.Success, "Retiring already-completed obligation rejected");
+      end;
+
+      --  13. Retire scheduled obligation: Success
+      declare
+         S14     : constant Scheduled_Id := (Token => Make_Token ("scheduled-14"));
+         Ret_Res : constant Scheduled_Mutation_Result :=
+           Retire_Scheduled_Obligation
+             (Scheduled_Path => Sandbox_Sched,
+              Target_Id      => S14);
+      begin
+         Assert (Ret_Res.Success, "Retiring open obligation succeeds");
+
+         --  Verify reloaded lifecycle has 1 retirement record and scheduled-14 is no longer open
+         declare
+            Res4 : constant Read_Scheduled_Result := Read_Scheduled_File (Sandbox_Sched);
+         begin
+            Assert (Res4.Success, "Reloading scheduled file after retire succeeds");
+            Assert_Equal_Int (1, Long_Long_Integer (Res4.Lifecycle.Ret_Count), "Retirement count incremented to 1");
+            Assert (Is_Retired (Res4.Lifecycle, S14), "scheduled-14 is retired");
+            Assert (not Is_Current_Open (Res4.Lifecycle, S14), "scheduled-14 is no longer open");
+         end;
+
+         --  Double retirement rejected
+         declare
+            Dup_Ret : constant Scheduled_Mutation_Result :=
+              Retire_Scheduled_Obligation
+                (Scheduled_Path => Sandbox_Sched,
+                 Target_Id      => S14);
+         begin
+            Assert (not Dup_Ret.Success, "Duplicate retirement safely rejected (fail-closed)");
+         end;
+      end;
+
    end Run;
 
 end Test_Scheduled;
