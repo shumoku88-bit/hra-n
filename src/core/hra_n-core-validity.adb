@@ -35,6 +35,18 @@ is
       return Result;
    end Format_Iso_Date;
 
+   function Previous_Days_7 (Ending : Date_Type) return Week_Days_Array is
+      D7 : constant Date_Type := Ending;
+      D6 : constant Date_Type := Prev_Day (D7);
+      D5 : constant Date_Type := Prev_Day (D6);
+      D4 : constant Date_Type := Prev_Day (D5);
+      D3 : constant Date_Type := Prev_Day (D4);
+      D2 : constant Date_Type := Prev_Day (D3);
+      D1 : constant Date_Type := Prev_Day (D2);
+   begin
+      return [D1, D2, D3, D4, D5, D6, D7];
+   end Previous_Days_7;
+
    function Make_Validity_Memory
      (Entries : Validity_Entry_List) return Validity_Memory
    is

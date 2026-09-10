@@ -64,6 +64,64 @@ is
       and then Left.Month = Right.Month
       and then Left.Day = Right.Day);
 
+   function Date_Less (Left, Right : Date_Type) return Boolean is
+     (Left.Year < Right.Year
+      or else (Left.Year = Right.Year and then Left.Month < Right.Month)
+      or else (Left.Year = Right.Year
+               and then Left.Month = Right.Month
+               and then Left.Day < Right.Day));
+
+   function Date_Greater (Left, Right : Date_Type) return Boolean is
+     (Right.Year < Left.Year
+      or else (Right.Year = Left.Year and then Right.Month < Left.Month)
+      or else (Right.Year = Left.Year
+               and then Right.Month = Left.Month
+               and then Right.Day < Left.Day));
+
+   function Date_Less_Or_Equal (Left, Right : Date_Type) return Boolean is
+     (Date_Less (Left, Right) or else Equal_Date (Left, Right));
+
+   function Date_Greater_Or_Equal (Left, Right : Date_Type) return Boolean is
+     (Date_Greater (Left, Right) or else Equal_Date (Left, Right));
+
+   --  Calendar date successor (next calendar day).
+   function Next_Day (D : Date_Type) return Date_Type is
+     (if D.Day < Days_In_Month (D.Year, D.Month) then
+        (Year => D.Year, Month => D.Month, Day => D.Day + 1)
+      elsif D.Month < 12 then
+        (Year => D.Year, Month => D.Month + 1, Day => 1)
+      else
+        (Year => D.Year + 1, Month => 1, Day => 1))
+   with
+     Pre  => Is_Valid_Date (D.Year, D.Month, D.Day)
+             and then (D.Year < Year_Type'Last or else D.Month < 12 or else D.Day < 31),
+     Post => Is_Valid_Date (Next_Day'Result.Year, Next_Day'Result.Month, Next_Day'Result.Day);
+
+   --  Calendar date predecessor (previous calendar day).
+   function Prev_Day (D : Date_Type) return Date_Type is
+     (if D.Day > 1 then
+        (Year => D.Year, Month => D.Month, Day => D.Day - 1)
+      elsif D.Month > 1 then
+        (Year => D.Year, Month => D.Month - 1, Day => Days_In_Month (D.Year, D.Month - 1))
+      else
+        (Year => D.Year - 1, Month => 12, Day => 31))
+   with
+     Pre  => Is_Valid_Date (D.Year, D.Month, D.Day)
+             and then (D.Year > Year_Type'First or else D.Month > 1 or else D.Day > 1),
+     Post => Is_Valid_Date (Prev_Day'Result.Year, Prev_Day'Result.Month, Prev_Day'Result.Day);
+
+   --  7 consecutive calendar days ending at the specified date (D-6 .. D).
+   type Week_Days_Array is array (1 .. 7) of Date_Type;
+
+   function Previous_Days_7 (Ending : Date_Type) return Week_Days_Array
+   with
+     Pre  => Is_Valid_Date (Ending.Year, Ending.Month, Ending.Day)
+             and then Ending.Year > Year_Type'First,
+     Post => (for all I in 1 .. 7 =>
+                Is_Valid_Date (Previous_Days_7'Result (I).Year,
+                               Previous_Days_7'Result (I).Month,
+                               Previous_Days_7'Result (I).Day));
+
    subtype Iso_Date_String is String (1 .. 10);
 
    --  Format Date_Type as ISO YYYY-MM-DD string.
