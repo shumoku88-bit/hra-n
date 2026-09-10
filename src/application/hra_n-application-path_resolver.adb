@@ -148,7 +148,7 @@ package body HRA_N.Application.Path_Resolver is
          end;
       else
          declare
-            Def : constant String := "summary";
+            Def : constant String := "home";
          begin
             Cmd_Len := Def'Length;
             Command_Str (Command_Str'First .. Command_Str'First + Cmd_Len - 1) := Def;

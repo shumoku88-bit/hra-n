@@ -65,6 +65,17 @@ The Ada implementation is being migrated to the new model. Existing checks are:
 ./tools/build
 ```
 
+The current read-only Home projection is available through the default entrance
+or explicitly:
+
+```sh
+hra-n -d /path/to/household
+hra-n -d /path/to/household home
+```
+
+It already uses the shared frontend query boundary, but remains a one-shot
+renderer until the keyboard TUI shell is connected.
+
 The combined repository gate is:
 
 ```sh

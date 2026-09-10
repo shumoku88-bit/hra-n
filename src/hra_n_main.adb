@@ -16,6 +16,7 @@ with HRA_N.Application.Statement;     use HRA_N.Application.Statement;
 with HRA_N.Application.Budget_Window; use HRA_N.Application.Budget_Window;
 with HRA_N.Application.Review;        use HRA_N.Application.Review;
 with HRA_N.UI.Output;                 use HRA_N.UI.Output;
+with HRA_N.UI.Home_CLI;
 with HRA_N.UI.Status_CLI;
 with HRA_N.UI.Statement_Cli;
 with HRA_N.UI.Budget_CLI;
@@ -301,6 +302,16 @@ begin
         or else Command = "complete" or else Command = "retire"
       then
          HRA_N.UI.Scheduled_Cli.Dispatch (Paths, Command, Command_Idx, Rem_Args);
+         return;
+      end if;
+
+      --  Shared read-only Home projection. This is the production seam for the
+      --  upcoming keyboard TUI and external frontend adapters.
+      if Command = "home" then
+         HRA_N.UI.Home_CLI.Display_Home (Paths, Success);
+         if not Success then
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         end if;
          return;
       end if;
 

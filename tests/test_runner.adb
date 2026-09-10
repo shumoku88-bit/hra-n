@@ -15,6 +15,7 @@ with Test_Initializer;
 with Test_Path_Resolver;
 with Test_Atomic_Writer;
 with Test_HRA_Storage;
+with Test_Home_Query;
 
 procedure Test_Runner is
 begin
@@ -48,6 +49,9 @@ begin
 
    Put_Line ("--> Running Test_HRA_Storage...");
    Test_HRA_Storage.Run;
+
+   Put_Line ("--> Running Test_Home_Query...");
+   Test_Home_Query.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");
