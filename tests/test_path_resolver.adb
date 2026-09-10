@@ -20,12 +20,15 @@ package body Test_Path_Resolver is
               "Coverage path derived from custom data dir");
       Assert (Scheduled_Path_Str (Paths1) = "/custom/household/path/scheduled.loam",
               "Scheduled path derived from custom data dir");
+      Assert (Correction_Path_Str (Paths1) = "/custom/household/path/actual-corrections.loam",
+              "Correction path derived from custom data dir");
 
       --  2. Fallback resolution non-empty
       Assert (Data_Dir_Str (Paths2)'Length > 0, "Fallback data directory is non-empty");
       Assert (Authority_Dir_Str (Paths2)'Length > 0, "Fallback authority directory is non-empty");
       Assert (Coverage_Path_Str (Paths2)'Length > 0, "Fallback coverage path is non-empty");
       Assert (Scheduled_Path_Str (Paths2)'Length > 0, "Fallback scheduled path is non-empty");
+      Assert (Correction_Path_Str (Paths2)'Length > 0, "Fallback correction path is non-empty");
    end Run;
 
 end Test_Path_Resolver;

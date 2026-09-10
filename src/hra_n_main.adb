@@ -30,6 +30,7 @@ with HRA_N.Storage.Capacity_Reader;
 with HRA_N.Storage.Actual_Routing_Reader;
 with HRA_N.Storage.Boundary_Presets_Reader;
 with HRA_N.Application.Budget_Window;     use HRA_N.Application.Budget_Window;
+with HRA_N.Application.Correction_Publisher; use HRA_N.Application.Correction_Publisher;
 with HRA_N.UI.Budget_CLI;
 with HRA_N.UI.Relation_CLI;
 with HRA_N.UI.Status_CLI;
@@ -174,6 +175,79 @@ begin
          return;
       end if;
 
+      --  Branch: Movement correction (correct)
+      if (Command = "movement" and then Rem_Args >= 1 and then Ada.Command_Line.Argument (Command_Idx + 1) = "correct")
+        or else Command = "correct"
+      then
+         declare
+            Arg_Offset : constant Positive :=
+              (if Command = "correct" then Command_Idx else Command_Idx + 1);
+            Eff_Rem    : constant Natural :=
+              (if Command = "correct" then Rem_Args else Rem_Args - 1);
+         begin
+            if Eff_Rem < 4 then
+               Put_Line ("Usage: hra-n correct <TARGET_EVENT_ID> <FROM> <TO> <AMOUNT> [DESCRIPTION]");
+               Put_Line ("   or: hra-n movement correct <TARGET_EVENT_ID> <FROM> <TO> <AMOUNT> [DESCRIPTION]");
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               return;
+            end if;
+
+            declare
+               Target_Id  : constant String := Ada.Command_Line.Argument (Arg_Offset + 1);
+               From_Locus : constant String := Ada.Command_Line.Argument (Arg_Offset + 2);
+               To_Locus   : constant String := Ada.Command_Line.Argument (Arg_Offset + 3);
+               Amount_Str : constant String := Ada.Command_Line.Argument (Arg_Offset + 4);
+               Desc_Val   : constant String :=
+                 (if Eff_Rem >= 5 then Ada.Command_Line.Argument (Arg_Offset + 5) else "");
+               Amount_Val : Quanta_Type;
+            begin
+               begin
+                  Amount_Val := Quanta_Type'Value (Amount_Str);
+               exception
+                  when others =>
+                     Put_Line ("hra-n: correction amount must be a positive integer");
+                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                     return;
+               end;
+
+               declare
+                  Draft : constant Correction_Draft :=
+                    Make_Two_Party_Draft
+                      (Target      => Target_Id,
+                       From_Locus  => From_Locus,
+                       To_Locus    => To_Locus,
+                       Amount      => Amount_Val,
+                       Description => Desc_Val);
+                  Receipt : constant Correction_Receipt :=
+                    Publish_Correction
+                      (Authority_Dir   => Auth_Dir,
+                       Correction_Path => Correction_Path_Str (Paths),
+                       Reversals_Path  => Reversals_Path,
+                       Draft           => Draft);
+               begin
+                  if Receipt.Success then
+                     Put_Line ("============================================================");
+                     Put_Line (" [OK] Admitted and published Movement Correction receipt:");
+                     Put_Line ("      TARGET:       " & Receipt.Target.Token.Value (1 .. Receipt.Target.Token.Length));
+                     Put_Line ("      REPLACEMENT:  " & Receipt.Replacement.Token.Value (1 .. Receipt.Replacement.Token.Length));
+                     Put_Line ("      CORRECTION:   " & Receipt.Correction.Token.Value (1 .. Receipt.Correction.Token.Length));
+                     Put_Line ("      FROM:         " & From_Locus & " (-" & Amount_Str & " jpy)");
+                     Put_Line ("      TO:           " & To_Locus & " (+" & Amount_Str & " jpy)");
+                     Put_Line ("      DATE CARRIED: " & Boolean'Image (Receipt.Carried_Date));
+                     Put_Line ("      DESC ADDED:   " & Boolean'Image (Receipt.Published_Description));
+                     Put_Line ("      RESUMED:      " & Boolean'Image (Receipt.Resumed));
+                     Put_Line ("============================================================");
+                  else
+                     Put_Line ("[ERROR] Correction rejected: " &
+                               Receipt.Error_Reason (1 .. Receipt.Error_Len));
+                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  end if;
+               end;
+            end;
+         end;
+         return;
+      end if;
+
       --  Branch: Movement publication has its own exclusive lock and authority lifecycle
       if Command = "movement" then
          if Rem_Args = 0 then
@@ -194,6 +268,7 @@ begin
             Put_Line ("Usage: hra-n movement (interactive mode)");
             Put_Line ("   or: hra-n movement <FROM> <TO> <AMOUNT> [YYYY-MM-DD] [DESCRIPTION]");
             Put_Line ("   or: hra-n movement revert <EVENT_ID> [YYYY-MM-DD] [REASON]");
+            Put_Line ("   or: hra-n movement correct <TARGET_ID> <FROM> <TO> <AMOUNT> [DESCRIPTION]");
             Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
             return;
          end if;

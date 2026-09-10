@@ -30,6 +30,9 @@ package HRA_N.Application.Path_Resolver is
       Reversals_Path : String (1 .. Max_Path_Length) := [others => ' '];
       Rev_Len        : Natural                       := 0;
 
+      Correction_Path : String (1 .. Max_Path_Length) := [others => ' '];
+      Corr_Len        : Natural                       := 0;
+
       Role_Map_Path  : String (1 .. Max_Path_Length) := [others => ' '];
       Role_Len       : Natural                       := 0;
 
@@ -57,6 +60,7 @@ package HRA_N.Application.Path_Resolver is
    function Coverage_Path_Str (Config : Path_Config) return String;
    function Scheduled_Path_Str (Config : Path_Config) return String;
    function Reversals_Path_Str (Config : Path_Config) return String;
+   function Correction_Path_Str (Config : Path_Config) return String;
    function Role_Map_Path_Str (Config : Path_Config) return String;
    function Capacity_Path_Str (Config : Path_Config) return String;
    function Capacity_Effective_Path_Str (Config : Path_Config) return String;

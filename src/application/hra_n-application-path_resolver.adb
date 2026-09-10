@@ -37,6 +37,11 @@ package body HRA_N.Application.Path_Resolver is
       return Config.Reversals_Path (1 .. Config.Rev_Len);
    end Reversals_Path_Str;
 
+   function Correction_Path_Str (Config : Path_Config) return String is
+   begin
+      return Config.Correction_Path (1 .. Config.Corr_Len);
+   end Correction_Path_Str;
+
    function Role_Map_Path_Str (Config : Path_Config) return String is
    begin
       return Config.Role_Map_Path (1 .. Config.Role_Len);
@@ -82,6 +87,7 @@ package body HRA_N.Application.Path_Resolver is
       Cov_Path  : String;
       Sch_Path  : String;
       Rev_Path  : String;
+      Corr_Path : String;
       Role_Path : String;
       Cap_Path  : String;
       Cap_Eff   : String;
@@ -110,6 +116,10 @@ package body HRA_N.Application.Path_Resolver is
       Config.Rev_Len := Natural'Min (Rev_Path'Length, Config.Reversals_Path'Length);
       Config.Reversals_Path (1 .. Config.Rev_Len) :=
         Rev_Path (Rev_Path'First .. Rev_Path'First + Config.Rev_Len - 1);
+
+      Config.Corr_Len := Natural'Min (Corr_Path'Length, Config.Correction_Path'Length);
+      Config.Correction_Path (1 .. Config.Corr_Len) :=
+        Corr_Path (Corr_Path'First .. Corr_Path'First + Config.Corr_Len - 1);
 
       Config.Role_Len := Natural'Min (Role_Path'Length, Config.Role_Map_Path'Length);
       Config.Role_Map_Path (1 .. Config.Role_Len) :=
@@ -157,6 +167,7 @@ package body HRA_N.Application.Path_Resolver is
             C : constant String := D & "/zero-origin-coverage.loam";
             S : constant String := D & "/scheduled.loam";
             R : constant String := D & "/actual-reversals.loam";
+            Corr : constant String := D & "/actual-corrections.loam";
             M : constant String := D & "/accounting-role.loam";
             Cap : constant String := D & "/capacity.loam";
             Eff : constant String := D & "/capacity.loam.effective";
@@ -165,7 +176,7 @@ package body HRA_N.Application.Path_Resolver is
             LCat : constant String := D & "/config/locus-catalog.tsv";
             PCat : constant String := D & "/config/purpose-catalog.tsv";
          begin
-            Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres, LCat, PCat);
+            Set_Paths (Config, D, A, C, S, R, Corr, M, Cap, Eff, Rout, Pres, LCat, PCat);
             return Config;
          end;
       end if;
@@ -181,6 +192,12 @@ package body HRA_N.Application.Path_Resolver is
             C : constant String := D & "/zero-origin-coverage.loam";
             S : constant String := D & "/scheduled.loam";
             R : constant String := D & "/actual-reversals.loam";
+            Corr : constant String :=
+              (if Ada.Environment_Variables.Exists ("LOAM_CORRECTION_PATH")
+               then Ada.Environment_Variables.Value ("LOAM_CORRECTION_PATH")
+               elsif Ada.Environment_Variables.Exists ("HRA_CORRECTION_PATH")
+               then Ada.Environment_Variables.Value ("HRA_CORRECTION_PATH")
+               else D & "/actual-corrections.loam");
             M : constant String := D & "/accounting-role.loam";
             Cap : constant String := D & "/capacity.loam";
             Eff : constant String := D & "/capacity.loam.effective";
@@ -189,7 +206,7 @@ package body HRA_N.Application.Path_Resolver is
             LCat : constant String := D & "/config/locus-catalog.tsv";
             PCat : constant String := D & "/config/purpose-catalog.tsv";
          begin
-            Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres, LCat, PCat);
+            Set_Paths (Config, D, A, C, S, R, Corr, M, Cap, Eff, Rout, Pres, LCat, PCat);
             return Config;
          end;
       elsif Ada.Environment_Variables.Exists ("LOAM_DATA_DIR") then
@@ -202,6 +219,12 @@ package body HRA_N.Application.Path_Resolver is
             C : constant String := D & "/zero-origin-coverage.loam";
             S : constant String := D & "/scheduled.loam";
             R : constant String := D & "/actual-reversals.loam";
+            Corr : constant String :=
+              (if Ada.Environment_Variables.Exists ("LOAM_CORRECTION_PATH")
+               then Ada.Environment_Variables.Value ("LOAM_CORRECTION_PATH")
+               elsif Ada.Environment_Variables.Exists ("HRA_CORRECTION_PATH")
+               then Ada.Environment_Variables.Value ("HRA_CORRECTION_PATH")
+               else D & "/actual-corrections.loam");
             M : constant String := D & "/accounting-role.loam";
             Cap : constant String := D & "/capacity.loam";
             Eff : constant String := D & "/capacity.loam.effective";
@@ -210,7 +233,7 @@ package body HRA_N.Application.Path_Resolver is
             LCat : constant String := D & "/config/locus-catalog.tsv";
             PCat : constant String := D & "/config/purpose-catalog.tsv";
          begin
-            Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres, LCat, PCat);
+            Set_Paths (Config, D, A, C, S, R, Corr, M, Cap, Eff, Rout, Pres, LCat, PCat);
             return Config;
          end;
       end if;
@@ -224,6 +247,7 @@ package body HRA_N.Application.Path_Resolver is
             Cov_Path  => "./zero-origin-coverage.loam",
             Sch_Path  => "./scheduled.loam",
             Rev_Path  => "./actual-reversals.loam",
+            Corr_Path => "./actual-corrections.loam",
             Role_Path => "./accounting-role.loam",
             Cap_Path  => "./capacity.loam",
             Cap_Eff   => "./capacity.loam.effective",
@@ -240,6 +264,7 @@ package body HRA_N.Application.Path_Resolver is
             Cov_Path  => "./zero-origin-coverage.loam",
             Sch_Path  => "./scheduled.loam",
             Rev_Path  => "./actual-reversals.loam",
+            Corr_Path => "./actual-corrections.loam",
             Role_Path => "./accounting-role.loam",
             Cap_Path  => "./capacity.loam",
             Cap_Eff   => "./capacity.loam.effective",
@@ -256,6 +281,7 @@ package body HRA_N.Application.Path_Resolver is
             Cov_Path  => "./hra-data/zero-origin-coverage.loam",
             Sch_Path  => "./hra-data/scheduled.loam",
             Rev_Path  => "./hra-data/actual-reversals.loam",
+            Corr_Path => "./hra-data/actual-corrections.loam",
             Role_Path => "./hra-data/accounting-role.loam",
             Cap_Path  => "./hra-data/capacity.loam",
             Cap_Eff   => "./hra-data/capacity.loam.effective",
@@ -279,6 +305,12 @@ package body HRA_N.Application.Path_Resolver is
             then Ada.Environment_Variables.Value ("LOAM_SCHEDULED_PATH")
             else D & "/scheduled.loam");
          R : constant String := D & "/actual-reversals.loam";
+         Corr : constant String :=
+           (if Ada.Environment_Variables.Exists ("LOAM_CORRECTION_PATH")
+            then Ada.Environment_Variables.Value ("LOAM_CORRECTION_PATH")
+            elsif Ada.Environment_Variables.Exists ("HRA_CORRECTION_PATH")
+            then Ada.Environment_Variables.Value ("HRA_CORRECTION_PATH")
+            else D & "/actual-corrections.loam");
          M : constant String :=
            (if Ada.Environment_Variables.Exists ("LOAM_ACCOUNTING_ROLE_PATH")
             then Ada.Environment_Variables.Value ("LOAM_ACCOUNTING_ROLE_PATH")
@@ -290,7 +322,7 @@ package body HRA_N.Application.Path_Resolver is
          LCat : constant String := D & "/config/locus-catalog.tsv";
          PCat : constant String := D & "/config/purpose-catalog.tsv";
       begin
-         Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres, LCat, PCat);
+         Set_Paths (Config, D, A, C, S, R, Corr, M, Cap, Eff, Rout, Pres, LCat, PCat);
          return Config;
       end;
    end Resolve_Paths;
