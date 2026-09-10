@@ -145,4 +145,9 @@ package body HRA_N.Storage.Sync is
          Lock.Is_Locked := False;
    end Release_Lock;
 
+   function Is_Locked (Lock : Lock_Handle) return Boolean is
+   begin
+      return Lock.Is_Locked;
+   end Is_Locked;
+
 end HRA_N.Storage.Sync;

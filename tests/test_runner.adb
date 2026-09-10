@@ -30,6 +30,7 @@ with Test_Scheduled_Routing;
 with Test_Scheduled_Commitment;
 with Test_Correction;
 with Test_Atomic_Writer;
+with Test_Authority_Transaction;
 
 procedure Test_Runner is
 begin
@@ -108,6 +109,9 @@ begin
 
    Put_Line ("--> Running Test_Atomic_Writer...");
    Test_Atomic_Writer.Run;
+
+   Put_Line ("--> Running Test_Authority_Transaction...");
+   Test_Authority_Transaction.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");

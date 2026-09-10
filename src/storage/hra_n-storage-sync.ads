@@ -38,6 +38,9 @@ package HRA_N.Storage.Sync is
    --  Release exclusive advisory lock and close handle.
    procedure Release_Lock (Lock : in out Lock_Handle);
 
+   --  Query whether lock handle currently holds the exclusive lock.
+   function Is_Locked (Lock : Lock_Handle) return Boolean;
+
 private
 
    type Lock_Handle is record
