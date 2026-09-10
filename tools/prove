@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$project_root"
+
+exec alr exec -- gnatprove \
+  -j0 \
+  -P proof/hra_n_proof.gpr \
+  --mode=all \
+  --level=2 \
+  --report=fail \
+  --warnings=error \
+  --checks-as-errors=on

@@ -1,0 +1,12 @@
+obj/
+bin/
+alire/
+proof/obj/
+proof/gnatprove/
+gnatprove/
+*.ali
+*.o
+*.b~*
+*.stdout
+*.stderr
+.DS_Store

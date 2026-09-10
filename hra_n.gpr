@@ -1,0 +1,26 @@
+project HRA_N is
+   for Languages use ("Ada");
+   for Source_Dirs use ("src", "src/core", "src/storage", "src/ui");
+   for Object_Dir use "obj";
+   for Exec_Dir use "bin";
+   for Main use ("hra_n_main.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use (
+         "-gnat2022",   -- Ada 2022 standard
+         "-gnata",      -- Enable assertions and contracts (Pre/Post/Type_Invariant)
+         "-gnatwa",     -- Turn on all warnings
+         "-gnatW8",     -- UTF-8 encoding support
+         "-g",          -- Debug symbols
+         "-O2"          -- Optimization
+      );
+   end Compiler;
+
+   package Binder is
+      for Default_Switches ("Ada") use ("-E");
+   end Binder;
+
+   package Builder is
+      for Executable ("hra_n_main.adb") use "hra-n";
+   end Builder;
+end HRA_N;

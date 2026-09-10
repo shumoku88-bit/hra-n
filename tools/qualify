@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$project_root"
+
+echo "==> 1. Running SPARK Proof..."
+./tools/prove
+
+echo "==> 2. Building Executable..."
+./tools/build
+
+echo "==> Qualification PASSED."
