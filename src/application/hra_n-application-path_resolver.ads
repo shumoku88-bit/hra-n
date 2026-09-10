@@ -32,6 +32,18 @@ package HRA_N.Application.Path_Resolver is
 
       Role_Map_Path  : String (1 .. Max_Path_Length) := [others => ' '];
       Role_Len       : Natural                       := 0;
+
+      Capacity_Path  : String (1 .. Max_Path_Length) := [others => ' '];
+      Cap_Len        : Natural                       := 0;
+
+      Cap_Eff_Path   : String (1 .. Max_Path_Length) := [others => ' '];
+      Cap_Eff_Len    : Natural                       := 0;
+
+      Routing_Path   : String (1 .. Max_Path_Length) := [others => ' '];
+      Rout_Len       : Natural                       := 0;
+
+      Presets_Path   : String (1 .. Max_Path_Length) := [others => ' '];
+      Pres_Len       : Natural                       := 0;
    end record;
 
    function Data_Dir_Str (Config : Path_Config) return String;
@@ -40,6 +52,10 @@ package HRA_N.Application.Path_Resolver is
    function Scheduled_Path_Str (Config : Path_Config) return String;
    function Reversals_Path_Str (Config : Path_Config) return String;
    function Role_Map_Path_Str (Config : Path_Config) return String;
+   function Capacity_Path_Str (Config : Path_Config) return String;
+   function Capacity_Effective_Path_Str (Config : Path_Config) return String;
+   function Actual_Routing_Path_Str (Config : Path_Config) return String;
+   function Boundary_Presets_Path_Str (Config : Path_Config) return String;
 
    --  Resolve authoritative paths with tiered precedence
    function Resolve_Paths (Explicit_Data_Dir : String := "") return Path_Config;

@@ -26,6 +26,11 @@ with HRA_N.UI.Output;                 use HRA_N.UI.Output;
 with HRA_N.UI.Interactive_Movement;
 with HRA_N.UI.Scheduled_Cli;
 with HRA_N.UI.Statement_Cli;
+with HRA_N.Storage.Capacity_Reader;
+with HRA_N.Storage.Actual_Routing_Reader;
+with HRA_N.Storage.Boundary_Presets_Reader;
+with HRA_N.Application.Budget_Window;     use HRA_N.Application.Budget_Window;
+with HRA_N.UI.Budget_CLI;
 
 procedure HRA_N_Main is
    Paths       : Path_Config;
@@ -393,6 +398,91 @@ begin
 
             Generate_Report (Event_Res.Events, Role_Res.Map, Rep);
             HRA_N.UI.Statement_Cli.Display_Statement (Rep);
+            return;
+         end;
+      elsif Command = "budget" then
+         declare
+            Cap_Path   : constant String := Capacity_Path_Str (Paths);
+            Cap_Eff    : constant String := Capacity_Effective_Path_Str (Paths);
+            Rout_Path  : constant String := Actual_Routing_Path_Str (Paths);
+            Pres_Path  : constant String := Boundary_Presets_Path_Str (Paths);
+
+            Cap_Res    : constant HRA_N.Storage.Capacity_Reader.Read_Result :=
+              HRA_N.Storage.Capacity_Reader.Read_Capacity_Files (Cap_Path, Cap_Eff);
+            Rout_Res   : constant HRA_N.Storage.Actual_Routing_Reader.Read_Result :=
+              HRA_N.Storage.Actual_Routing_Reader.Read_Actual_Routing_File (Rout_Path);
+            Pres_Res   : constant HRA_N.Storage.Boundary_Presets_Reader.Read_Result :=
+              HRA_N.Storage.Boundary_Presets_Reader.Read_Boundary_Presets_File (Pres_Path);
+
+            SY, SM, SD : Natural := 0;
+            EY, EM, ED : Natural := 0;
+            Preset_Name : String (1 .. 64) := [others => ' '];
+            P_Name_Len  : Natural := 0;
+            Report      : Budget_Window_Report;
+         begin
+            if not Cap_Res.Success then
+               Put_Line ("[ERROR] Failed to load capacity evidence: " &
+                         Cap_Res.Error_Reason (1 .. Cap_Res.Error_Len));
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               return;
+            end if;
+
+            if not Rout_Res.Success then
+               Put_Line ("[ERROR] Failed to load actual routing evidence: " &
+                         Rout_Res.Error_Reason (1 .. Rout_Res.Error_Len));
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               return;
+            end if;
+
+            --  Resolve Window coordinates
+            if Rem_Args >= 2 then
+               declare
+                  S_Str : constant String := Ada.Command_Line.Argument (Command_Idx + 1);
+                  E_Str : constant String := Ada.Command_Line.Argument (Command_Idx + 2);
+                  Date_S, Date_E : Date_Type;
+               begin
+                  if not Parse_Iso_Date (S_Str, Date_S) or else not Parse_Iso_Date (E_Str, Date_E) then
+                     Put_Line ("hra-n: budget window endpoints must be real YYYY-MM-DD calendar dates");
+                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                     return;
+                  end if;
+                  SY := Date_S.Year; SM := Date_S.Month; SD := Date_S.Day;
+                  EY := Date_E.Year; EM := Date_E.Month; ED := Date_E.Day;
+               end;
+            else
+               if Pres_Res.Success and then Pres_Res.Memory.Count > 0 then
+                  declare
+                     P : constant HRA_N.Storage.Boundary_Presets_Reader.Boundary_Preset :=
+                       Pres_Res.Memory.Presets (1);
+                  begin
+                     SY := P.Start_Year; SM := P.Start_Month; SD := P.Start_Day;
+                     EY := P.End_Year;   EM := P.End_Month;   ED := P.End_Day;
+                     P_Name_Len := Natural'Min (P.Name.Length, Preset_Name'Length);
+                     Preset_Name (1 .. P_Name_Len) := P.Name.Value (1 .. P_Name_Len);
+                  end;
+               else
+                  Put_Line ("[ERROR] No boundary presets configured, and no START END dates specified.");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  return;
+               end if;
+            end if;
+
+            Project_Budget_Window
+              (Capacity_Mem => Cap_Res.Memory,
+               Events       => Event_Res.Events,
+               Validities   => Validity_Res.Memory,
+               Routing      => Rout_Res.Map,
+               Start_Y      => SY,
+               Start_M      => SM,
+               Start_D      => SD,
+               End_Y        => EY,
+               End_M        => EM,
+               End_D        => ED,
+               Report       => Report);
+
+            HRA_N.UI.Budget_CLI.Display_Budget_Window
+              (Report      => Report,
+               Preset_Name => Preset_Name (1 .. P_Name_Len));
             return;
          end;
       elsif Command = "review" then

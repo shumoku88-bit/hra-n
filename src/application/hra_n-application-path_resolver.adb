@@ -42,6 +42,26 @@ package body HRA_N.Application.Path_Resolver is
       return Config.Role_Map_Path (1 .. Config.Role_Len);
    end Role_Map_Path_Str;
 
+   function Capacity_Path_Str (Config : Path_Config) return String is
+   begin
+      return Config.Capacity_Path (1 .. Config.Cap_Len);
+   end Capacity_Path_Str;
+
+   function Capacity_Effective_Path_Str (Config : Path_Config) return String is
+   begin
+      return Config.Cap_Eff_Path (1 .. Config.Cap_Eff_Len);
+   end Capacity_Effective_Path_Str;
+
+   function Actual_Routing_Path_Str (Config : Path_Config) return String is
+   begin
+      return Config.Routing_Path (1 .. Config.Rout_Len);
+   end Actual_Routing_Path_Str;
+
+   function Boundary_Presets_Path_Str (Config : Path_Config) return String is
+   begin
+      return Config.Presets_Path (1 .. Config.Pres_Len);
+   end Boundary_Presets_Path_Str;
+
    ----------------------------------------------------------------------------
    --  Set path fields in Path_Config
    ----------------------------------------------------------------------------
@@ -52,7 +72,11 @@ package body HRA_N.Application.Path_Resolver is
       Cov_Path  : String;
       Sch_Path  : String;
       Rev_Path  : String;
-      Role_Path : String)
+      Role_Path : String;
+      Cap_Path  : String;
+      Cap_Eff   : String;
+      Rout_Path : String;
+      Pres_Path : String)
    is
    begin
       Config.Data_Len := Natural'Min (Data_Path'Length, Config.Data_Dir'Length);
@@ -78,6 +102,22 @@ package body HRA_N.Application.Path_Resolver is
       Config.Role_Len := Natural'Min (Role_Path'Length, Config.Role_Map_Path'Length);
       Config.Role_Map_Path (1 .. Config.Role_Len) :=
         Role_Path (Role_Path'First .. Role_Path'First + Config.Role_Len - 1);
+
+      Config.Cap_Len := Natural'Min (Cap_Path'Length, Config.Capacity_Path'Length);
+      Config.Capacity_Path (1 .. Config.Cap_Len) :=
+        Cap_Path (Cap_Path'First .. Cap_Path'First + Config.Cap_Len - 1);
+
+      Config.Cap_Eff_Len := Natural'Min (Cap_Eff'Length, Config.Cap_Eff_Path'Length);
+      Config.Cap_Eff_Path (1 .. Config.Cap_Eff_Len) :=
+        Cap_Eff (Cap_Eff'First .. Cap_Eff'First + Config.Cap_Eff_Len - 1);
+
+      Config.Rout_Len := Natural'Min (Rout_Path'Length, Config.Routing_Path'Length);
+      Config.Routing_Path (1 .. Config.Rout_Len) :=
+        Rout_Path (Rout_Path'First .. Rout_Path'First + Config.Rout_Len - 1);
+
+      Config.Pres_Len := Natural'Min (Pres_Path'Length, Config.Presets_Path'Length);
+      Config.Presets_Path (1 .. Config.Pres_Len) :=
+        Pres_Path (Pres_Path'First .. Pres_Path'First + Config.Pres_Len - 1);
    end Set_Paths;
 
    ----------------------------------------------------------------------------
@@ -98,8 +138,12 @@ package body HRA_N.Application.Path_Resolver is
             S : constant String := D & "/scheduled.loam";
             R : constant String := D & "/actual-reversals.loam";
             M : constant String := D & "/accounting-role.loam";
+            Cap : constant String := D & "/capacity.loam";
+            Eff : constant String := D & "/capacity.loam.effective";
+            Rout : constant String := D & "/actual-routing.loam";
+            Pres : constant String := D & "/config/boundary-presets.tsv";
          begin
-            Set_Paths (Config, D, A, C, S, R, M);
+            Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres);
             return Config;
          end;
       end if;
@@ -116,8 +160,12 @@ package body HRA_N.Application.Path_Resolver is
             S : constant String := D & "/scheduled.loam";
             R : constant String := D & "/actual-reversals.loam";
             M : constant String := D & "/accounting-role.loam";
+            Cap : constant String := D & "/capacity.loam";
+            Eff : constant String := D & "/capacity.loam.effective";
+            Rout : constant String := D & "/actual-routing.loam";
+            Pres : constant String := D & "/config/boundary-presets.tsv";
          begin
-            Set_Paths (Config, D, A, C, S, R, M);
+            Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres);
             return Config;
          end;
       elsif Ada.Environment_Variables.Exists ("LOAM_DATA_DIR") then
@@ -131,8 +179,12 @@ package body HRA_N.Application.Path_Resolver is
             S : constant String := D & "/scheduled.loam";
             R : constant String := D & "/actual-reversals.loam";
             M : constant String := D & "/accounting-role.loam";
+            Cap : constant String := D & "/capacity.loam";
+            Eff : constant String := D & "/capacity.loam.effective";
+            Rout : constant String := D & "/actual-routing.loam";
+            Pres : constant String := D & "/config/boundary-presets.tsv";
          begin
-            Set_Paths (Config, D, A, C, S, R, M);
+            Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres);
             return Config;
          end;
       end if;
@@ -146,7 +198,11 @@ package body HRA_N.Application.Path_Resolver is
             Cov_Path  => "./zero-origin-coverage.loam",
             Sch_Path  => "./scheduled.loam",
             Rev_Path  => "./actual-reversals.loam",
-            Role_Path => "./accounting-role.loam");
+            Role_Path => "./accounting-role.loam",
+            Cap_Path  => "./capacity.loam",
+            Cap_Eff   => "./capacity.loam.effective",
+            Rout_Path => "./actual-routing.loam",
+            Pres_Path => "./config/boundary-presets.tsv");
          return Config;
       elsif Ada.Directories.Exists ("./CURRENT") then
          Set_Paths
@@ -156,7 +212,11 @@ package body HRA_N.Application.Path_Resolver is
             Cov_Path  => "./zero-origin-coverage.loam",
             Sch_Path  => "./scheduled.loam",
             Rev_Path  => "./actual-reversals.loam",
-            Role_Path => "./accounting-role.loam");
+            Role_Path => "./accounting-role.loam",
+            Cap_Path  => "./capacity.loam",
+            Cap_Eff   => "./capacity.loam.effective",
+            Rout_Path => "./actual-routing.loam",
+            Pres_Path => "./config/boundary-presets.tsv");
          return Config;
       elsif Ada.Directories.Exists ("./hra-data/movement-authority/CURRENT") then
          Set_Paths
@@ -166,7 +226,11 @@ package body HRA_N.Application.Path_Resolver is
             Cov_Path  => "./hra-data/zero-origin-coverage.loam",
             Sch_Path  => "./hra-data/scheduled.loam",
             Rev_Path  => "./hra-data/actual-reversals.loam",
-            Role_Path => "./hra-data/accounting-role.loam");
+            Role_Path => "./hra-data/accounting-role.loam",
+            Cap_Path  => "./hra-data/capacity.loam",
+            Cap_Eff   => "./hra-data/capacity.loam.effective",
+            Rout_Path => "./hra-data/actual-routing.loam",
+            Pres_Path => "./hra-data/config/boundary-presets.tsv");
          return Config;
       end if;
 
@@ -187,8 +251,12 @@ package body HRA_N.Application.Path_Resolver is
            (if Ada.Environment_Variables.Exists ("LOAM_ACCOUNTING_ROLE_PATH")
             then Ada.Environment_Variables.Value ("LOAM_ACCOUNTING_ROLE_PATH")
             else D & "/accounting-role.loam");
+         Cap : constant String := D & "/capacity.loam";
+         Eff : constant String := D & "/capacity.loam.effective";
+         Rout : constant String := D & "/actual-routing.loam";
+         Pres : constant String := D & "/config/boundary-presets.tsv";
       begin
-         Set_Paths (Config, D, A, C, S, R, M);
+         Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres);
          return Config;
       end;
    end Resolve_Paths;
