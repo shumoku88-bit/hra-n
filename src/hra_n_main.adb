@@ -1,9 +1,8 @@
 -------------------------------------------------------------------------------
 --  HRA-N: Verified Household Engine
---  Main entry point: Household inspection, review, and verification
+--  Main entry point: Household inspection, review, and publication
 -------------------------------------------------------------------------------
 
-with Ada.Text_IO;              use Ada.Text_IO;
 with Ada.Command_Line;
 with Ada.Containers;
 with HRA_N.Core.Types;                use HRA_N.Core.Types;
@@ -17,6 +16,8 @@ with HRA_N.Storage.Coverage_Reader;   use HRA_N.Storage.Coverage_Reader;
 with HRA_N.Storage.Validity_Reader;   use HRA_N.Storage.Validity_Reader;
 with HRA_N.Storage.Description_Reader; use HRA_N.Storage.Description_Reader;
 with HRA_N.Application.Review;        use HRA_N.Application.Review;
+with HRA_N.Application.Publisher;     use HRA_N.Application.Publisher;
+with HRA_N.UI.Output;                 use HRA_N.UI.Output;
 
 procedure HRA_N_Main is
    Data_Dir : constant String := "/Users/user/Projects/moko/loam-data";
@@ -34,6 +35,79 @@ procedure HRA_N_Main is
    Command   : constant String  :=
      (if Arg_Count >= 1 then Ada.Command_Line.Argument (1) else "summary");
 begin
+   --  Branch: Movement publication has its own exclusive lock and authority lifecycle
+   if Command = "movement" then
+      if Arg_Count < 4 then
+         Put_Line ("Usage: hra-n movement <FROM> <TO> <AMOUNT> [YYYY-MM-DD] [DESCRIPTION]");
+         Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         return;
+      end if;
+
+      declare
+         From_Locus : constant String := Ada.Command_Line.Argument (2);
+         To_Locus   : constant String := Ada.Command_Line.Argument (3);
+         Amount_Str : constant String := Ada.Command_Line.Argument (4);
+         Amount_Val : Quanta_Type;
+
+         Date_Val   : Date_Type := Get_System_Date;
+         Desc_Val   : constant String :=
+           (if Arg_Count >= 6 then Ada.Command_Line.Argument (6)
+            elsif Arg_Count = 5 and then Ada.Command_Line.Argument (5)'Length > 0
+              and then Ada.Command_Line.Argument (5)(Ada.Command_Line.Argument (5)'First) /= '2'
+            then Ada.Command_Line.Argument (5)
+            else "");
+      begin
+         begin
+            Amount_Val := Quanta_Type'Value (Amount_Str);
+         exception
+            when others =>
+               Put_Line ("hra-n: movement amount must be a positive integer");
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               return;
+         end;
+
+         if Arg_Count >= 5 then
+            declare
+               Date_Arg : constant String := Ada.Command_Line.Argument (5);
+               Parsed_D : Date_Type;
+            begin
+               if Parse_Iso_Date (Date_Arg, Parsed_D) then
+                  Date_Val := Parsed_D;
+               end if;
+            end;
+         end if;
+
+         declare
+            Pub_Res : constant Publish_Result :=
+              Publish_Movement
+                (Authority_Dir => Auth_Dir,
+                 From_Locus    => From_Locus,
+                 To_Locus      => To_Locus,
+                 Amount        => Amount_Val,
+                 Valid_On      => Date_Val,
+                 Description   => Desc_Val);
+         begin
+            if Pub_Res.Success then
+               Put_Line ("============================================================");
+               Put_Line (" [OK] Admitted and published Movement receipt: " &
+                         Pub_Res.Event_Id_Str (1 .. Pub_Res.Event_Id_Len));
+               Put_Line ("      FROM: " & From_Locus & " (-" & Amount_Str & " jpy)");
+               Put_Line ("      TO:   " & To_Locus & " (+" & Amount_Str & " jpy)");
+               Put_Line ("      DATE: " & Format_Iso_Date (Date_Val));
+               if Desc_Val'Length > 0 then
+                  Put_Line ("      DESC: " & Desc_Val);
+               end if;
+               Put_Line ("============================================================");
+            else
+               Put_Line ("[ERROR] Publication rejected: " &
+                         Pub_Res.Error_Reason (1 .. Pub_Res.Error_Len));
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+            end if;
+         end;
+      end;
+      return;
+   end if;
+
    --  1. Load and Verify Manifest Authority (CURRENT)
    Manifest_Res := Read_Manifest_File (Auth_Dir & "/CURRENT");
    if not Manifest_Res.Success then

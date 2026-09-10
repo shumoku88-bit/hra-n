@@ -15,6 +15,8 @@ with Test_Manifest;
 with Test_Validity;
 with Test_Description;
 with Test_Review;
+with Test_Admission;
+with Test_Publisher;
 
 procedure Test_Runner is
 begin
@@ -48,6 +50,12 @@ begin
 
    Put_Line ("--> Running Test_Review...");
    Test_Review.Run;
+
+   Put_Line ("--> Running Test_Admission...");
+   Test_Admission.Run;
+
+   Put_Line ("--> Running Test_Publisher...");
+   Test_Publisher.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");
