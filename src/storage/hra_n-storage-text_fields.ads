@@ -10,7 +10,7 @@
 
 package HRA_N.Storage.Text_Fields is
 
-   Max_Fields : constant := 8;
+   Max_Fields : constant := 12;
 
    type Field_Slice is record
       First : Positive := 1;

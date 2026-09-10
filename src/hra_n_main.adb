@@ -31,6 +31,7 @@ with HRA_N.Storage.Actual_Routing_Reader;
 with HRA_N.Storage.Boundary_Presets_Reader;
 with HRA_N.Application.Budget_Window;     use HRA_N.Application.Budget_Window;
 with HRA_N.UI.Budget_CLI;
+with HRA_N.UI.Relation_CLI;
 
 procedure HRA_N_Main is
    Paths       : Path_Config;
@@ -383,8 +384,22 @@ begin
          end if;
       end;
 
-      --  Dispatch command: "statement", "report", "review", or "summary"
-      if Command = "statement" or else Command = "report" then
+      --  Dispatch inspection and reporting commands.
+      if Command = "relations" then
+         declare
+            Relations_Ok : Boolean;
+         begin
+            HRA_N.UI.Relation_CLI.Display_Relations
+              (Authority_Dir => Auth_Dir,
+               Manifest      => Manifest_Res.Manifest,
+               Events        => Event_Res.Events,
+               Success       => Relations_Ok);
+            if not Relations_Ok then
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+            end if;
+            return;
+         end;
+      elsif Command = "statement" or else Command = "report" then
          declare
             Role_Res : constant HRA_N.Storage.Accounting_Role_Reader.Read_Result :=
               HRA_N.Storage.Accounting_Role_Reader.Read_Accounting_Role_File (Role_Map_Path);

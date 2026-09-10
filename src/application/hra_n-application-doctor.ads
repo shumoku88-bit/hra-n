@@ -5,7 +5,8 @@
 --  Comprehensive diagnostic inspection and self-healing verification.
 --  Audits cryptographic SHA-256 integrity, zero-sum conservation laws,
 --  event identity nodup invariants, referential validity across families,
---  locus admission bounds, and zero-origin coverage consistency.
+--  locus admission bounds, relation provenance syntax, and zero-origin
+--  coverage consistency.
 -------------------------------------------------------------------------------
 
 package HRA_N.Application.Doctor is
@@ -26,12 +27,15 @@ package HRA_N.Application.Doctor is
       Description_Check  : Diagnostic_Item;
       Admission_Check    : Diagnostic_Item;
       Coverage_Check     : Diagnostic_Item;
+      Relation_Check     : Diagnostic_Item;
 
       Total_Events       : Natural := 0;
       Total_Validity     : Natural := 0;
       Total_Descriptions : Natural := 0;
       Total_Loci         : Natural := 0;
       Total_Coverage     : Natural := 0;
+      Total_Relations    : Natural := 0;
+      Total_Discharges   : Natural := 0;
 
       Overall_Healthy    : Boolean := False;
    end record;

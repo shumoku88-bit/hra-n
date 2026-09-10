@@ -18,6 +18,7 @@ with HRA_N.Storage.Validity_Reader;  use HRA_N.Storage.Validity_Reader;
 with HRA_N.Storage.Description_Reader; use HRA_N.Storage.Description_Reader;
 with HRA_N.Storage.Locus_Reader;     use HRA_N.Storage.Locus_Reader;
 with HRA_N.Storage.Coverage_Reader;  use HRA_N.Storage.Coverage_Reader;
+with HRA_N.Storage.Relation_Reader;  use HRA_N.Storage.Relation_Reader;
 with HRA_N.UI.Output;                use HRA_N.UI.Output;
 
 package body HRA_N.Application.Doctor is
@@ -61,6 +62,8 @@ package body HRA_N.Application.Doctor is
       Desc_Res      : Read_Description_Result;
       Loc_Res       : Read_Locus_Result;
       Cov_Res       : Read_Coverage_Result;
+      Unit_Res      : Unit_Read_Result;
+      Discharge_Res : Discharge_Read_Result;
 
       All_Passed    : Boolean := True;
    begin
@@ -331,6 +334,63 @@ package body HRA_N.Application.Doctor is
          All_Passed := False;
       end if;
 
+      --  Check 8: Relation Unit / Discharge raw provenance syntax.
+      --  Missing referenced Events remain permitted crash residue here;
+      --  semantic activation belongs to Relation_Frontier projection.
+      if Man_Res.Success
+        and then Man_Res.Manifest (Family_Relation_Unit).Present
+        and then Man_Res.Manifest (Family_Relation_Discharge).Present
+      then
+         declare
+            Unit_Item : constant Manifest_Item :=
+              Man_Res.Manifest (Family_Relation_Unit);
+            Discharge_Item : constant Manifest_Item :=
+              Man_Res.Manifest (Family_Relation_Discharge);
+            Unit_Path : constant String :=
+              Authority_Dir & "/" &
+              Unit_Item.Rel_Path (1 .. Unit_Item.Path_Len);
+            Discharge_Path : constant String :=
+              Authority_Dir & "/" &
+              Discharge_Item.Rel_Path (1 .. Discharge_Item.Path_Len);
+         begin
+            Unit_Res := Read_Relation_Unit_File (Unit_Path);
+            Discharge_Res := Read_Relation_Discharge_File (Discharge_Path);
+            if not Unit_Res.Success then
+               Set_Item
+                 (Report.Relation_Check,
+                  Passed  => False,
+                  Summary => "RelationUnit parsing failed",
+                  Detail  => Unit_Res.Error_Reason (1 .. Unit_Res.Error_Len));
+               All_Passed := False;
+            elsif not Discharge_Res.Success then
+               Set_Item
+                 (Report.Relation_Check,
+                  Passed  => False,
+                  Summary => "RelationDischarge parsing failed",
+                  Detail  => Discharge_Res.Error_Reason
+                    (1 .. Discharge_Res.Error_Len));
+               All_Passed := False;
+            else
+               Report.Total_Relations  := Natural (Unit_Res.Memory.Count);
+               Report.Total_Discharges := Natural (Discharge_Res.Memory.Count);
+               Set_Item
+                 (Report.Relation_Check,
+                  Passed  => True,
+                  Summary => "Relation provenance: " &
+                    Trim (Report.Total_Relations'Image, Ada.Strings.Both) &
+                    " units, " &
+                    Trim (Report.Total_Discharges'Image, Ada.Strings.Both) &
+                    " discharges parsed");
+            end if;
+         end;
+      else
+         Set_Item
+           (Report.Relation_Check,
+            Passed  => False,
+            Summary => "Relation provenance check skipped (families missing)");
+         All_Passed := False;
+      end if;
+
       Report.Overall_Healthy := All_Passed;
 
       --  Terminal output unless Quiet requested
@@ -360,6 +420,7 @@ package body HRA_N.Application.Doctor is
             Print_Diag (Report.Description_Check);
             Print_Diag (Report.Admission_Check);
             Print_Diag (Report.Coverage_Check);
+            Print_Diag (Report.Relation_Check);
          end;
 
          Put_Line ("------------------------------------------------------------");
