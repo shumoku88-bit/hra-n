@@ -20,6 +20,7 @@ with Test_Publisher;
 with Test_Doctor;
 with Test_Initializer;
 with Test_Scheduled;
+with Test_Path_Resolver;
 
 procedure Test_Runner is
 begin
@@ -68,6 +69,9 @@ begin
 
    Put_Line ("--> Running Test_Scheduled...");
    Test_Scheduled.Run;
+
+   Put_Line ("--> Running Test_Path_Resolver...");
+   Test_Path_Resolver.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");
