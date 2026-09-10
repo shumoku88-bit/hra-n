@@ -20,4 +20,15 @@ package HRA_N.UI.Output is
    procedure Put_Error (Text : String);
    procedure Put_Error_Line (Text : String);
 
+   ----------------------------------------------------------------------------
+   --  East Asian Wide-Character Aware Formatting
+   ----------------------------------------------------------------------------
+   --  UTF-8 sequences from the CJK ranges occupy two terminal columns per
+   --  code point. Display_Width measures terminal columns rather than bytes
+   --  so that mixed ASCII/Japanese rows align correctly.
+
+   function Display_Width (S : String) return Natural;
+
+   function Pad_Right (S : String; Width : Positive) return String;
+
 end HRA_N.UI.Output;

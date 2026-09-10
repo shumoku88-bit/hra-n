@@ -181,6 +181,7 @@ begin
             begin
                HRA_N.UI.Interactive_Movement.Run_Interactive
                  (Authority_Dir => Auth_Dir,
+                  Catalog_Path  => Locus_Catalog_Path_Str (Paths),
                   Success       => Success);
                if not Success then
                   Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);

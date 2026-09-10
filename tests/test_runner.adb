@@ -24,6 +24,7 @@ with Test_Path_Resolver;
 with Test_Actual_Reversal;
 with Test_Accounting_Role;
 with Test_Budget_Window;
+with Test_Catalog;
 
 procedure Test_Runner is
 begin
@@ -84,6 +85,9 @@ begin
 
    Put_Line ("--> Running Test_Budget_Window...");
    Test_Budget_Window.Run;
+
+   Put_Line ("--> Running Test_Catalog...");
+   Test_Catalog.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");

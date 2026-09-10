@@ -44,6 +44,12 @@ package HRA_N.Application.Path_Resolver is
 
       Presets_Path   : String (1 .. Max_Path_Length) := [others => ' '];
       Pres_Len       : Natural                       := 0;
+
+      Locus_Cat_Path : String (1 .. Max_Path_Length) := [others => ' '];
+      Loc_Cat_Len    : Natural                       := 0;
+
+      Purp_Cat_Path  : String (1 .. Max_Path_Length) := [others => ' '];
+      Pur_Cat_Len    : Natural                       := 0;
    end record;
 
    function Data_Dir_Str (Config : Path_Config) return String;
@@ -56,6 +62,8 @@ package HRA_N.Application.Path_Resolver is
    function Capacity_Effective_Path_Str (Config : Path_Config) return String;
    function Actual_Routing_Path_Str (Config : Path_Config) return String;
    function Boundary_Presets_Path_Str (Config : Path_Config) return String;
+   function Locus_Catalog_Path_Str (Config : Path_Config) return String;
+   function Purpose_Catalog_Path_Str (Config : Path_Config) return String;
 
    --  Resolve authoritative paths with tiered precedence
    function Resolve_Paths (Explicit_Data_Dir : String := "") return Path_Config;

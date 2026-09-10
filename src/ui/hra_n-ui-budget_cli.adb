@@ -53,45 +53,6 @@ package body HRA_N.UI.Budget_CLI is
       end;
    end Format_Quanta;
 
-   function Display_Width (S : String) return Natural is
-      W : Natural  := 0;
-      I : Positive := S'First;
-   begin
-      while I <= S'Last loop
-         declare
-            B : constant Natural := Character'Pos (S (I));
-         begin
-            if B < 128 then
-               W := W + 1;
-               I := I + 1;
-            elsif B in 16#C0# .. 16#DF# then
-               W := W + 1;
-               I := I + 2;
-            elsif B in 16#E0# .. 16#EF# then
-               W := W + 2;
-               I := I + 3;
-            elsif B in 16#F0# .. 16#F7# then
-               W := W + 2;
-               I := I + 4;
-            else
-               W := W + 1;
-               I := I + 1;
-            end if;
-         end;
-      end loop;
-      return W;
-   end Display_Width;
-
-   function Pad_Right (S : String; Width : Positive) return String is
-      W : constant Natural := Display_Width (S);
-   begin
-      if W >= Width then
-         return S;
-      else
-         return S & Repeat (' ', Width - W);
-      end if;
-   end Pad_Right;
-
    function Pad_Left (S : String; Width : Positive) return String is
    begin
       if S'Length >= Width then

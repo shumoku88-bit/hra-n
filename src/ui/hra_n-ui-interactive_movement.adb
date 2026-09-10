@@ -10,6 +10,8 @@ with Ada.Strings.Fixed;              use Ada.Strings.Fixed;
 with HRA_N.Core.Types;               use HRA_N.Core.Types;
 with HRA_N.Core.Validity;            use HRA_N.Core.Validity;
 with HRA_N.Core.Admission;           use HRA_N.Core.Admission;
+with HRA_N.Core.Catalog;             use HRA_N.Core.Catalog;
+with HRA_N.Storage.Catalog_Reader;   use HRA_N.Storage.Catalog_Reader;
 with HRA_N.Storage.Manifest;         use HRA_N.Storage.Manifest;
 with HRA_N.Storage.Locus_Reader;     use HRA_N.Storage.Locus_Reader;
 with HRA_N.Storage.Validity_Reader;  use HRA_N.Storage.Validity_Reader;
@@ -37,28 +39,50 @@ package body HRA_N.UI.Interactive_Movement is
    end Prompt_Line;
 
    ----------------------------------------------------------------------------
-   --  Display admitted loci in a compact, readable grid
+   --  Display admitted loci, enriched with curated catalog display names
+   --  when affirmative catalog evidence is available.
    ----------------------------------------------------------------------------
-   procedure Display_Admitted_Loci (Vocab : Locus_Vocabulary) is
+   procedure Display_Admitted_Loci
+     (Vocab      : Locus_Vocabulary;
+      Catalog    : Catalog_Memory;
+      Has_Cat    : Boolean)
+   is
    begin
       Put_Line ("  Admitted loci (" & Trim (Vocab.Count'Image, Ada.Strings.Both) & "):");
-      Put ("    ");
-      for I in 1 .. Vocab.Count loop
-         declare
-            Tok     : constant Token_Text := Vocab.Values (I).Token;
-            Tok_Str : constant String     := Tok.Value (1 .. Tok.Length);
-         begin
-            Put (Tok_Str);
-            if I < Vocab.Count then
-               Put (", ");
-               if I mod 6 = 0 then
-                  New_Line;
-                  Put ("    ");
+      if Has_Cat then
+         for I in 1 .. Vocab.Count loop
+            declare
+               Tok       : constant Token_Text := Vocab.Values (I).Token;
+               Tok_Str   : constant String     := Tok.Value (1 .. Tok.Length);
+               Label     : constant Token_Text := Display_Label (Catalog, Tok);
+               Label_Str : constant String     := Label.Value (1 .. Label.Length);
+            begin
+               if Equal_Token (Label, Tok) then
+                  Put_Line ("    " & Tok_Str);
+               else
+                  Put_Line ("    " & Pad_Right (Tok_Str, 24) & Label_Str);
                end if;
-            end if;
-         end;
-      end loop;
-      New_Line;
+            end;
+         end loop;
+      else
+         Put ("    ");
+         for I in 1 .. Vocab.Count loop
+            declare
+               Tok     : constant Token_Text := Vocab.Values (I).Token;
+               Tok_Str : constant String     := Tok.Value (1 .. Tok.Length);
+            begin
+               Put (Tok_Str);
+               if I < Vocab.Count then
+                  Put (", ");
+                  if I mod 6 = 0 then
+                     New_Line;
+                     Put ("    ");
+                  end if;
+               end if;
+            end;
+         end loop;
+         New_Line;
+      end if;
    end Display_Admitted_Loci;
 
    ----------------------------------------------------------------------------
@@ -66,6 +90,7 @@ package body HRA_N.UI.Interactive_Movement is
    ----------------------------------------------------------------------------
    procedure Run_Interactive
      (Authority_Dir : String;
+      Catalog_Path  : String := "";
       Success       : out Boolean)
    is
       --  1. Load Authority Manifest to discover admitted vocabulary
@@ -73,6 +98,9 @@ package body HRA_N.UI.Interactive_Movement is
         Read_Manifest_File (Authority_Dir & "/CURRENT");
 
       Vocab : Locus_Vocabulary;
+
+      Catalog : Catalog_Memory;
+      Has_Cat : Boolean := False;
 
       Today     : constant Date_Type := Get_System_Date;
       Today_Str : constant String    := Format_Iso_Date (Today);
@@ -115,6 +143,19 @@ package body HRA_N.UI.Interactive_Movement is
          Vocab := Locus_Res.Vocabulary;
       end;
 
+      --  Optional presentation evidence: locus catalog display names.
+      --  Missing or malformed catalog degrades honestly to raw identifiers.
+      if Catalog_Path'Length > 0 then
+         declare
+            Cat_Res : constant Read_Result := Read_Catalog_File (Catalog_Path);
+         begin
+            if Cat_Res.Success then
+               Catalog    := Cat_Res.Catalog;
+               Has_Cat    := True;
+            end if;
+         end;
+      end if;
+
       Put_Line ("============================================================");
       Put_Line (" HRA-N Verified Movement Entrance");
       Put_Line ("============================================================");
@@ -145,7 +186,7 @@ package body HRA_N.UI.Interactive_Movement is
               Prompt_Line ("From locus (or '?' to list): ");
          begin
             if Input = "?" then
-               Display_Admitted_Loci (Vocab);
+               Display_Admitted_Loci (Vocab, Catalog, Has_Cat);
             elsif Input'Length = 0 then
                Put_Line ("  [!] Source locus cannot be empty.");
             elsif Input'Length > Max_Token_Length then
@@ -173,7 +214,7 @@ package body HRA_N.UI.Interactive_Movement is
               Prompt_Line ("To locus (or '?' to list): ");
          begin
             if Input = "?" then
-               Display_Admitted_Loci (Vocab);
+               Display_Admitted_Loci (Vocab, Catalog, Has_Cat);
             elsif Input'Length = 0 then
                Put_Line ("  [!] Destination locus cannot be empty.");
             elsif Input'Length > Max_Token_Length then

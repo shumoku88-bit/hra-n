@@ -62,6 +62,16 @@ package body HRA_N.Application.Path_Resolver is
       return Config.Presets_Path (1 .. Config.Pres_Len);
    end Boundary_Presets_Path_Str;
 
+   function Locus_Catalog_Path_Str (Config : Path_Config) return String is
+   begin
+      return Config.Locus_Cat_Path (1 .. Config.Loc_Cat_Len);
+   end Locus_Catalog_Path_Str;
+
+   function Purpose_Catalog_Path_Str (Config : Path_Config) return String is
+   begin
+      return Config.Purp_Cat_Path (1 .. Config.Pur_Cat_Len);
+   end Purpose_Catalog_Path_Str;
+
    ----------------------------------------------------------------------------
    --  Set path fields in Path_Config
    ----------------------------------------------------------------------------
@@ -76,7 +86,9 @@ package body HRA_N.Application.Path_Resolver is
       Cap_Path  : String;
       Cap_Eff   : String;
       Rout_Path : String;
-      Pres_Path : String)
+      Pres_Path : String;
+      Loc_Cat   : String;
+      Pur_Cat   : String)
    is
    begin
       Config.Data_Len := Natural'Min (Data_Path'Length, Config.Data_Dir'Length);
@@ -118,6 +130,14 @@ package body HRA_N.Application.Path_Resolver is
       Config.Pres_Len := Natural'Min (Pres_Path'Length, Config.Presets_Path'Length);
       Config.Presets_Path (1 .. Config.Pres_Len) :=
         Pres_Path (Pres_Path'First .. Pres_Path'First + Config.Pres_Len - 1);
+
+      Config.Loc_Cat_Len := Natural'Min (Loc_Cat'Length, Config.Locus_Cat_Path'Length);
+      Config.Locus_Cat_Path (1 .. Config.Loc_Cat_Len) :=
+        Loc_Cat (Loc_Cat'First .. Loc_Cat'First + Config.Loc_Cat_Len - 1);
+
+      Config.Pur_Cat_Len := Natural'Min (Pur_Cat'Length, Config.Purp_Cat_Path'Length);
+      Config.Purp_Cat_Path (1 .. Config.Pur_Cat_Len) :=
+        Pur_Cat (Pur_Cat'First .. Pur_Cat'First + Config.Pur_Cat_Len - 1);
    end Set_Paths;
 
    ----------------------------------------------------------------------------
@@ -142,8 +162,10 @@ package body HRA_N.Application.Path_Resolver is
             Eff : constant String := D & "/capacity.loam.effective";
             Rout : constant String := D & "/actual-routing.loam";
             Pres : constant String := D & "/config/boundary-presets.tsv";
+            LCat : constant String := D & "/config/locus-catalog.tsv";
+            PCat : constant String := D & "/config/purpose-catalog.tsv";
          begin
-            Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres);
+            Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres, LCat, PCat);
             return Config;
          end;
       end if;
@@ -164,8 +186,10 @@ package body HRA_N.Application.Path_Resolver is
             Eff : constant String := D & "/capacity.loam.effective";
             Rout : constant String := D & "/actual-routing.loam";
             Pres : constant String := D & "/config/boundary-presets.tsv";
+            LCat : constant String := D & "/config/locus-catalog.tsv";
+            PCat : constant String := D & "/config/purpose-catalog.tsv";
          begin
-            Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres);
+            Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres, LCat, PCat);
             return Config;
          end;
       elsif Ada.Environment_Variables.Exists ("LOAM_DATA_DIR") then
@@ -183,8 +207,10 @@ package body HRA_N.Application.Path_Resolver is
             Eff : constant String := D & "/capacity.loam.effective";
             Rout : constant String := D & "/actual-routing.loam";
             Pres : constant String := D & "/config/boundary-presets.tsv";
+            LCat : constant String := D & "/config/locus-catalog.tsv";
+            PCat : constant String := D & "/config/purpose-catalog.tsv";
          begin
-            Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres);
+            Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres, LCat, PCat);
             return Config;
          end;
       end if;
@@ -202,7 +228,9 @@ package body HRA_N.Application.Path_Resolver is
             Cap_Path  => "./capacity.loam",
             Cap_Eff   => "./capacity.loam.effective",
             Rout_Path => "./actual-routing.loam",
-            Pres_Path => "./config/boundary-presets.tsv");
+            Pres_Path => "./config/boundary-presets.tsv",
+            Loc_Cat   => "./config/locus-catalog.tsv",
+            Pur_Cat   => "./config/purpose-catalog.tsv");
          return Config;
       elsif Ada.Directories.Exists ("./CURRENT") then
          Set_Paths
@@ -216,7 +244,9 @@ package body HRA_N.Application.Path_Resolver is
             Cap_Path  => "./capacity.loam",
             Cap_Eff   => "./capacity.loam.effective",
             Rout_Path => "./actual-routing.loam",
-            Pres_Path => "./config/boundary-presets.tsv");
+            Pres_Path => "./config/boundary-presets.tsv",
+            Loc_Cat   => "./config/locus-catalog.tsv",
+            Pur_Cat   => "./config/purpose-catalog.tsv");
          return Config;
       elsif Ada.Directories.Exists ("./hra-data/movement-authority/CURRENT") then
          Set_Paths
@@ -230,7 +260,9 @@ package body HRA_N.Application.Path_Resolver is
             Cap_Path  => "./hra-data/capacity.loam",
             Cap_Eff   => "./hra-data/capacity.loam.effective",
             Rout_Path => "./hra-data/actual-routing.loam",
-            Pres_Path => "./hra-data/config/boundary-presets.tsv");
+            Pres_Path => "./hra-data/config/boundary-presets.tsv",
+            Loc_Cat   => "./hra-data/config/locus-catalog.tsv",
+            Pur_Cat   => "./hra-data/config/purpose-catalog.tsv");
          return Config;
       end if;
 
@@ -255,8 +287,10 @@ package body HRA_N.Application.Path_Resolver is
          Eff : constant String := D & "/capacity.loam.effective";
          Rout : constant String := D & "/actual-routing.loam";
          Pres : constant String := D & "/config/boundary-presets.tsv";
+         LCat : constant String := D & "/config/locus-catalog.tsv";
+         PCat : constant String := D & "/config/purpose-catalog.tsv";
       begin
-         Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres);
+         Set_Paths (Config, D, A, C, S, R, M, Cap, Eff, Rout, Pres, LCat, PCat);
          return Config;
       end;
    end Resolve_Paths;
