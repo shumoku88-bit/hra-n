@@ -2,11 +2,8 @@
 --  HRA-N: Verified Household Engine
 --  Package: HRA_N.Application.Doctor
 --
---  Comprehensive diagnostic inspection and self-healing verification.
---  Audits cryptographic SHA-256 integrity, zero-sum conservation laws,
---  event identity nodup invariants, referential validity across families,
---  locus admission bounds, relation provenance syntax, and zero-origin
---  coverage consistency.
+--  Reads the three current household files and reports syntax, conservation,
+--  policy, coverage, and scheduled-lifecycle health.
 -------------------------------------------------------------------------------
 
 package HRA_N.Application.Doctor is
@@ -40,11 +37,10 @@ package HRA_N.Application.Doctor is
       Overall_Healthy    : Boolean := False;
    end record;
 
-   --  Run all diagnostics against the given authority and coverage paths.
-   --  If Quiet is False, prints a structured terminal diagnostic report.
+   --  Run diagnostics against the given household directory. If Quiet is
+   --  False, print a structured terminal report.
    procedure Run_Doctor
      (Authority_Dir : String;
-      Coverage_Path : String;
       Report        : out Doctor_Report;
       Quiet         : Boolean := False);
 

@@ -2,8 +2,7 @@
 --  HRA-N: Verified Household Engine
 --  Root Package: HRA_N
 --
---  SPARK 2014 verified household reckoning and review engine combining
---  Loam's orthogonal ontology with Ada 2022's high-integrity systems engineering.
+--  Ada 2022 and SPARK household accounting engine.
 -------------------------------------------------------------------------------
 
 package HRA_N with

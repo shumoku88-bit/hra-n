@@ -125,7 +125,7 @@ package body Test_Atomic_Writer is
       --  Test 1: Initial write creates target and cleans up staging
       declare
          Target : constant String := Sandbox_Dir & "/nested/initial.txt";
-         Stage  : constant String := Target & ".loam-stage";
+         Stage  : constant String := Target & ".stage";
       begin
          Ok := Write_File_Atomically (Target, "INITIAL_CONTENT", Err, Err_Len);
          Assert (Ok, "Initial write succeeds");
@@ -137,7 +137,7 @@ package body Test_Atomic_Writer is
       --  Test 2: Atomic replacement overwrites content cleanly
       declare
          Target : constant String := Sandbox_Dir & "/replace.txt";
-         Stage  : constant String := Target & ".loam-stage";
+         Stage  : constant String := Target & ".stage";
       begin
          Ok := Write_File_Atomically (Target, "VERSION_1", Err, Err_Len);
          Assert (Ok, "Write version 1 succeeds");
@@ -155,7 +155,7 @@ package body Test_Atomic_Writer is
       --  Test 4: Failure during write preserves existing target and cleans staging
       declare
          Target_Dir : constant String := Sandbox_Dir & "/existing_dir";
-         Stage      : constant String := Target_Dir & ".loam-stage";
+         Stage      : constant String := Target_Dir & ".stage";
       begin
          --  Target_Dir is a directory; POSIX rename(file, dir) will fail with EISDIR
          Ada.Directories.Create_Directory (Target_Dir);
@@ -168,7 +168,7 @@ package body Test_Atomic_Writer is
       --  Test 6: Concurrent reader never observes target absent or invalid
       declare
          Target  : constant String := Sandbox_Dir & "/concurrent_test.txt";
-         Stage   : constant String := Target & ".loam-stage";
+         Stage   : constant String := Target & ".stage";
          Reader  : Reader_Task (Target'Length);
          Absent  : Natural;
          Invalid : Natural;

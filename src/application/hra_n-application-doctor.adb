@@ -33,11 +33,9 @@ package body HRA_N.Application.Doctor is
 
    procedure Run_Doctor
      (Authority_Dir : String;
-      Coverage_Path : String;
       Report        : out Doctor_Report;
       Quiet         : Boolean := False)
    is
-      pragma Unreferenced (Coverage_Path);
       Base_Dir : constant String :=
         (if Authority_Dir'Length >= 19
             and then Authority_Dir (Authority_Dir'Last - 18 .. Authority_Dir'Last) = "/movement-authority"

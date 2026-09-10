@@ -20,11 +20,8 @@ package body HRA_N.Application.Initializer is
       return Result;
    end Set_Error;
 
-   function Initialize_Household
-     (Base_Dir        : String;
-      Custom_Loci_Csv : String := "") return Init_Result
+   function Initialize_Household (Base_Dir : String) return Init_Result
    is
-      pragma Unreferenced (Custom_Loci_Csv);
       Result    : Init_Result;
       J_Path    : constant String := Base_Dir & "/journal.hra";
       P_Path    : constant String := Base_Dir & "/policy.hra";

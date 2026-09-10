@@ -40,7 +40,6 @@ package body Test_Initializer is
       begin
          Run_Doctor
            (Authority_Dir => Test_Dir,
-            Coverage_Path => "",
             Report        => Report,
             Quiet         => True);
 

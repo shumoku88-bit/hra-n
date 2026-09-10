@@ -5,9 +5,8 @@
 
 with Ada.Text_IO;
 with Ada.IO_Exceptions;
-with Ada.Strings.Fixed;          use Ada.Strings.Fixed;
-with HRA_N.Core.Validity;          use HRA_N.Core.Validity;
-with HRA_N.UI.Output;                use HRA_N.UI.Output;
+with Ada.Strings.Fixed; use Ada.Strings.Fixed;
+with HRA_N.UI.Output;   use HRA_N.UI.Output;
 
 package body HRA_N.UI.Prompt is
 

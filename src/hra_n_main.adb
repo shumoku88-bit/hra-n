@@ -74,7 +74,6 @@ begin
          begin
             Run_Doctor
               (Authority_Dir => Data_Dir,
-               Coverage_Path => "",
                Report        => Doc_Report,
                Quiet         => False);
             if not Doc_Report.Overall_Healthy then
