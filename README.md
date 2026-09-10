@@ -16,7 +16,9 @@ verification percentage is claimed.
 - physical holdings, budget authority, relations, and valuation kept separate;
 - malformed, unresolved, and unsupported input rejected rather than guessed;
 - deterministic replay at an explicit retained snapshot and effective day;
-- crash-safe publication with one atomic activation edge.
+- crash-safe publication with one atomic activation edge;
+- a keyboard-first TUI, with CLI, GUI/Web, and AI/chat sharing one application
+  query/intent boundary.
 
 The logical household authority consists of three canonical data streams:
 
@@ -33,6 +35,8 @@ live files are transactionally safe.
 [`docs/FORMAL_METHODS_STRATEGY.md`](docs/FORMAL_METHODS_STRATEGY.md) defines the
 current design authority, claims policy, PTA capability boundary, and division
 of work between Alloy, TLA+, SPIN, SPARK, and executable tests.
+[`docs/FRONTEND_ARCHITECTURE.md`](docs/FRONTEND_ARCHITECTURE.md) defines the
+minimum TUI and shared CLI/GUI/AI authority boundary.
 
 Current executable models:
 

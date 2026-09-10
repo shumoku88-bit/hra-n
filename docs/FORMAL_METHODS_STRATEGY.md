@@ -4,11 +4,14 @@ Status: **design authority for the canonical-ledger-v2 work**
 
 ## 1. Objective
 
-HRA-N aims to be a small, auditable household accounting engine rather than a
-feature-for-feature clone of a particular Plain Text Accounting (PTA) tool. It
-must nevertheless have explicit answers for the hard cases exposed by hledger,
-Ledger, Beancount, and related systems. Unsupported input is rejected; it is
-never approximated or silently discarded.
+HRA-N aims to be a small, auditable household accounting program rather than a
+feature-for-feature clone of a particular Plain Text Accounting (PTA) tool. A
+keyboard-first TUI is a minimum release surface; CLI, GUI/Web, and AI/chat use
+the same query/intent boundary defined in
+[`FRONTEND_ARCHITECTURE.md`](FRONTEND_ARCHITECTURE.md). It must nevertheless have
+explicit answers for the hard cases exposed by hledger, Ledger, Beancount, and
+related systems. Unsupported input is rejected; it is never approximated or
+silently discarded.
 
 The physical three-file layout is not itself a semantic claim. The authority is
 the admitted fact model and deterministic replay semantics carried by those
@@ -169,8 +172,9 @@ Use for implementation-level deductive verification:
 - date and index safety;
 - absence of runtime errors in the verified kernel.
 
-Filesystem calls, dynamic text parsing, and OS locks remain outside the pure
-SPARK kernel and are checked through narrow contracts and executable tests.
+Filesystem calls, dynamic text parsing, terminal rendering, frontend transport,
+and OS locks remain outside the pure SPARK kernel and are checked through narrow
+contracts and executable tests.
 
 ## 7. Qualification gates
 
