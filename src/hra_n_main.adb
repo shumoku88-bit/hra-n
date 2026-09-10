@@ -264,7 +264,29 @@ begin
 
       --  Branch: Scheduled movement inspection, creation, completion, and retirement
       if Command = "scheduled" or else Command = "open-scheduled" then
-         if Rem_Args >= 1 and then Ada.Command_Line.Argument (Command_Idx + 1) = "complete" then
+         if Rem_Args >= 1 and then Ada.Command_Line.Argument (Command_Idx + 1) = "route" then
+            declare
+               Mode_Arg : constant String :=
+                 (if Rem_Args >= 5 then Ada.Command_Line.Argument (Command_Idx + 5) else "");
+               Purpose_Arg : constant String :=
+                 (if Rem_Args >= 6 then Ada.Command_Line.Argument (Command_Idx + 6) else "");
+            begin
+               if Rem_Args < 5 then
+                  Put_Line ("Usage: hra-n scheduled route <ID> <LOCUS> <DATE> managed <PURPOSE>");
+                  Put_Line ("   or: hra-n scheduled route <ID> <LOCUS> <DATE> unmanaged");
+                  return;
+               end if;
+               HRA_N.UI.Scheduled_Cli.Route_Scheduled
+                 (Routing_Path   => Data_Dir_Str (Paths) & "/scheduled-routing.loam",
+                  Scheduled_Path => Scheduled_Path,
+                  Scheduled_Str  => Ada.Command_Line.Argument (Command_Idx + 2),
+                  Locus_Str      => Ada.Command_Line.Argument (Command_Idx + 3),
+                  Date_Str       => Ada.Command_Line.Argument (Command_Idx + 4),
+                  Mode_Str       => Mode_Arg,
+                  Purpose_Str    => Purpose_Arg);
+               return;
+            end;
+         elsif Rem_Args >= 1 and then Ada.Command_Line.Argument (Command_Idx + 1) = "complete" then
             declare
                Target_Arg : constant String :=
                  (if Rem_Args >= 2 then Ada.Command_Line.Argument (Command_Idx + 2) else "");

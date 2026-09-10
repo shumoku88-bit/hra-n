@@ -17,6 +17,7 @@ with HRA_N.Storage.Scheduled_Reader;        use HRA_N.Storage.Scheduled_Reader;
 with HRA_N.Storage.Validity_Reader;         use HRA_N.Storage.Validity_Reader;
 with HRA_N.Application.Review;              use HRA_N.Application.Review;
 with HRA_N.Application.Scheduled_Publisher; use HRA_N.Application.Scheduled_Publisher;
+with HRA_N.Application.Scheduled_Routing_Publisher;
 with HRA_N.UI.Output;                       use HRA_N.UI.Output;
 
 package body HRA_N.UI.Scheduled_Cli is
@@ -732,5 +733,55 @@ package body HRA_N.UI.Scheduled_Cli is
          end if;
       end;
    end Retire_Scheduled;
+
+   procedure Route_Scheduled
+     (Routing_Path   : String;
+      Scheduled_Path : String;
+      Scheduled_Str  : String;
+      Locus_Str      : String;
+      Date_Str       : String;
+      Mode_Str       : String;
+      Purpose_Str    : String := "")
+   is
+      Date : Date_Type;
+   begin
+      if Scheduled_Str'Length not in 1 .. Max_Token_Length
+        or else Locus_Str'Length not in 1 .. Max_Token_Length
+        or else Purpose_Str'Length > Max_Token_Length
+        or else not Parse_Iso_Date (Date_Str, Date)
+      then
+         Put_Error_Line ("hra-n: invalid Scheduled routing coordinate");
+         return;
+      end if;
+      declare
+         Target : HRA_N.Application.Scheduled_Routing_Publisher.Route_Target;
+      begin
+         if Mode_Str = "managed" and then Purpose_Str'Length > 0 then
+            Target := HRA_N.Application.Scheduled_Routing_Publisher.Target_Managed;
+         elsif Mode_Str = "unmanaged" and then Purpose_Str'Length = 0 then
+            Target := HRA_N.Application.Scheduled_Routing_Publisher.Target_Unmanaged;
+         else
+            Put_Error_Line ("hra-n: route target must be managed PURPOSE or unmanaged");
+            return;
+         end if;
+         declare
+            Result : constant HRA_N.Application.Scheduled_Routing_Publisher.Publish_Result :=
+              HRA_N.Application.Scheduled_Routing_Publisher.Publish
+                (Routing_Path   => Routing_Path,
+                 Scheduled_Path => Scheduled_Path,
+                 Scheduled      => (Token => Make_Token (Scheduled_Str)),
+                 Locus          => (Token => Make_Token (Locus_Str)),
+                 Effective_On   => Date,
+                 Target         => Target,
+                 Purpose        => Make_Token (Purpose_Str));
+         begin
+            if Result.Success then
+               Put_Line ("[OK] Published Scheduled route: " & Scheduled_Str & "/" & Locus_Str);
+            else
+               Put_Error_Line ("[ERROR] " & Result.Error_Reason (1 .. Result.Error_Len));
+            end if;
+         end;
+      end;
+   end Route_Scheduled;
 
 end HRA_N.UI.Scheduled_Cli;

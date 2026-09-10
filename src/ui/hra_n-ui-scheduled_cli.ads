@@ -38,4 +38,13 @@ package HRA_N.UI.Scheduled_Cli is
       Authority_Dir  : String;
       Target_Str     : String := "");
 
+   procedure Route_Scheduled
+     (Routing_Path   : String;
+      Scheduled_Path : String;
+      Scheduled_Str  : String;
+      Locus_Str      : String;
+      Date_Str       : String;
+      Mode_Str       : String;
+      Purpose_Str    : String := "");
+
 end HRA_N.UI.Scheduled_Cli;

@@ -26,6 +26,7 @@ with Test_Accounting_Role;
 with Test_Budget_Window;
 with Test_Catalog;
 with Test_Relation;
+with Test_Scheduled_Routing;
 
 procedure Test_Runner is
 begin
@@ -92,6 +93,9 @@ begin
 
    Put_Line ("--> Running Test_Relation...");
    Test_Relation.Run;
+
+   Put_Line ("--> Running Test_Scheduled_Routing...");
+   Test_Scheduled_Routing.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");

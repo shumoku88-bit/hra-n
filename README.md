@@ -1,8 +1,8 @@
 # HRA-N: Verified Household Engine
 
 [![SPARK Level 2](https://img.shields.io/badge/SPARK-Level%202%20Silver%2FGold-green.svg)](https://www.adacore.com/about-spark)
-[![SMT Proved](https://img.shields.io/badge/Checks%20Proved-100%25%20(282%2F282)-brightgreen.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-431%20Passed-brightgreen.svg)]()
+[![SMT Proved](https://img.shields.io/badge/Checks%20Proved-100%25%20(291%2F291)-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-445%20Passed-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/Style-Ada%20Quality%20%26%20Style-blue.svg)]()
 [![License](https://img.shields.io/badge/License-MIT%20%2F%20Apache--2.0-blue.svg)]()
 
@@ -122,6 +122,10 @@ hra-n scheduled complete scheduled-3 2026-09-15 "OpenAI ChatGPT Plus"
 
 # Retire/cancel an obligation that will not occur
 hra-n scheduled retire scheduled-14
+
+# Append dated Purpose-routing evidence for one ScheduledId/Locus coordinate
+hra-n scheduled route scheduled-1 wifi 2026-09-11 managed fixed-costs
+hra-n scheduled route scheduled-1 wifi 2026-10-01 unmanaged
 ```
 
 ### 8. Inspect Open Relations
@@ -155,8 +159,8 @@ HRA-N enforces a strict one-command qualification gate:
 ```
 
 The qualification pipeline executes three mandatory phases:
-1. **SPARK Formal Proof**: 282 checks proved by Why3, Alt-Ergo, CVC5, and Z3 with zero warnings and zero unproved obligations.
-2. **Unit Test Suite**: 431 unit and integration tests covering arithmetic overflow prevention, manifest parsing, scheduled lifecycle, double-reversal prevention, POSIX lock contention, accounting role projection, envelope budget window projection, catalog presentation evidence, relation discharge admission, and publisher durability.
+1. **SPARK Formal Proof**: 291 checks proved by Why3, Alt-Ergo, CVC5, and Z3 with zero warnings and zero unproved obligations.
+2. **Unit Test Suite**: 445 unit and integration tests covering arithmetic overflow prevention, manifest parsing, scheduled lifecycle, double-reversal prevention, POSIX lock contention, accounting role projection, envelope budget window projection, catalog presentation evidence, relation discharge admission, and publisher durability.
 3. **Production Build**: Compiles optimized production binary with full style checks.
 
 ---
