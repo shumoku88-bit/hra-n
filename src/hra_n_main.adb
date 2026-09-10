@@ -5,6 +5,7 @@
 
 with Ada.Command_Line;
 with Ada.Containers;
+with Ada.Environment_Variables;
 with HRA_N.Core.Types;                use HRA_N.Core.Types;
 with HRA_N.Core.Event;                use HRA_N.Core.Event;
 with HRA_N.Core.Coverage;             use HRA_N.Core.Coverage;
@@ -18,10 +19,25 @@ with HRA_N.Storage.Description_Reader; use HRA_N.Storage.Description_Reader;
 with HRA_N.Application.Review;        use HRA_N.Application.Review;
 with HRA_N.Application.Publisher;     use HRA_N.Application.Publisher;
 with HRA_N.UI.Output;                 use HRA_N.UI.Output;
+with HRA_N.UI.Interactive_Movement;
 
 procedure HRA_N_Main is
    Data_Dir : constant String := "/Users/user/Projects/moko/loam-data";
-   Auth_Dir : constant String := Data_Dir & "/movement-authority";
+
+   function Resolve_Auth_Dir return String is
+      Env_Val : constant String :=
+        (if Ada.Environment_Variables.Exists ("LOAM_MOVEMENT_MANIFEST_ROOT")
+         then Ada.Environment_Variables.Value ("LOAM_MOVEMENT_MANIFEST_ROOT")
+         else "");
+   begin
+      if Env_Val'Length > 0 then
+         return Env_Val;
+      else
+         return Data_Dir & "/movement-authority";
+      end if;
+   end Resolve_Auth_Dir;
+
+   Auth_Dir : constant String := Resolve_Auth_Dir;
 
    Manifest_Res    : Read_Manifest_Result;
    Event_Res       : Read_Result;
@@ -37,8 +53,22 @@ procedure HRA_N_Main is
 begin
    --  Branch: Movement publication has its own exclusive lock and authority lifecycle
    if Command = "movement" then
-      if Arg_Count < 4 then
-         Put_Line ("Usage: hra-n movement <FROM> <TO> <AMOUNT> [YYYY-MM-DD] [DESCRIPTION]");
+      if Arg_Count = 1 then
+         --  Interactive entrance when no positional arguments provided
+         declare
+            Success : Boolean;
+         begin
+            HRA_N.UI.Interactive_Movement.Run_Interactive
+              (Authority_Dir => Auth_Dir,
+               Success       => Success);
+            if not Success then
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+            end if;
+            return;
+         end;
+      elsif Arg_Count < 4 then
+         Put_Line ("Usage: hra-n movement (interactive mode)");
+         Put_Line ("   or: hra-n movement <FROM> <TO> <AMOUNT> [YYYY-MM-DD] [DESCRIPTION]");
          Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
          return;
       end if;
