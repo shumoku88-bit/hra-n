@@ -88,21 +88,16 @@ package body HRA_N.Storage.Atomic_Writer is
            ("close failed on staging file: " & Stage_Path, Error_Msg, Error_Len);
       end if;
 
-      --  6. Atomic rename to target path
-      begin
-         if Ada.Directories.Exists (Target_Path) then
-            Ada.Directories.Delete_File (Target_Path);
+      --  6. Atomic rename to target path via POSIX rename(2)
+      --     Never delete Target_Path beforehand, eliminating any absent window.
+      if not Atomic_Rename (Stage_Path, Target_Path) then
+         if Ada.Directories.Exists (Stage_Path) then
+            Ada.Directories.Delete_File (Stage_Path);
          end if;
-         Ada.Directories.Rename (Stage_Path, Target_Path);
-      exception
-         when others =>
-            if Ada.Directories.Exists (Stage_Path) then
-               Ada.Directories.Delete_File (Stage_Path);
-            end if;
-            return Set_Error
-              ("Atomic rename failed from " & Stage_Path & " to " & Target_Path,
-               Error_Msg, Error_Len);
-      end;
+         return Set_Error
+           ("Atomic rename failed from " & Stage_Path & " to " & Target_Path,
+            Error_Msg, Error_Len);
+      end if;
 
       --  7. Sync containing directory metadata
       if not Sync_Directory (Target_Path) then

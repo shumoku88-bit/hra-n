@@ -26,6 +26,14 @@ package body HRA_N.Storage.Sync is
      Convention    => C,
      External_Name => "flock";
 
+   function POSIX_Rename
+     (Old_Path : Interfaces.C.char_array;
+      New_Path : Interfaces.C.char_array) return Interfaces.C.int
+   with
+     Import        => True,
+     Convention    => C,
+     External_Name => "rename";
+
    LOCK_EX : constant Interfaces.C.int := 2;
    LOCK_UN : constant Interfaces.C.int := 8;
 
@@ -58,6 +66,21 @@ package body HRA_N.Storage.Sync is
          end if;
          return False;
    end Sync_Directory;
+
+   function Atomic_Rename
+     (Source_Path : String;
+      Target_Path : String) return Boolean
+   is
+      C_Source : constant Interfaces.C.char_array :=
+        Interfaces.C.To_C (Source_Path);
+      C_Target : constant Interfaces.C.char_array :=
+        Interfaces.C.To_C (Target_Path);
+   begin
+      return POSIX_Rename (C_Source, C_Target) = 0;
+   exception
+      when others =>
+         return False;
+   end Atomic_Rename;
 
    function Acquire_Exclusive_Lock
      (Lock_Path : String;

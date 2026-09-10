@@ -19,6 +19,13 @@ package HRA_N.Storage.Sync is
    --  Synchronize directory entry metadata to non-volatile storage.
    function Sync_Directory (Path : String) return Boolean;
 
+   --  Atomically replace Target_Path with Source_Path using POSIX rename(2).
+   --  Does not delete Target_Path prior to rename, guaranteeing that Target_Path
+   --  is never absent during replacement.
+   function Atomic_Rename
+     (Source_Path : String;
+      Target_Path : String) return Boolean;
+
    --  Lock handle for cross-process mutual exclusion.
    type Lock_Handle is limited private;
 
