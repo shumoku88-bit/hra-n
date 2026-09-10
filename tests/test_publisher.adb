@@ -17,6 +17,7 @@ with HRA_N.Storage.Event_Reader;      use HRA_N.Storage.Event_Reader;
 with HRA_N.Storage.Validity_Reader;   use HRA_N.Storage.Validity_Reader;
 with HRA_N.Storage.Description_Reader; use HRA_N.Storage.Description_Reader;
 with HRA_N.Application.Publisher;     use HRA_N.Application.Publisher;
+with HRA_N.Application.Doctor;        use HRA_N.Application.Doctor;
 with Test_Support;                    use Test_Support;
 
 package body Test_Publisher is
@@ -200,6 +201,88 @@ package body Test_Publisher is
          Assert
            (To_String (Found_Desc) = "Test transfer smbc to paypay",
             "record-29 description matches published text");
+      end;
+
+      --  9. Fail-Closed preflight rejection for Reversal on non-existent event
+      Res := Publish_Reversal
+        (Authority_Dir   => Sandbox_Dir,
+         Target_Event_Id => "record-9999",
+         Valid_On        => D,
+         Description     => "Revert missing");
+      Assert (not Res.Success, "Reversal rejects non-existent target event");
+
+      --  10. Reversal rejects target that is already a reversal
+      Res := Publish_Reversal
+        (Authority_Dir   => Sandbox_Dir,
+         Target_Event_Id => "reversal-of:record-1",
+         Valid_On        => D,
+         Description     => "Revert a reversal");
+      Assert (not Res.Success, "Reversal rejects target with reversal-of prefix");
+
+      --  11. Publish valid Reversal of record-29
+      Res := Publish_Reversal
+        (Authority_Dir   => Sandbox_Dir,
+         Target_Event_Id => "record-29",
+         Valid_On        => D,
+         Description     => "Reverting test transfer record-29");
+      Assert (Res.Success, "Publish_Reversal of record-29 succeeds");
+      Assert
+        (Res.Event_Id_Str (1 .. Res.Event_Id_Len) = "reversal-of:record-29",
+         "Reversal EventId matches reversal-of:record-29");
+
+      --  12. Verify event memory has reversal-of:record-29 with exactly negated effects
+      declare
+         Man_Res : constant Read_Manifest_Result :=
+           Read_Manifest_File (Sandbox_Dir & "/CURRENT");
+         Ev_Rel  : constant String :=
+           Man_Res.Manifest (Family_Event).Rel_Path
+             (1 .. Man_Res.Manifest (Family_Event).Path_Len);
+         Ev_Res  : constant Read_Result :=
+           Read_Event_Memory_File (Sandbox_Dir & "/" & Ev_Rel);
+         Found_Rev : Boolean := False;
+         Rev_Ev    : Event;
+      begin
+         Assert (Ev_Res.Success, "EventMemory reloads after reversal");
+         Assert (Ev_Res.Events.Length = 590, "Event count increased to 590");
+
+         for Ev of Ev_Res.Events loop
+            if Id (Ev).Token.Length = 21
+              and then Id (Ev).Token.Value (1 .. 21) = "reversal-of:record-29"
+            then
+               Found_Rev := True;
+               Rev_Ev    := Ev;
+               exit;
+            end if;
+         end loop;
+
+         Assert (Found_Rev, "reversal-of:record-29 found in EventMemory");
+         Assert (Effect_Count (Rev_Ev) = 2, "reversal-of:record-29 has exactly 2 effects");
+         Assert
+           (Quantity_At (Rev_Ev, (Token => Make_Token ("smbc")), (Token => Make_Token ("jpy"))) = 500,
+            "smbc effect is inverted to +500 JPY");
+         Assert
+           (Quantity_At (Rev_Ev, (Token => Make_Token ("paypay")), (Token => Make_Token ("jpy"))) = -500,
+            "paypay effect is inverted to -500 JPY");
+      end;
+
+      --  13. Fail-Closed prevention of double-reversal
+      Res := Publish_Reversal
+        (Authority_Dir   => Sandbox_Dir,
+         Target_Event_Id => "record-29",
+         Valid_On        => D,
+         Description     => "Second reversal attempt");
+      Assert (not Res.Success, "Double reversal of record-29 is strictly rejected");
+
+      --  14. Overall Doctor health audit on the reversed authority
+      declare
+         Doc_Report : Doctor_Report;
+      begin
+         Run_Doctor
+           (Authority_Dir => Sandbox_Dir,
+            Coverage_Path => "/Users/user/Projects/moko/loam-data/zero-origin-coverage.loam",
+            Report        => Doc_Report,
+            Quiet         => True);
+         Assert (Doc_Report.Overall_Healthy, "Doctor audit 100% HEALTHY after movement reversal");
       end;
    end Run;
 

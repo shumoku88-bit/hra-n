@@ -12,11 +12,11 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 package HRA_N.Application.Publisher is
 
    type Publish_Result is record
-      Success      : Boolean := False;
-      Event_Id_Str : String (1 .. 32) := [others => ' '];
-      Event_Id_Len : Natural := 0;
-      Error_Reason : String (1 .. 128) := [others => ' '];
-      Error_Len    : Natural := 0;
+      Success      : Boolean             := False;
+      Event_Id_Str : String (1 .. 64)    := [others => ' '];
+      Event_Id_Len : Natural             := 0;
+      Error_Reason : String (1 .. 128)   := [others => ' '];
+      Error_Len    : Natural             := 0;
    end record;
 
    --  Publish a balanced two-party movement into the selected authority.
@@ -29,5 +29,12 @@ package HRA_N.Application.Publisher is
       Valid_On      : Date_Type;
       Description   : String := "";
       Explicit_Id   : String := "") return Publish_Result;
+
+   --  Publish an exact inverse reversal event canceling a previous movement.
+   function Publish_Reversal
+     (Authority_Dir   : String;
+      Target_Event_Id : String;
+      Valid_On        : Date_Type;
+      Description     : String := "") return Publish_Result;
 
 end HRA_N.Application.Publisher;

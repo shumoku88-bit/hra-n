@@ -14,6 +14,8 @@ with HRA_N.Storage.Atomic_Writer;   use HRA_N.Storage.Atomic_Writer;
 with HRA_N.Storage.Manifest;        use HRA_N.Storage.Manifest;
 with HRA_N.Storage.Locus_Reader;    use HRA_N.Storage.Locus_Reader;
 with HRA_N.Core.Admission;          use HRA_N.Core.Admission;
+with HRA_N.Core.Event;              use HRA_N.Core.Event;
+with HRA_N.Storage.Event_Reader;    use HRA_N.Storage.Event_Reader;
 
 package body HRA_N.Application.Publisher is
 
@@ -163,6 +165,90 @@ package body HRA_N.Application.Publisher is
       end if;
    end Quanta_Image;
 
+   function Commit_Authority_Update
+     (Authority_Dir  : String;
+      Manifest_Path  : String;
+      Man_Res        : Read_Manifest_Result;
+      Curr_Content   : Unbounded_String;
+      New_Event_Text : String;
+      New_Val_Text   : String;
+      New_Desc_Text  : String;
+      Err_Buf        : in out String;
+      Err_Len        : in out Natural) return Boolean
+   is
+      --  Compute cryptographic SHA-256 for each new object
+      New_Event_Sha : constant String := Compute_Sha256_Hex (New_Event_Text);
+      New_Val_Sha   : constant String := Compute_Sha256_Hex (New_Val_Text);
+      New_Desc_Sha  : constant String := Compute_Sha256_Hex (New_Desc_Text);
+
+      --  Target paths
+      New_Event_Path : constant String :=
+        Authority_Dir & "/objects/Event/" & New_Event_Sha & ".loam";
+      New_Val_Path   : constant String :=
+        Authority_Dir & "/objects/ActualValidity/" & New_Val_Sha & ".loam";
+      New_Desc_Path  : constant String :=
+        Authority_Dir & "/objects/EventDescription/" & New_Desc_Sha & ".loam";
+
+      --  Old CURRENT sha and recovery path
+      Old_Manifest_Sha  : constant String := Compute_Sha256_Hex (To_String (Curr_Content));
+      Recovery_Man_Path : constant String :=
+        Authority_Dir & "/recovery/manifests/" & Old_Manifest_Sha & ".loam";
+
+      --  New CURRENT text
+      New_Manifest_Text : constant String :=
+        "LOAM-MOVEMENT-MANIFEST" & ASCII.HT & "2" & ASCII.LF &
+        "Event" & ASCII.HT & "objects/Event/" & New_Event_Sha & ".loam" &
+        ASCII.HT & New_Event_Sha & ASCII.LF &
+        "ActualValidity" & ASCII.HT & "objects/ActualValidity/" & New_Val_Sha & ".loam" &
+        ASCII.HT & New_Val_Sha & ASCII.LF &
+        "EventDescription" & ASCII.HT & "objects/EventDescription/" & New_Desc_Sha & ".loam" &
+        ASCII.HT & New_Desc_Sha & ASCII.LF &
+        "RelationUnit" & ASCII.HT &
+        Man_Res.Manifest (Family_Relation_Unit).Rel_Path
+          (1 .. Man_Res.Manifest (Family_Relation_Unit).Path_Len) &
+        ASCII.HT &
+        Man_Res.Manifest (Family_Relation_Unit).Digest (1 .. 64) & ASCII.LF &
+        "RelationDischarge" & ASCII.HT &
+        Man_Res.Manifest (Family_Relation_Discharge).Rel_Path
+          (1 .. Man_Res.Manifest (Family_Relation_Discharge).Path_Len) &
+        ASCII.HT &
+        Man_Res.Manifest (Family_Relation_Discharge).Digest (1 .. 64) & ASCII.LF &
+        "LocusAdmission" & ASCII.HT &
+        Man_Res.Manifest (Family_Locus_Admission).Rel_Path
+          (1 .. Man_Res.Manifest (Family_Locus_Admission).Path_Len) &
+        ASCII.HT &
+        Man_Res.Manifest (Family_Locus_Admission).Digest (1 .. 64) & ASCII.LF;
+   begin
+      --  1. Write new content-addressed immutable objects
+      if not Write_File_Atomically (New_Event_Path, New_Event_Text, Err_Buf, Err_Len) then
+         return False;
+      end if;
+
+      if not Write_File_Atomically (New_Val_Path, New_Val_Text, Err_Buf, Err_Len) then
+         return False;
+      end if;
+
+      if not Write_File_Atomically (New_Desc_Path, New_Desc_Text, Err_Buf, Err_Len) then
+         return False;
+      end if;
+
+      --  2. Retain old CURRENT manifest as immutable recovery candidate
+      if not Ada.Directories.Exists (Recovery_Man_Path) then
+         if not Write_File_Atomically
+           (Recovery_Man_Path, To_String (Curr_Content), Err_Buf, Err_Len)
+         then
+            return False;
+         end if;
+      end if;
+
+      --  3. Atomically replace CURRENT manifest
+      if not Write_File_Atomically (Manifest_Path, New_Manifest_Text, Err_Buf, Err_Len) then
+         return False;
+      end if;
+
+      return True;
+   end Commit_Authority_Update;
+
    function Publish_Movement
      (Authority_Dir : String;
       From_Locus    : String;
@@ -180,8 +266,8 @@ package body HRA_N.Application.Publisher is
       Man_Res       : Read_Manifest_Result;
       Failed_Fam    : Manifest_Family;
 
-      Err_Buf : String (1 .. 128);
-      Err_Len : Natural;
+      Err_Buf : String (1 .. 128) := [others => ' '];
+      Err_Len : Natural           := 0;
    begin
       --  1. Preflight sanity checks
       if Amount <= 0 then
@@ -305,83 +391,22 @@ package body HRA_N.Application.Publisher is
 
             New_Desc_Text : constant String :=
               To_String (Desc_Content) & New_Desc_Append;
-
-            --  Compute cryptographic SHA-256 for each new object
-            New_Event_Sha : constant String := Compute_Sha256_Hex (New_Event_Text);
-            New_Val_Sha   : constant String := Compute_Sha256_Hex (New_Val_Text);
-            New_Desc_Sha  : constant String := Compute_Sha256_Hex (New_Desc_Text);
-
-            --  Target paths
-            New_Event_Path : constant String :=
-              Authority_Dir & "/objects/Event/" & New_Event_Sha & ".loam";
-            New_Val_Path   : constant String :=
-              Authority_Dir & "/objects/ActualValidity/" & New_Val_Sha & ".loam";
-            New_Desc_Path  : constant String :=
-              Authority_Dir & "/objects/EventDescription/" & New_Desc_Sha & ".loam";
-
-            --  Old CURRENT sha and recovery path
-            Old_Manifest_Sha  : constant String := Compute_Sha256_Hex (To_String (Curr_Content));
-            Recovery_Man_Path : constant String :=
-              Authority_Dir & "/recovery/manifests/" & Old_Manifest_Sha & ".loam";
-
-            --  New CURRENT text
-            New_Manifest_Text : constant String :=
-              "LOAM-MOVEMENT-MANIFEST" & ASCII.HT & "2" & ASCII.LF &
-              "Event" & ASCII.HT & "objects/Event/" & New_Event_Sha & ".loam" &
-              ASCII.HT & New_Event_Sha & ASCII.LF &
-              "ActualValidity" & ASCII.HT & "objects/ActualValidity/" & New_Val_Sha & ".loam" &
-              ASCII.HT & New_Val_Sha & ASCII.LF &
-              "EventDescription" & ASCII.HT & "objects/EventDescription/" & New_Desc_Sha & ".loam" &
-              ASCII.HT & New_Desc_Sha & ASCII.LF &
-              "RelationUnit" & ASCII.HT &
-              Man_Res.Manifest (Family_Relation_Unit).Rel_Path
-                (1 .. Man_Res.Manifest (Family_Relation_Unit).Path_Len) &
-              ASCII.HT &
-              Man_Res.Manifest (Family_Relation_Unit).Digest (1 .. 64) & ASCII.LF &
-              "RelationDischarge" & ASCII.HT &
-              Man_Res.Manifest (Family_Relation_Discharge).Rel_Path
-                (1 .. Man_Res.Manifest (Family_Relation_Discharge).Path_Len) &
-              ASCII.HT &
-              Man_Res.Manifest (Family_Relation_Discharge).Digest (1 .. 64) & ASCII.LF &
-              "LocusAdmission" & ASCII.HT &
-              Man_Res.Manifest (Family_Locus_Admission).Rel_Path
-                (1 .. Man_Res.Manifest (Family_Locus_Admission).Path_Len) &
-              ASCII.HT &
-              Man_Res.Manifest (Family_Locus_Admission).Digest (1 .. 64) & ASCII.LF;
          begin
-            --  7. Write new content-addressed immutable objects
-            if not Write_File_Atomically (New_Event_Path, New_Event_Text, Err_Buf, Err_Len) then
+            if not Commit_Authority_Update
+              (Authority_Dir  => Authority_Dir,
+               Manifest_Path  => Manifest_Path,
+               Man_Res        => Man_Res,
+               Curr_Content   => Curr_Content,
+               New_Event_Text => New_Event_Text,
+               New_Val_Text   => New_Val_Text,
+               New_Desc_Text  => New_Desc_Text,
+               Err_Buf        => Err_Buf,
+               Err_Len        => Err_Len)
+            then
                Release_Lock (Lock);
-               return Set_Error (Result, "Failed writing Event object: " & Err_Buf (1 .. Err_Len));
+               return Set_Error (Result, Err_Buf (1 .. Err_Len));
             end if;
 
-            if not Write_File_Atomically (New_Val_Path, New_Val_Text, Err_Buf, Err_Len) then
-               Release_Lock (Lock);
-               return Set_Error (Result, "Failed writing ActualValidity object: " & Err_Buf (1 .. Err_Len));
-            end if;
-
-            if not Write_File_Atomically (New_Desc_Path, New_Desc_Text, Err_Buf, Err_Len) then
-               Release_Lock (Lock);
-               return Set_Error (Result, "Failed writing EventDescription object: " & Err_Buf (1 .. Err_Len));
-            end if;
-
-            --  8. Retain old CURRENT manifest as immutable recovery candidate
-            if not Ada.Directories.Exists (Recovery_Man_Path) then
-               if not Write_File_Atomically
-                 (Recovery_Man_Path, To_String (Curr_Content), Err_Buf, Err_Len)
-               then
-                  Release_Lock (Lock);
-                  return Set_Error (Result, "Failed retaining recovery manifest: " & Err_Buf (1 .. Err_Len));
-               end if;
-            end if;
-
-            --  9. Atomically replace CURRENT manifest
-            if not Write_File_Atomically (Manifest_Path, New_Manifest_Text, Err_Buf, Err_Len) then
-               Release_Lock (Lock);
-               return Set_Error (Result, "Failed atomically updating CURRENT: " & Err_Buf (1 .. Err_Len));
-            end if;
-
-            --  10. Release lock and build receipt
             Release_Lock (Lock);
 
             Result.Success := True;
@@ -396,5 +421,198 @@ package body HRA_N.Application.Publisher is
          Release_Lock (Lock);
          return Set_Error (Result, "Unexpected exception during publish");
    end Publish_Movement;
+
+   function Publish_Reversal
+     (Authority_Dir   : String;
+      Target_Event_Id : String;
+      Valid_On        : Date_Type;
+      Description     : String := "") return Publish_Result
+   is
+      Result        : Publish_Result;
+      Reversal_Id   : constant String := "reversal-of:" & Target_Event_Id;
+      Lock_Path     : constant String := Authority_Dir & "/CURRENT.loam-writer-lock";
+      Lock          : Lock_Handle;
+      Manifest_Path : constant String := Authority_Dir & "/CURRENT";
+      Man_Res       : Read_Manifest_Result;
+      Failed_Fam    : Manifest_Family;
+      Err_Buf       : String (1 .. 128) := [others => ' '];
+      Err_Len       : Natural := 0;
+   begin
+      --  1. Preflight sanity checks
+      if Target_Event_Id'Length = 0 then
+         return Set_Error (Result, "Target event ID must not be empty");
+      end if;
+
+      if Target_Event_Id'Length > Max_Token_Length - 12 then
+         return Set_Error (Result, "Target event ID too long for reversal");
+      end if;
+
+      if Target_Event_Id'Length >= 12
+        and then Target_Event_Id (Target_Event_Id'First .. Target_Event_Id'First + 11) = "reversal-of:"
+      then
+         return Set_Error (Result, "Cannot revert an existing reversal event");
+      end if;
+
+      --  2. Acquire exclusive writer ownership lock
+      if not Acquire_Exclusive_Lock (Lock_Path, Lock) then
+         return Set_Error (Result, "Failed to acquire writer ownership lock");
+      end if;
+
+      --  3. Re-read and verify selected manifest authority under lock
+      Man_Res := Read_Manifest_File (Manifest_Path);
+      if not Man_Res.Success then
+         Release_Lock (Lock);
+         return Set_Error
+           (Result, "Failed to read CURRENT manifest: " &
+            Man_Res.Error_Reason (1 .. Man_Res.Error_Len));
+      end if;
+
+      if not Verify_All_Objects (Authority_Dir, Man_Res.Manifest, Failed_Fam) then
+         Release_Lock (Lock);
+         return Set_Error
+           (Result, "Pre-reversal integrity check failed: " & Family_Name (Failed_Fam));
+      end if;
+
+      --  4. Read current Event memory and locate target event
+      declare
+         Event_Rel : constant String :=
+           Man_Res.Manifest (Family_Event).Rel_Path
+             (1 .. Man_Res.Manifest (Family_Event).Path_Len);
+         Val_Rel : constant String :=
+           Man_Res.Manifest (Family_Actual_Validity).Rel_Path
+             (1 .. Man_Res.Manifest (Family_Actual_Validity).Path_Len);
+         Desc_Rel : constant String :=
+           Man_Res.Manifest (Family_Event_Description).Rel_Path
+             (1 .. Man_Res.Manifest (Family_Event_Description).Path_Len);
+
+         Event_Full_Path : constant String := Authority_Dir & "/" & Event_Rel;
+         Ev_Res          : constant Read_Result :=
+           Read_Event_Memory_File (Event_Full_Path);
+
+         Event_Content : constant Unbounded_String :=
+           Read_Entire_File (Event_Full_Path);
+         Val_Content   : constant Unbounded_String :=
+           Read_Entire_File (Authority_Dir & "/" & Val_Rel);
+         Desc_Content  : constant Unbounded_String :=
+           Read_Entire_File (Authority_Dir & "/" & Desc_Rel);
+         Curr_Content  : constant Unbounded_String :=
+           Read_Entire_File (Manifest_Path);
+
+         Target_Index : Natural := 0;
+      begin
+         if not Ev_Res.Success then
+            Release_Lock (Lock);
+            return Set_Error
+              (Result, "Failed to parse Event memory: " &
+               Ev_Res.Error_Reason (1 .. Ev_Res.Error_Len));
+         end if;
+
+         if Length (Event_Content) = 0 or else Length (Val_Content) = 0
+           or else Length (Desc_Content) = 0 or else Length (Curr_Content) = 0
+         then
+            Release_Lock (Lock);
+            return Set_Error (Result, "Failed to read one or more authority object contents");
+         end if;
+
+         --  Scan events: locate target and verify not already reversed
+         for I in 1 .. Natural (Ev_Res.Events.Length) loop
+            declare
+               Ev     : constant Event := Ev_Res.Events.Element (I);
+               Tok    : constant Token_Text := Id (Ev).Token;
+               Id_Str : constant String := Tok.Value (1 .. Tok.Length);
+            begin
+               if Id_Str = Reversal_Id then
+                  Release_Lock (Lock);
+                  return Set_Error (Result, "Event is already reversed: " & Target_Event_Id);
+               end if;
+
+               if Id_Str = Target_Event_Id then
+                  Target_Index := I;
+               end if;
+            end;
+         end loop;
+
+         if Target_Index = 0 then
+            Release_Lock (Lock);
+            return Set_Error (Result, "Target event not found: " & Target_Event_Id);
+         end if;
+
+         --  Build reverse event
+         declare
+            Target_Ev : constant Event := Ev_Res.Events.Element (Target_Index);
+            Count     : constant Natural := Effect_Count (Target_Ev);
+            New_Event_Append : Unbounded_String := Null_Unbounded_String;
+         begin
+            if Count = 0 then
+               Release_Lock (Lock);
+               return Set_Error (Result, "Target event has no effects to revert");
+            end if;
+
+            Append (New_Event_Append, "EVENT" & ASCII.HT & Reversal_Id & ASCII.LF);
+            for I in 1 .. Count loop
+               declare
+                  Eff         : constant Effect := Effect_At (Target_Ev, I);
+                  Eff_Key     : constant String := Eff.Key.Token.Value (1 .. Eff.Key.Token.Length);
+                  Eff_Locus   : constant String := Eff.Locus.Token.Value (1 .. Eff.Locus.Token.Length);
+                  Eff_Measure : constant String :=
+                    Eff.Measure.Token.Value (1 .. Eff.Measure.Token.Length);
+                  Inv_Quanta  : constant Quanta_Type := -Eff.Amount.Quanta;
+               begin
+                  Append
+                    (New_Event_Append,
+                     "EFFECT" & ASCII.HT & Eff_Key & ASCII.HT & Eff_Locus & ASCII.HT &
+                     Eff_Measure & ASCII.HT & Quanta_Image (Inv_Quanta) & ASCII.LF);
+               end;
+            end loop;
+
+            declare
+               New_Event_Text : constant String :=
+                 To_String (Event_Content) & To_String (New_Event_Append);
+
+               New_Val_Append : constant String :=
+                 "BASE" & ASCII.HT & Reversal_Id & ASCII.HT &
+                 Format_Iso_Date (Valid_On) & ASCII.LF;
+               New_Val_Text   : constant String :=
+                 To_String (Val_Content) & New_Val_Append;
+
+               Desc_Text : constant String :=
+                 (if Description'Length > 0 then Description
+                  else "Reversal of " & Target_Event_Id);
+               New_Desc_Append : constant String :=
+                 "DESC" & ASCII.HT & Reversal_Id & ASCII.HT &
+                 Escape_Text (Desc_Text) & ASCII.LF;
+               New_Desc_Text   : constant String :=
+                 To_String (Desc_Content) & New_Desc_Append;
+            begin
+               if not Commit_Authority_Update
+                 (Authority_Dir  => Authority_Dir,
+                  Manifest_Path  => Manifest_Path,
+                  Man_Res        => Man_Res,
+                  Curr_Content   => Curr_Content,
+                  New_Event_Text => New_Event_Text,
+                  New_Val_Text   => New_Val_Text,
+                  New_Desc_Text  => New_Desc_Text,
+                  Err_Buf        => Err_Buf,
+                  Err_Len        => Err_Len)
+               then
+                  Release_Lock (Lock);
+                  return Set_Error (Result, Err_Buf (1 .. Err_Len));
+               end if;
+
+               Release_Lock (Lock);
+
+               Result.Success := True;
+               Result.Event_Id_Len := Reversal_Id'Length;
+               Result.Event_Id_Str (1 .. Reversal_Id'Length) := Reversal_Id;
+               return Result;
+            end;
+         end;
+      end;
+
+   exception
+      when others =>
+         Release_Lock (Lock);
+         return Set_Error (Result, "Unexpected exception during reversal");
+   end Publish_Reversal;
 
 end HRA_N.Application.Publisher;

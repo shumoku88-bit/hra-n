@@ -94,6 +94,73 @@ begin
          end;
       end if;
 
+      --  Branch: Movement reversal (revert)
+      if (Command = "movement" and then Rem_Args >= 1 and then Ada.Command_Line.Argument (Command_Idx + 1) = "revert")
+        or else Command = "revert"
+      then
+         declare
+            Arg_Offset : constant Positive :=
+              (if Command = "revert" then Command_Idx else Command_Idx + 1);
+            Eff_Rem    : constant Natural :=
+              (if Command = "revert" then Rem_Args else Rem_Args - 1);
+         begin
+            if Eff_Rem < 1 then
+               Put_Line ("Usage: hra-n movement revert <EVENT_ID> [YYYY-MM-DD] [REASON]");
+               Put_Line ("   or: hra-n revert <EVENT_ID> [YYYY-MM-DD] [REASON]");
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               return;
+            end if;
+
+            declare
+               Target_Id : constant String := Ada.Command_Line.Argument (Arg_Offset + 1);
+               Date_Val  : Date_Type       := Get_System_Date;
+               Desc_Val  : constant String :=
+                 (if Eff_Rem >= 3 then Ada.Command_Line.Argument (Arg_Offset + 3)
+                  elsif Eff_Rem = 2 and then Ada.Command_Line.Argument (Arg_Offset + 2)'Length > 0
+                    and then Ada.Command_Line.Argument (Arg_Offset + 2)(Ada.Command_Line.Argument (Arg_Offset + 2)'First) /= '2'
+                  then Ada.Command_Line.Argument (Arg_Offset + 2)
+                  else "");
+            begin
+               if Eff_Rem >= 2 then
+                  declare
+                     Date_Arg : constant String := Ada.Command_Line.Argument (Arg_Offset + 2);
+                     Parsed_D : Date_Type;
+                  begin
+                     if Parse_Iso_Date (Date_Arg, Parsed_D) then
+                        Date_Val := Parsed_D;
+                     end if;
+                  end;
+               end if;
+
+               declare
+                  Pub_Res : constant Publish_Result :=
+                    Publish_Reversal
+                      (Authority_Dir   => Auth_Dir,
+                       Target_Event_Id => Target_Id,
+                       Valid_On        => Date_Val,
+                       Description     => Desc_Val);
+               begin
+                  if Pub_Res.Success then
+                     Put_Line ("============================================================");
+                     Put_Line (" [OK] Admitted and published Reversal receipt: " &
+                               Pub_Res.Event_Id_Str (1 .. Pub_Res.Event_Id_Len));
+                     Put_Line ("      TARGET: " & Target_Id);
+                     Put_Line ("      DATE:   " & Format_Iso_Date (Date_Val));
+                     if Desc_Val'Length > 0 then
+                        Put_Line ("      REASON: " & Desc_Val);
+                     end if;
+                     Put_Line ("============================================================");
+                  else
+                     Put_Line ("[ERROR] Reversal rejected: " &
+                               Pub_Res.Error_Reason (1 .. Pub_Res.Error_Len));
+                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  end if;
+               end;
+            end;
+         end;
+         return;
+      end if;
+
       --  Branch: Movement publication has its own exclusive lock and authority lifecycle
       if Command = "movement" then
          if Rem_Args = 0 then
@@ -112,6 +179,7 @@ begin
          elsif Rem_Args < 3 then
             Put_Line ("Usage: hra-n movement (interactive mode)");
             Put_Line ("   or: hra-n movement <FROM> <TO> <AMOUNT> [YYYY-MM-DD] [DESCRIPTION]");
+            Put_Line ("   or: hra-n movement revert <EVENT_ID> [YYYY-MM-DD] [REASON]");
             Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
             return;
          end if;

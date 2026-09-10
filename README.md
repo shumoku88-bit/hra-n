@@ -1,8 +1,8 @@
 # HRA-N: Verified Household Engine
 
 [![SPARK Level 2](https://img.shields.io/badge/SPARK-Level%202%20Silver%2FGold-green.svg)](https://www.adacore.com/about-spark)
-[![SMT Proved](https://img.shields.io/badge/Checks%20Proved-100%25%20(168%2F168)-brightgreen.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-177%20Passed-brightgreen.svg)]()
+[![SMT Proved](https://img.shields.io/badge/Checks%20Proved-100%25%20(179%2F179)-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-245%20Passed-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/Style-Ada%20Quality%20%26%20Style-blue.svg)]()
 [![License](https://img.shields.io/badge/License-MIT%20%2F%20Apache--2.0-blue.svg)]()
 
@@ -22,46 +22,16 @@ It inherits the mathematical purity of **Loam**'s orthogonal ontology (zero-sum 
   Compiles to a self-contained, high-performance static native executable (~5 MB) that launches in under 10 milliseconds.
 - **Crash Consistency & Atomic Durability**:
   POSIX advisory `flock(LOCK_EX)` locks, sibling directory staging, explicit storage synchronization (`fsync`), and atomic replacement guarantee zero data corruption across sudden power loss or process termination.
+- **Immutable Reversal & Audit Trail (`hra-n movement revert`)**:
+  Correct mistaken entries through exact algebraic reversal vectors without physical deletion or history tampering. Double-reversals and reversal-of-reversals are rejected fail-closed.
+- **Full Scheduled Obligation Lifecycle (`hra-n scheduled`)**:
+  Inspect, plan, register (`add`), execute (`complete`), and cancel (`retire`) recurring and future obligations with zero manual text file editing.
+- **Automatic Multi-Strategy Path Resolution**:
+  Auto-detects active repositories via `-d / --data-dir`, `HRA_DATA_DIR` / `LOAM_DATA_DIR` environment variables, current working directory, or parent directory traversal.
 - **Self-Healing Diagnostics (`hra-n doctor`)**:
   Built-in cryptographic integrity audit and invariant verification verifying SHA-256 digests, zero-sum conservation laws, referential integrity, and locus admission bounds.
 - **Frictionless Onboarding (`hra-n init`)**:
   Initialize a mathematically sound, tamper-evident household authority repository in a single command.
-
----
-
-## Architecture Overview
-
-```
-                      +-----------------------------+
-                      |   HRA-N CLI & Interactive   |
-                      +--------------+--------------+
-                                     |
-              +----------------------+----------------------+
-              |                      |                      |
-      +-------v-------+      +-------v-------+      +-------v-------+
-      |  Initializer  |      |   Publisher   |      |    Doctor     |
-      +-------+-------+      +-------+-------+      +-------+-------+
-              |                      |                      |
-              +----------------------+----------------------+
-                                     |
-                      +--------------v--------------+
-                      |     Storage & Durability    |
-                      |  (POSIX fsync / flock /     |
-                      |   Atomic Staging & Rename)  |
-                      +--------------+--------------+
-                                     |
-                      +--------------v--------------+
-                      |   Manifest Authority v2     |
-                      |          (CURRENT)          |
-                      +--------------+--------------+
-                                     |
-    +-------------+-------------+----+----+-------------+-------------+
-    |             |             |         |             |             |
-+---v----+   +----v----+   +----v----+  +-v-----+  +----v----+   +----v----+
-| Event  |   |Validity |   |Description | Unit  |  |Discharge|   |Admission|
-| Memory |   | History |   | Memory  |  | Memory|  | Memory  |   | Vocab   |
-+--------+   +---------+   +---------+  +-------+  +---------+   +---------+
-```
 
 ---
 
@@ -86,11 +56,23 @@ This provisions:
 # Interactive entrance (prompts for Date, Locus, Amount, and Description with '?' autocomplete)
 hra-n movement
 
-# Or scripted one-liner publication:
+# Scripted one-liner publication:
 hra-n movement cash food 850 2026-09-10 "Lunch"
+
+# Target a specific repository anywhere on your system:
+hra-n -d ~/my-finances movement smbc paypay 5000 2026-09-10 "Top up"
 ```
 
-### 3. Review Records
+### 3. Revert an Erroneous Entry (Algebraic Movement Reversal)
+
+```bash
+# Publish an exact inverse reversal canceling record-29
+hra-n movement revert record-29 2026-09-10 "Duplicate transaction"
+# or shorthand:
+hra-n revert record-29
+```
+
+### 4. Review Records
 
 ```bash
 # Focus review of the recent week
@@ -106,27 +88,32 @@ hra-n review /Lunch
 hra-n review u
 ```
 
-### 4. Inspect Balances
+### 5. Inspect Balances
 
 ```bash
 # Display affirmatively covered account balances
 hra-n summary
 ```
 
-### 5. Inspect & Complete Scheduled Obligations
+### 6. Manage Scheduled Obligations
 
 ```bash
 # List all pending scheduled obligations sorted by due date
 hra-n scheduled
 
-# Interactively select, review, and complete an obligation
-hra-n scheduled complete
+# Register a new scheduled obligation (interactive or scripted)
+hra-n scheduled add
+hra-n scheduled add smbc rent 80000 2026-10-01
 
-# Scripted one-action atomic completion
+# Complete an obligation upon payment (publishes movement receipt)
+hra-n scheduled complete
 hra-n scheduled complete scheduled-3 2026-09-15 "OpenAI ChatGPT Plus"
+
+# Retire/cancel an obligation that will not occur
+hra-n scheduled retire scheduled-14
 ```
 
-### 6. Verify Repository Integrity
+### 7. Verify Repository Integrity
 
 ```bash
 # Run comprehensive cryptographic and mathematical invariant audit
@@ -145,7 +132,7 @@ HRA-N enforces a strict one-command qualification gate. Run:
 
 The qualification pipeline executes three mandatory phases:
 1. **SPARK Formal Proof**: 179 checks proved by Why3, Alt-Ergo, CVC5, and Z3 with zero warnings and zero unproved obligations.
-2. **Unit Test Suite**: 212 unit and integration tests covering arithmetic overflow prevention, manifest parsing, scheduled lifecycle, POSIX lock contention, and publisher durability.
+2. **Unit Test Suite**: 245 unit and integration tests covering arithmetic overflow prevention, manifest parsing, scheduled lifecycle, double-reversal prevention, POSIX lock contention, and publisher durability.
 3. **Production Build**: Compiles optimized production binary with full style checks.
 
 ---
