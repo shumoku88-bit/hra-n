@@ -11,6 +11,7 @@ with Test_Movement;
 with Test_Event;
 with Test_Event_Reader;
 with Test_Coverage;
+with Test_Manifest;
 
 procedure Test_Runner is
 begin
@@ -32,6 +33,9 @@ begin
 
    Put_Line ("--> Running Test_Coverage...");
    Test_Coverage.Run;
+
+   Put_Line ("--> Running Test_Manifest...");
+   Test_Manifest.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");

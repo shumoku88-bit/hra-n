@@ -8,41 +8,63 @@ with Ada.Containers;
 with HRA_N.Core.Types;             use HRA_N.Core.Types;
 with HRA_N.Core.Event;             use HRA_N.Core.Event;
 with HRA_N.Core.Coverage;          use HRA_N.Core.Coverage;
+with HRA_N.Storage.Manifest;       use HRA_N.Storage.Manifest;
 with HRA_N.Storage.Event_Reader;   use HRA_N.Storage.Event_Reader;
 with HRA_N.Storage.Coverage_Reader; use HRA_N.Storage.Coverage_Reader;
 
 procedure HRA_N_Main is
    Data_Dir : constant String := "/Users/user/Projects/moko/loam-data";
+   Auth_Dir : constant String := Data_Dir & "/movement-authority";
 
-   Event_File_Path : constant String :=
-     Data_Dir & "/movement-authority/objects/Event/100b83b1d62bb00e0f26aa0c08beab00eebffc09a559db75285253638f3c9cb4.loam";
-
-   Coverage_File_Path : constant String :=
-     Data_Dir & "/zero-origin-coverage.loam";
-
+   Manifest_Res : Read_Manifest_Result;
    Event_Res    : Read_Result;
    Coverage_Res : Read_Coverage_Result;
+   Failed_Fam   : Manifest_Family;
    JPY          : constant Measure_Id := (Token => Make_Token ("jpy"));
 begin
    Put_Line ("============================================================");
    Put_Line (" HRA-N: Verified Household Engine");
-   Put_Line (" Zero-Origin Balance Projection from Real Operational Data");
+   Put_Line (" Authority-Governed Zero-Origin Balance Projection");
    Put_Line ("============================================================");
 
-   -- 1. Load Event Memory
-   Put_Line ("Loading event memory object...");
-   Event_Res := Read_Event_Memory_File (Event_File_Path);
-   if not Event_Res.Success then
-      Put_Line ("[ERROR] Failed to load event memory: " &
-                Event_Res.Error_Reason (1 .. Event_Res.Error_Len));
+   -- 1. Load and Verify Manifest Authority (CURRENT)
+   Put_Line ("Loading movement authority manifest: " & Auth_Dir & "/CURRENT");
+   Manifest_Res := Read_Manifest_File (Auth_Dir & "/CURRENT");
+   if not Manifest_Res.Success then
+      Put_Line ("[ERROR] Failed to load manifest: " &
+                Manifest_Res.Error_Reason (1 .. Manifest_Res.Error_Len));
       return;
    end if;
-   Put_Line ("  Admitted events: " &
-             Ada.Containers.Count_Type'Image (Event_Res.Events.Length));
 
-   -- 2. Load Zero-Origin Coverage Evidence
-   Put_Line ("Loading zero-origin coverage evidence...");
-   Coverage_Res := Read_Coverage_File (Coverage_File_Path);
+   Put_Line ("Verifying cryptographic SHA-256 integrity for all authority objects...");
+   if not Verify_All_Objects (Auth_Dir, Manifest_Res.Manifest, Failed_Fam) then
+      Put_Line ("[FATAL] Integrity verification failed for family: " &
+                Family_Name (Failed_Fam));
+      return;
+   end if;
+   Put_Line ("  [OK] All 6 authority objects verified against content digests.");
+
+   -- 2. Load Selected Event Memory via Manifest
+   declare
+      Event_Rel : constant String :=
+        Manifest_Res.Manifest (Family_Event).Rel_Path
+          (1 .. Manifest_Res.Manifest (Family_Event).Path_Len);
+      Event_Full : constant String := Auth_Dir & "/" & Event_Rel;
+   begin
+      Put_Line ("Loading authoritative event memory: " & Event_Rel);
+      Event_Res := Read_Event_Memory_File (Event_Full);
+      if not Event_Res.Success then
+         Put_Line ("[ERROR] Failed to load event memory: " &
+                   Event_Res.Error_Reason (1 .. Event_Res.Error_Len));
+         return;
+      end if;
+      Put_Line ("  Admitted events: " &
+                Ada.Containers.Count_Type'Image (Event_Res.Events.Length));
+   end;
+
+   -- 3. Load Zero-Origin Coverage Evidence
+   Put_Line ("Loading zero-origin coverage evidence: " & Data_Dir & "/zero-origin-coverage.loam");
+   Coverage_Res := Read_Coverage_File (Data_Dir & "/zero-origin-coverage.loam");
    if not Coverage_Res.Success then
       Put_Line ("[ERROR] Failed to load coverage: " &
                 Coverage_Res.Error_Reason (1 .. Coverage_Res.Error_Len));
@@ -52,7 +74,7 @@ begin
              Coverage_Count_Type'Image (Coordinate_Count (Coverage_Res.Coverage)));
 
    Put_Line ("------------------------------------------------------------");
-   Put_Line (" Household Balances (Only Affirmatively Covered Loci):");
+   Put_Line (" Verified Household Balances (Only Affirmatively Covered Loci):");
    Put_Line ("------------------------------------------------------------");
 
    -- Project balance for each covered coordinate
@@ -61,7 +83,6 @@ begin
          Coord : constant Coordinate_Type := Coordinate_At (Coverage_Res.Coverage, I);
          Total : Long_Long_Integer := 0;
       begin
-         -- Fold events over the coordinate
          for Ev of Event_Res.Events loop
             Total := Total + Quantity_At (Ev, Coord.Locus, Coord.Measure);
          end loop;
@@ -85,7 +106,7 @@ begin
       end;
    end loop;
 
-   -- 3. Fail-Closed Verification on Uncovered Loci
+   -- 4. Fail-Closed Verification on Uncovered Loci
    Put_Line ("------------------------------------------------------------");
    Put_Line (" Fail-Closed Verification (Querying Uncovered Loci):");
    Put_Line ("------------------------------------------------------------");
@@ -104,5 +125,7 @@ begin
    end;
 
    Put_Line ("============================================================");
-   Put_Line (" All mathematical invariants verified and preserved.");
+   Put_Line (" Complete authority manifest, cryptographic integrity,");
+   Put_Line (" and mathematical balance laws verified.");
+   Put_Line ("============================================================");
 end HRA_N_Main;
