@@ -1,4 +1,4 @@
--------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 --  HRA-N: Verified Household Engine
 --  Package body: HRA_N.UI.Interactive_Movement
 -------------------------------------------------------------------------------
@@ -9,275 +9,169 @@ with Ada.Strings.Fixed;              use Ada.Strings.Fixed;
 
 with HRA_N.Core.Types;               use HRA_N.Core.Types;
 with HRA_N.Core.Validity;            use HRA_N.Core.Validity;
-with HRA_N.Core.Admission;           use HRA_N.Core.Admission;
-with HRA_N.Core.Catalog;             use HRA_N.Core.Catalog;
-with HRA_N.Storage.Catalog_Reader;   use HRA_N.Storage.Catalog_Reader;
-with HRA_N.Storage.Manifest;         use HRA_N.Storage.Manifest;
-with HRA_N.Storage.Locus_Reader;     use HRA_N.Storage.Locus_Reader;
-with HRA_N.Storage.Validity_Reader;  use HRA_N.Storage.Validity_Reader;
+with HRA_N.Core.Accounting_Role;     use HRA_N.Core.Accounting_Role;
+with HRA_N.Storage.Policy_Reader;    use HRA_N.Storage.Policy_Reader;
 with HRA_N.Application.Review;       use HRA_N.Application.Review;
 with HRA_N.Application.Publisher;    use HRA_N.Application.Publisher;
 with HRA_N.UI.Output;                use HRA_N.UI.Output;
 
 package body HRA_N.UI.Interactive_Movement is
 
-   ----------------------------------------------------------------------------
-   --  Prompt for a single line from standard input
-   ----------------------------------------------------------------------------
    function Prompt_Line (Prompt_Text : String) return String is
-      Buffer : String (1 .. 1024);
+      Buffer : String (1 .. 256);
       Last   : Natural := 0;
    begin
-      Put (Prompt_Text);
-      Ada.Text_IO.Get_Line (Buffer, Last);
+      Ada.Text_IO.Put (Prompt_Text);
+      Ada.Text_IO.Flush;
+      begin
+         Ada.Text_IO.Get_Line (Buffer, Last);
+      exception
+         when Ada.IO_Exceptions.End_Error =>
+            return "";
+      end;
       return Trim (Buffer (1 .. Last), Ada.Strings.Both);
-   exception
-      when Ada.IO_Exceptions.End_Error =>
-         --  Terminal closed or EOF (Ctrl+D) sent
-         New_Line;
-         return "";
    end Prompt_Line;
 
-   ----------------------------------------------------------------------------
-   --  Display admitted loci, enriched with curated catalog display names
-   --  when affirmative catalog evidence is available.
-   ----------------------------------------------------------------------------
-   procedure Display_Admitted_Loci
-     (Vocab      : Locus_Vocabulary;
-      Catalog    : Catalog_Memory;
-      Has_Cat    : Boolean)
-   is
-   begin
-      Put_Line ("  Admitted loci (" & Trim (Vocab.Count'Image, Ada.Strings.Both) & "):");
-      if Has_Cat then
-         for I in 1 .. Vocab.Count loop
-            declare
-               Tok       : constant Token_Text := Vocab.Values (I).Token;
-               Tok_Str   : constant String     := Tok.Value (1 .. Tok.Length);
-               Label     : constant Token_Text := Display_Label (Catalog, Tok);
-               Label_Str : constant String     := Label.Value (1 .. Label.Length);
-            begin
-               if Equal_Token (Label, Tok) then
-                  Put_Line ("    " & Tok_Str);
-               else
-                  Put_Line ("    " & Pad_Right (Tok_Str, 24) & Label_Str);
-               end if;
-            end;
-         end loop;
-      else
-         Put ("    ");
-         for I in 1 .. Vocab.Count loop
-            declare
-               Tok     : constant Token_Text := Vocab.Values (I).Token;
-               Tok_Str : constant String     := Tok.Value (1 .. Tok.Length);
-            begin
-               Put (Tok_Str);
-               if I < Vocab.Count then
-                  Put (", ");
-                  if I mod 6 = 0 then
-                     New_Line;
-                     Put ("    ");
-                  end if;
-               end if;
-            end;
-         end loop;
-         New_Line;
-      end if;
-   end Display_Admitted_Loci;
-
-   ----------------------------------------------------------------------------
-   --  Interactive Entrance Driver
-   ----------------------------------------------------------------------------
    procedure Run_Interactive
      (Authority_Dir : String;
       Catalog_Path  : String := "";
       Success       : out Boolean)
    is
-      --  1. Load Authority Manifest to discover admitted vocabulary
-      Manifest_Res : constant Read_Manifest_Result :=
-        Read_Manifest_File (Authority_Dir & "/CURRENT");
+      pragma Unreferenced (Catalog_Path);
+      Base_Dir   : constant String :=
+        (if Authority_Dir'Length >= 19
+            and then Authority_Dir (Authority_Dir'Last - 18 .. Authority_Dir'Last) = "/movement-authority"
+         then Authority_Dir (Authority_Dir'First .. Authority_Dir'Last - 19)
+         else Authority_Dir);
+      J_Path     : constant String := Base_Dir & "/journal.hra";
+      P_Path     : constant String := Base_Dir & "/policy.hra";
 
-      Vocab : Locus_Vocabulary;
+      Sys_Date   : constant Date_Type := Get_System_Date;
+      Sys_Str    : constant String    := Format_Iso_Date (Sys_Date);
 
-      Catalog : Catalog_Memory;
-      Has_Cat : Boolean := False;
-
-      Today     : constant Date_Type := Get_System_Date;
-      Today_Str : constant String    := Format_Iso_Date (Today);
-
-      Valid_On    : Date_Type := Today;
-      From_Locus  : String (1 .. Max_Token_Length) := [others => ' '];
-      From_Len    : Natural := 0;
-      To_Locus    : String (1 .. Max_Token_Length) := [others => ' '];
-      To_Len      : Natural := 0;
-      Amount      : Quanta_Type := 0;
+      Valid_On   : Date_Type := Sys_Date;
+      From_Locus : String (1 .. Max_Token_Length) := [others => ' '];
+      From_Len   : Natural := 0;
+      To_Locus   : String (1 .. Max_Token_Length) := [others => ' '];
+      To_Len     : Natural := 0;
+      Amount     : Quanta_Type := 0;
       Description : String (1 .. 256) := [others => ' '];
-      Desc_Len    : Natural := 0;
+      Desc_Len   : Natural := 0;
+
+      PR : constant Policy_Result := Read_Policy_File (P_Path);
    begin
       Success := False;
 
-      if not Manifest_Res.Success then
-         Put_Error_Line ("hra-n: failed to read manifest at " & Authority_Dir & "/CURRENT");
-         Put_Error_Line ("       " & Manifest_Res.Error_Reason (1 .. Manifest_Res.Error_Len));
-         return;
-      end if;
-
-      --  Locate LocusAdmission object directly from manifest record
-      if not Manifest_Res.Manifest (Family_Locus_Admission).Present then
-         Put_Error_Line ("hra-n: CURRENT manifest does not declare LocusAdmission object");
-         return;
-      end if;
-
-      declare
-         Locus_Item : constant Manifest_Item :=
-           Manifest_Res.Manifest (Family_Locus_Admission);
-         Locus_Rel  : constant String :=
-           Locus_Item.Rel_Path (1 .. Locus_Item.Path_Len);
-         Locus_Res  : constant Read_Locus_Result :=
-           Read_Locus_File (Authority_Dir & "/" & Locus_Rel);
-      begin
-         if not Locus_Res.Success then
-            Put_Error_Line ("hra-n: failed to read admitted loci vocabulary");
-            return;
-         end if;
-         Vocab := Locus_Res.Vocabulary;
-      end;
-
-      --  Optional presentation evidence: locus catalog display names.
-      --  Missing or malformed catalog degrades honestly to raw identifiers.
-      if Catalog_Path'Length > 0 then
-         declare
-            Cat_Res : constant Read_Result := Read_Catalog_File (Catalog_Path);
-         begin
-            if Cat_Res.Success then
-               Catalog    := Cat_Res.Catalog;
-               Has_Cat    := True;
-            end if;
-         end;
-      end if;
-
       Put_Line ("============================================================");
-      Put_Line (" HRA-N Verified Movement Entrance");
+      Put_Line (" HRA-N: Record Movement Transaction");
       Put_Line ("============================================================");
 
       --  Step 1: Occurrence Date
       loop
          declare
             Input : constant String :=
-              Prompt_Line ("Date [" & Today_Str & "]: ");
+              Prompt_Line ("Occurrence date [" & Sys_Str & "]: ");
             Parsed_Date : Date_Type;
          begin
             if Input'Length = 0 then
-               Valid_On := Today;
+               Valid_On := Sys_Date;
                exit;
             elsif Parse_Iso_Date (Input, Parsed_Date) then
                Valid_On := Parsed_Date;
                exit;
             else
-               Put_Line ("  [!] Invalid ISO calendar date. Must be real YYYY-MM-DD.");
+               Put_Error_Line ("Invalid date format. Expected YYYY-MM-DD.");
             end if;
          end;
       end loop;
 
-      --  Step 2: Source Locus (FROM)
-      loop
-         declare
-            Input : constant String :=
-              Prompt_Line ("From locus (or '?' to list): ");
-         begin
-            if Input = "?" then
-               Display_Admitted_Loci (Vocab, Catalog, Has_Cat);
-            elsif Input'Length = 0 then
-               Put_Line ("  [!] Source locus cannot be empty.");
-            elsif Input'Length > Max_Token_Length then
-               Put_Line ("  [!] Locus identifier too long.");
-            else
-               declare
-                  Tok : constant Locus_Id := (Token => Make_Token (Input));
-               begin
-                  if Admits_Locus (Vocab, Tok) then
-                     From_Len := Input'Length;
-                     From_Locus (1 .. From_Len) := Input;
-                     exit;
-                  else
-                     Put_Line ("  [!] Locus '" & Input & "' is not admitted by authority.");
-                  end if;
-               end;
-            end if;
-         end;
-      end loop;
+      --  Step 2: Display known policy roles/loci
+      if PR.Success and then Entry_Count (PR.Roles) > 0 then
+         Put_Line ("------------------------------------------------------------");
+         Put_Line ("Available Loci from Policy:");
+         for I in 1 .. Entry_Count (PR.Roles) loop
+            declare
+               Assign  : constant Role_Assignment := Entry_At (PR.Roles, I);
+               Loc_Str : constant String :=
+                 Assign.Locus.Token.Value (1 .. Assign.Locus.Token.Length);
+               Role_Name : constant String :=
+                 (case Assign.Role is
+                    when Role_Asset     => "asset",
+                    when Role_Liability => "liability",
+                    when Role_Equity    => "equity",
+                    when Role_Income    => "income",
+                    when Role_Expense   => "expense");
+            begin
+               Put_Line ("  " & Pad_Right (Loc_Str, 15) & " (" & Role_Name & ")");
+            end;
+         end loop;
+         Put_Line ("------------------------------------------------------------");
+      end if;
 
-      --  Step 3: Destination Locus (TO)
+      --  Step 3: Source (FROM) Locus
       loop
          declare
-            Input : constant String :=
-              Prompt_Line ("To locus (or '?' to list): ");
-         begin
-            if Input = "?" then
-               Display_Admitted_Loci (Vocab, Catalog, Has_Cat);
-            elsif Input'Length = 0 then
-               Put_Line ("  [!] Destination locus cannot be empty.");
-            elsif Input'Length > Max_Token_Length then
-               Put_Line ("  [!] Locus identifier too long.");
-            elsif Input = From_Locus (1 .. From_Len) then
-               Put_Line ("  [!] Source and destination loci must differ.");
-            else
-               declare
-                  Tok : constant Locus_Id := (Token => Make_Token (Input));
-               begin
-                  if Admits_Locus (Vocab, Tok) then
-                     To_Len := Input'Length;
-                     To_Locus (1 .. To_Len) := Input;
-                     exit;
-                  else
-                     Put_Line ("  [!] Locus '" & Input & "' is not admitted by authority.");
-                  end if;
-               end;
-            end if;
-         end;
-      end loop;
-
-      --  Step 4: Amount
-      loop
-         declare
-            Input : constant String :=
-              Prompt_Line ("Amount (JPY): ");
+            Input : constant String := Prompt_Line ("FROM locus (source): ");
          begin
             if Input'Length = 0 then
-               Put_Line ("  [!] Amount is required.");
+               Put_Error_Line ("FROM locus cannot be empty.");
             else
+               From_Len := Natural'Min (Input'Length, From_Locus'Length);
+               From_Locus (1 .. From_Len) := Input (Input'First .. Input'First + From_Len - 1);
+               exit;
+            end if;
+         end;
+      end loop;
+
+      --  Step 4: Destination (TO) Locus
+      loop
+         declare
+            Input : constant String := Prompt_Line ("TO locus (destination): ");
+         begin
+            if Input'Length = 0 then
+               Put_Error_Line ("TO locus cannot be empty.");
+            elsif Input = From_Locus (1 .. From_Len) then
+               Put_Error_Line ("TO locus must be distinct from FROM locus.");
+            else
+               To_Len := Natural'Min (Input'Length, To_Locus'Length);
+               To_Locus (1 .. To_Len) := Input (Input'First .. Input'First + To_Len - 1);
+               exit;
+            end if;
+         end;
+      end loop;
+
+      --  Step 5: Amount
+      loop
+         declare
+            Input : constant String := Prompt_Line ("Amount (JPY, positive integer): ");
+         begin
+            if Input'Length > 0 then
                begin
-                  declare
-                     Val : constant Quanta_Type := Quanta_Type'Value (Input);
-                  begin
-                     if Val > 0 then
-                        Amount := Val;
-                        exit;
-                     else
-                        Put_Line ("  [!] Amount must be greater than zero.");
-                     end if;
-                  end;
+                  Amount := Quanta_Type'Value (Input);
+                  if Amount > 0 then
+                     exit;
+                  else
+                     Put_Error_Line ("Amount must be strictly positive.");
+                  end if;
                exception
                   when others =>
-                     Put_Line ("  [!] Amount must be a positive integer.");
+                     Put_Error_Line ("Invalid amount. Must be a positive integer.");
                end;
             end if;
          end;
       end loop;
 
-      --  Step 5: Description (optional)
+      --  Step 6: Description
       declare
-         Input : constant String :=
-           Prompt_Line ("Description (optional): ");
+         Input : constant String := Prompt_Line ("Description (optional): ");
       begin
          Desc_Len := Natural'Min (Input'Length, Description'Length);
          Description (1 .. Desc_Len) := Input (Input'First .. Input'First + Desc_Len - 1);
       end;
 
-      --  Step 6: Admission Preview
+      --  Preview and Confirmation
       declare
-         Amt_Str : constant String :=
-           Trim (Amount'Image, Ada.Strings.Both);
+         Amt_Str : constant String := Trim (Quanta_Type'Image (Amount), Ada.Strings.Both);
       begin
          Put_Line ("------------------------------------------------------------");
          Put_Line ("Admission Preview:");
@@ -290,21 +184,19 @@ package body HRA_N.UI.Interactive_Movement is
          Put_Line ("------------------------------------------------------------");
       end;
 
-      --  Step 7: Explicit Confirmation
       declare
-         Confirm : constant String :=
-           Prompt_Line ("Publish to authority? [y/N]: ");
+         Confirm : constant String := Prompt_Line ("Publish to authority? [y/N]: ");
       begin
          if Confirm = "y" or else Confirm = "Y" then
             declare
-               Pub_Res : constant Publish_Result :=
-                 Publish_Movement
-                   (Authority_Dir => Authority_Dir,
-                    From_Locus    => From_Locus (1 .. From_Len),
-                    To_Locus      => To_Locus (1 .. To_Len),
-                    Amount        => Amount,
-                    Valid_On      => Valid_On,
-                    Description   => Description (1 .. Desc_Len));
+               Pub_Res : constant Publish_Result := Publish_Movement
+                 (Journal_Path => J_Path,
+                  Policy_Path  => P_Path,
+                  From_Locus   => From_Locus (1 .. From_Len),
+                  To_Locus     => To_Locus (1 .. To_Len),
+                  Amount       => Amount,
+                  Valid_On     => Valid_On,
+                  Description  => Description (1 .. Desc_Len));
             begin
                if Pub_Res.Success then
                   Put_Line ("============================================================");
@@ -323,7 +215,6 @@ package body HRA_N.UI.Interactive_Movement is
             Success := False;
          end if;
       end;
-
    end Run_Interactive;
 
 end HRA_N.UI.Interactive_Movement;

@@ -11,6 +11,8 @@
 --  Direct OS write guarantees zero transcoding and bit-exact UTF-8 fidelity.
 -------------------------------------------------------------------------------
 
+with HRA_N.Core.Types; use HRA_N.Core.Types;
+
 package HRA_N.UI.Output is
 
    procedure Put (Text : String);
@@ -30,5 +32,9 @@ package HRA_N.UI.Output is
    function Display_Width (S : String) return Natural;
 
    function Pad_Right (S : String; Width : Positive) return String;
+   function Pad_Left (S : String; Width : Positive) return String;
+
+   --  Format integer amount with comma thousands separators (e.g. 225,276)
+   function Format_Amount (Val : Quanta_Type) return String;
 
 end HRA_N.UI.Output;

@@ -34,7 +34,7 @@ is
    ----------------------------------------------------------------------------
 
    --  Maximum length for opaque identity tokens.
-   Max_Token_Length : constant := 64;
+   Max_Token_Length : constant := 96;
 
    subtype Token_Length_Type is Natural range 0 .. Max_Token_Length;
    subtype Token_String_Type is String (1 .. Max_Token_Length);

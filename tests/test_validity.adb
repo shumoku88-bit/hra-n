@@ -5,7 +5,6 @@
 
 with HRA_N.Core.Types;             use HRA_N.Core.Types;
 with HRA_N.Core.Validity;          use HRA_N.Core.Validity;
-with HRA_N.Storage.Validity_Reader; use HRA_N.Storage.Validity_Reader;
 with Test_Support;                 use Test_Support;
 
 package body Test_Validity is
@@ -20,8 +19,6 @@ package body Test_Validity is
       Found_Date : Date_Type;
 
       Entries : Validity_Entry_List;
-
-      Res_Real : Read_Validity_Result;
    begin
       -- Test 1: Leap year calendar logic
       Assert (Is_Leap_Year (2024), "2024 is a leap year");
@@ -79,20 +76,6 @@ package body Test_Validity is
          Find_Occurrence_Date (Mem, (Token => Make_Token ("e9999")), Found_Date, Found);
          Assert (not Found, "Lookup returns Found = False for unknown EventId");
       end;
-
-      -- Test 7: Load real operational ActualValidity file
-      if Real_Data_Available then
-         declare
-            Real_Path : constant String :=
-              Real_Data_Dir & "/movement-authority/objects/ActualValidity/" &
-              "45bf193b0c6aa55b39a4c5085e3faf37cecf5d5f36d15c6dcb6f0a214f38ce89.loam";
-         begin
-            Res_Real := Read_Validity_File (Real_Path);
-            Assert (Res_Real.Success, "Real ActualValidity object file loads successfully");
-            Assert_Equal_Int (588, Long_Long_Integer (Entry_Count (Res_Real.Memory)),
-                              "Exact 588 validity facts loaded and unique");
-         end;
-      end if;
    end Run;
 
 end Test_Validity;

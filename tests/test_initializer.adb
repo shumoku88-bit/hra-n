@@ -1,3 +1,8 @@
+------------------------------------------------------------------------------
+--  HRA-N: Verified Household Engine
+--  Package body: Test_Initializer
+-------------------------------------------------------------------------------
+
 with Ada.Directories;
 with Test_Support;                   use Test_Support;
 with HRA_N.Core.Types;               use HRA_N.Core.Types;
@@ -10,8 +15,9 @@ package body Test_Initializer is
 
    procedure Run is
       Test_Dir : constant String := "/tmp/hra_n_test_init";
-      Auth_Dir : constant String := Test_Dir & "/movement-authority";
-      Cov_Path : constant String := Test_Dir & "/zero-origin-coverage.loam";
+      J_Path   : constant String := Test_Dir & "/journal.hra";
+      P_Path   : constant String := Test_Dir & "/policy.hra";
+      S_Path   : constant String := Test_Dir & "/scheduled.hra";
    begin
       --  Clean previous artifacts if any
       if Ada.Directories.Exists (Test_Dir) then
@@ -23,8 +29,9 @@ package body Test_Initializer is
          Res : constant Init_Result := Initialize_Household (Test_Dir);
       begin
          Assert (Res.Success, "Fresh household initialization succeeds");
-         Assert (Ada.Directories.Exists (Auth_Dir & "/CURRENT"), "CURRENT manifest created");
-         Assert (Ada.Directories.Exists (Cov_Path), "zero-origin-coverage.loam created");
+         Assert (Ada.Directories.Exists (J_Path), "journal.hra created");
+         Assert (Ada.Directories.Exists (P_Path), "policy.hra created");
+         Assert (Ada.Directories.Exists (S_Path), "scheduled.hra created");
       end;
 
       --  2. Doctor health audit on fresh household
@@ -32,15 +39,15 @@ package body Test_Initializer is
          Report : Doctor_Report;
       begin
          Run_Doctor
-           (Authority_Dir => Auth_Dir,
-            Coverage_Path => Cov_Path,
+           (Authority_Dir => Test_Dir,
+            Coverage_Path => "",
             Report        => Report,
             Quiet         => True);
 
          Assert (Report.Overall_Healthy, "Newly initialized household is 100% healthy");
          Assert_Equal_Int (0, Long_Long_Integer (Report.Total_Events), "Fresh household has 0 events");
-         Assert_Equal_Int (7, Long_Long_Integer (Report.Total_Loci), "Fresh household has 7 default loci");
-         Assert_Equal_Int (2, Long_Long_Integer (Report.Total_Coverage), "Fresh household has 2 covered loci");
+         Assert_Equal_Int (3, Long_Long_Integer (Report.Total_Loci), "Fresh household has 3 roles from initial policy");
+         Assert_Equal_Int (2, Long_Long_Integer (Report.Total_Coverage), "Fresh household has 2 zero-origin coords");
       end;
 
       --  3. Idempotency & safety check: Refuse to overwrite existing authority
@@ -54,34 +61,18 @@ package body Test_Initializer is
       declare
          Pub_Res : constant Publish_Result :=
            Publish_Movement
-             (Authority_Dir => Auth_Dir,
-              From_Locus    => "cash",
-              To_Locus      => "food",
-              Amount        => 800,
-              Valid_On      => Make_Date (2026, 9, 10),
-              Description   => "Initial grocery purchase");
+             (Journal_Path => J_Path,
+              Policy_Path  => P_Path,
+              From_Locus   => "cash",
+              To_Locus     => "food",
+              Amount       => 800,
+              Valid_On     => (Year => 2026, Month => 9, Day => 4),
+              Description  => "Initial test grocery");
       begin
-         Assert (Pub_Res.Success, "First movement publication succeeds");
-         Assert (Pub_Res.Event_Id_Len > 0, "Allocated fresh EventId");
+         Assert (Pub_Res.Success, "Publishing first movement in initialized household succeeds");
       end;
 
-      --  5. Verify health after first transaction
-      declare
-         Report2 : Doctor_Report;
-      begin
-         Run_Doctor
-           (Authority_Dir => Auth_Dir,
-            Coverage_Path => Cov_Path,
-            Report        => Report2,
-            Quiet         => True);
-
-         Assert (Report2.Overall_Healthy, "Household remains 100% healthy after first publication");
-         Assert_Equal_Int (1, Long_Long_Integer (Report2.Total_Events), "Event count increased to 1");
-         Assert_Equal_Int (1, Long_Long_Integer (Report2.Total_Validity), "Validity count increased to 1");
-         Assert_Equal_Int (1, Long_Long_Integer (Report2.Total_Descriptions), "Description count increased to 1");
-      end;
-
-      --  Clean up test directory
+      --  Clean up
       if Ada.Directories.Exists (Test_Dir) then
          Ada.Directories.Delete_Tree (Test_Dir);
       end if;

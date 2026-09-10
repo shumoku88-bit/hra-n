@@ -1,15 +1,76 @@
--------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 --  HRA-N: Verified Household Engine
 --  Package body: HRA_N.Storage.Atomic_Writer
 -------------------------------------------------------------------------------
 
 with Ada.Directories;
 with GNAT.OS_Lib;
-with HRA_N.Storage.Sync; use HRA_N.Storage.Sync;
+with Interfaces.C;
 
 package body HRA_N.Storage.Atomic_Writer is
 
    use type GNAT.OS_Lib.File_Descriptor;
+   use type Interfaces.C.int;
+
+   function POSIX_Fsync
+     (FD : Interfaces.C.int) return Interfaces.C.int
+   with
+     Import        => True,
+     Convention    => C,
+     External_Name => "fsync";
+
+   function POSIX_Rename
+     (Old_Path : Interfaces.C.char_array;
+      New_Path : Interfaces.C.char_array) return Interfaces.C.int
+   with
+     Import        => True,
+     Convention    => C,
+     External_Name => "rename";
+
+   function Sync_File (FD : GNAT.OS_Lib.File_Descriptor) return Boolean is
+   begin
+      if FD = GNAT.OS_Lib.Invalid_FD then
+         return False;
+      end if;
+      return POSIX_Fsync (Interfaces.C.int (FD)) = 0;
+   end Sync_File;
+
+   function Sync_Directory (Path : String) return Boolean is
+      Dir_Path     : constant String := Ada.Directories.Containing_Directory (Path);
+      FD           : GNAT.OS_Lib.File_Descriptor := GNAT.OS_Lib.Invalid_FD;
+      Synced       : Boolean := False;
+      Close_Status : Boolean := False;
+   begin
+      FD := GNAT.OS_Lib.Open_Read (Dir_Path, GNAT.OS_Lib.Binary);
+      if FD = GNAT.OS_Lib.Invalid_FD then
+         return False;
+      end if;
+
+      Synced := Sync_File (FD);
+      GNAT.OS_Lib.Close (FD, Close_Status);
+      return Synced and then Close_Status;
+   exception
+      when others =>
+         if FD /= GNAT.OS_Lib.Invalid_FD then
+            GNAT.OS_Lib.Close (FD, Close_Status);
+         end if;
+         return False;
+   end Sync_Directory;
+
+   function Atomic_Rename
+     (Source_Path : String;
+      Target_Path : String) return Boolean
+   is
+      C_Source : constant Interfaces.C.char_array :=
+        Interfaces.C.To_C (Source_Path);
+      C_Target : constant Interfaces.C.char_array :=
+        Interfaces.C.To_C (Target_Path);
+   begin
+      return POSIX_Rename (C_Source, C_Target) = 0;
+   exception
+      when others =>
+         return False;
+   end Atomic_Rename;
 
    function Set_Error
      (Msg       : String;
@@ -30,7 +91,7 @@ package body HRA_N.Storage.Atomic_Writer is
       Error_Msg   : out String;
       Error_Len   : out Natural) return Boolean
    is
-      Stage_Path : constant String := Target_Path & ".loam-stage";
+      Stage_Path : constant String := Target_Path & ".stage";
       Parent_Dir : constant String := Ada.Directories.Containing_Directory (Target_Path);
       FD         : GNAT.OS_Lib.File_Descriptor := GNAT.OS_Lib.Invalid_FD;
       Written    : Integer;
@@ -89,7 +150,6 @@ package body HRA_N.Storage.Atomic_Writer is
       end if;
 
       --  6. Atomic rename to target path via POSIX rename(2)
-      --     Never delete Target_Path beforehand, eliminating any absent window.
       if not Atomic_Rename (Stage_Path, Target_Path) then
          if Ada.Directories.Exists (Stage_Path) then
             Ada.Directories.Delete_File (Stage_Path);

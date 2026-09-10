@@ -35,6 +35,58 @@ is
       return Result;
    end Format_Iso_Date;
 
+   function Parse_Iso_Date
+     (Text : String;
+      Date : out Date_Type) return Boolean
+   with
+     SPARK_Mode => Off
+   is
+   begin
+      Date := (Year => 2026, Month => 1, Day => 1);
+      if Text'Length /= 10 then
+         return False;
+      end if;
+
+      if Text (Text'First + 4) /= '-' or else Text (Text'First + 7) /= '-' then
+         return False;
+      end if;
+
+      for I in Text'Range loop
+         if I /= Text'First + 4 and then I /= Text'First + 7 then
+            if Text (I) not in '0' .. '9' then
+               return False;
+            end if;
+         end if;
+      end loop;
+
+      declare
+         Y1 : constant Natural := Character'Pos (Text (Text'First)) - Character'Pos ('0');
+         Y2 : constant Natural := Character'Pos (Text (Text'First + 1)) - Character'Pos ('0');
+         Y3 : constant Natural := Character'Pos (Text (Text'First + 2)) - Character'Pos ('0');
+         Y4 : constant Natural := Character'Pos (Text (Text'First + 3)) - Character'Pos ('0');
+         Y_Val : constant Natural := Y1 * 1000 + Y2 * 100 + Y3 * 10 + Y4;
+
+         M1 : constant Natural := Character'Pos (Text (Text'First + 5)) - Character'Pos ('0');
+         M2 : constant Natural := Character'Pos (Text (Text'First + 6)) - Character'Pos ('0');
+         M_Val : constant Natural := M1 * 10 + M2;
+
+         D1 : constant Natural := Character'Pos (Text (Text'First + 8)) - Character'Pos ('0');
+         D2 : constant Natural := Character'Pos (Text (Text'First + 9)) - Character'Pos ('0');
+         D_Val : constant Natural := D1 * 10 + D2;
+      begin
+         if Y_Val not in Year_Type or else M_Val not in Month_Type or else D_Val not in Day_Type then
+            return False;
+         end if;
+
+         if not Is_Valid_Date (Y_Val, M_Val, D_Val) then
+            return False;
+         end if;
+
+         Date := Make_Date (Y_Val, M_Val, D_Val);
+         return True;
+      end;
+   end Parse_Iso_Date;
+
    function Previous_Days_7 (Ending : Date_Type) return Week_Days_Array is
       D7 : constant Date_Type := Ending;
       D6 : constant Date_Type := Prev_Day (D7);

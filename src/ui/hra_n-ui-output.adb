@@ -4,6 +4,7 @@
 -------------------------------------------------------------------------------
 
 with GNAT.OS_Lib;
+with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 
 package body HRA_N.UI.Output is
 
@@ -90,5 +91,33 @@ package body HRA_N.UI.Output is
          return S & [1 .. Width - W => ' '];
       end if;
    end Pad_Right;
+
+   function Pad_Left (S : String; Width : Positive) return String is
+      W : constant Natural := Display_Width (S);
+   begin
+      if W >= Width then
+         return S;
+      else
+         return [1 .. Width - W => ' '] & S;
+      end if;
+   end Pad_Left;
+
+   function Format_Amount (Val : Quanta_Type) return String is
+      Raw         : constant String := Trim (Val'Image, Ada.Strings.Both);
+      Res         : String (1 .. Raw'Length + Raw'Length / 3 + 2);
+      Res_Idx     : Natural := Res'Last;
+      Digit_Count : Natural := 0;
+   begin
+      for I in reverse Raw'Range loop
+         if Digit_Count > 0 and then Digit_Count mod 3 = 0 then
+            Res (Res_Idx) := ',';
+            Res_Idx := Res_Idx - 1;
+         end if;
+         Res (Res_Idx) := Raw (I);
+         Res_Idx       := Res_Idx - 1;
+         Digit_Count   := Digit_Count + 1;
+      end loop;
+      return Res (Res_Idx + 1 .. Res'Last);
+   end Format_Amount;
 
 end HRA_N.UI.Output;

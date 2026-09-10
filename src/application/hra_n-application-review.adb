@@ -7,7 +7,6 @@ with HRA_N.UI.Output;              use HRA_N.UI.Output;
 with Ada.Calendar;
 with HRA_N.Core.Types;              use HRA_N.Core.Types;
 with HRA_N.Core.Event;              use HRA_N.Core.Event;
-with HRA_N.Storage.Validity_Reader; use HRA_N.Storage.Validity_Reader;
 
 package body HRA_N.Application.Review is
 

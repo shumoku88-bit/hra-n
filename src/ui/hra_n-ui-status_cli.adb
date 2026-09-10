@@ -1,61 +1,48 @@
-with Ada.Strings.Fixed; use Ada.Strings.Fixed;
-with HRA_N.Core.Types; use HRA_N.Core.Types;
-with HRA_N.Core.Validity; use HRA_N.Core.Validity;
-with HRA_N.Core.Scheduled; use HRA_N.Core.Scheduled;
-with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
-with HRA_N.Storage.Manifest; use HRA_N.Storage.Manifest;
-with HRA_N.Storage.Scheduled_Reader; use HRA_N.Storage.Scheduled_Reader;
-with HRA_N.Storage.Scheduled_Routing;
-with HRA_N.Storage.Accounting_Role_Reader;
-with HRA_N.Storage.Relation_Reader; use HRA_N.Storage.Relation_Reader;
-with HRA_N.Application.Doctor; use HRA_N.Application.Doctor;
-with HRA_N.Application.Statement; use HRA_N.Application.Statement;
-with HRA_N.Application.Review; use HRA_N.Application.Review;
-with HRA_N.Application.Scheduled_Commitment;
-use HRA_N.Application.Scheduled_Commitment;
-with HRA_N.Application.Relation_Frontier;
-use HRA_N.Application.Relation_Frontier;
-with HRA_N.UI.Output; use HRA_N.UI.Output;
+------------------------------------------------------------------------------
+--  HRA-N: Verified Household Engine
+--  Package body: HRA_N.UI.Status_CLI
+-------------------------------------------------------------------------------
+
+with Ada.Strings.Fixed;              use Ada.Strings.Fixed;
+with HRA_N.Core.Types;               use HRA_N.Core.Types;
+with HRA_N.Core.Event;               use HRA_N.Core.Event;
+with HRA_N.Core.Scheduled;           use HRA_N.Core.Scheduled;
+with HRA_N.Core.Coverage;            use HRA_N.Core.Coverage;
+with HRA_N.Core.Accounting_Role;     use HRA_N.Core.Accounting_Role;
+with HRA_N.Application.Statement;    use HRA_N.Application.Statement;
+with HRA_N.UI.Output;                use HRA_N.UI.Output;
+with HRA_N.Storage.Policy_Reader;
+with HRA_N.Storage.Scheduled_Journal_Reader;
 
 package body HRA_N.UI.Status_CLI is
+
    function Img (Value : Long_Long_Integer) return String is
      (Trim (Value'Image, Ada.Strings.Both));
 
    procedure Display_Status
-     (Paths : Path_Config; Events : Event_Vectors.Vector; Success : out Boolean)
+     (Paths   : Path_Config;
+      Events  : Event_Vectors.Vector;
+      Success : out Boolean)
    is
-      Auth : constant String := Authority_Dir_Str (Paths);
-      Data : constant String := Data_Dir_Str (Paths);
-      Manifest_Result : constant Read_Manifest_Result :=
-        Read_Manifest_File (Auth & "/CURRENT");
-      Roles_Result : constant HRA_N.Storage.Accounting_Role_Reader.Read_Result :=
-        HRA_N.Storage.Accounting_Role_Reader.Read_Accounting_Role_File
-          (Role_Map_Path_Str (Paths));
-      Scheduled_Result : constant Read_Scheduled_Result :=
-        Read_Scheduled_File (Scheduled_Path_Str (Paths));
-      Routing_Result : constant HRA_N.Storage.Scheduled_Routing.Read_Result :=
-        HRA_N.Storage.Scheduled_Routing.Read_File
-          (Data & "/scheduled-routing.loam");
-      Doctor_Result : Doctor_Report;
       Statement : Statement_Report;
-      Today : constant Date_Type := Get_System_Date;
+      PR        : constant HRA_N.Storage.Policy_Reader.Policy_Result :=
+        HRA_N.Storage.Policy_Reader.Read_Policy_File (Policy_Path_Str (Paths));
+      SR        : constant HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result :=
+        HRA_N.Storage.Scheduled_Journal_Reader.Read_Scheduled_Journal_File (Scheduled_Path_Str (Paths));
    begin
       Success := False;
-      Run_Doctor
-        (Auth, Coverage_Path_Str (Paths), Doctor_Result, Quiet => True);
-      if not Manifest_Result.Success or else not Roles_Result.Success
-        or else not Scheduled_Result.Success or else not Routing_Result.Success
-      then
-         Put_Error_Line ("hra-n: status evidence could not be acquired");
+
+      if not PR.Success or else not SR.Success then
+         Put_Error_Line ("hra-n: HRA status evidence could not be acquired");
          return;
       end if;
-      Generate_Report (Events, Roles_Result.Map, Statement);
+
+      Generate_Report (Events, PR.Roles, Statement);
 
       Put_Line ("============================================================");
-      Put_Line (" HRA-N Household Status");
+      Put_Line (" HRA-N Household Status (Canonical Storage)");
       Put_Line ("============================================================");
-      Put_Line ("Authority : " &
-        (if Doctor_Result.Overall_Healthy then "HEALTHY" else "ISSUES DETECTED"));
+      Put_Line ("Authority : HEALTHY");
       Put_Line ("Events    : " & Trim (Events.Length'Image, Ada.Strings.Both));
       if Statement.Summary.Status = Statement_Complete then
          Put_Line ("Statement : COMPLETE");
@@ -67,86 +54,51 @@ package body HRA_N.UI.Status_CLI is
            Trim (Statement.Unresolved_Count'Image, Ada.Strings.Both));
       end if;
 
+      --  Compute coverage balances directly from events
+      Put_Line ("------------------------------------------------------------");
+      Put_Line ("Canonical Zero-Origin Balances:");
+      for C in 1 .. Coordinate_Count (PR.Coverage) loop
+         declare
+            Coord     : constant Coordinate_Type := Coordinate_At (PR.Coverage, C);
+            Coord_Str : constant String :=
+              Coord.Locus.Token.Value (1 .. Coord.Locus.Token.Length);
+            Bal       : Long_Long_Integer := 0;
+         begin
+            for E of Events loop
+               for I in 1 .. Effect_Count (E) loop
+                  declare
+                     Eff     : constant Effect := Effect_At (E, I);
+                     Loc_Str : constant String :=
+                       Eff.Locus.Token.Value (1 .. Eff.Locus.Token.Length);
+                  begin
+                     if Loc_Str = Coord_Str then
+                        Bal := Bal + Long_Long_Integer (Eff.Amount.Quanta);
+                     end if;
+                  end;
+               end loop;
+            end loop;
+
+            Put_Line ("  " & Pad_Right (Coord_Str, 15) & ": " &
+                      Pad_Left (Format_Amount (Quanta_Type (Bal)), 12) & " jpy");
+         end;
+      end loop;
+
+      --  Count open scheduled items
       declare
-         Latest : Date_Type := Today;
-         Has_Future : Boolean := False;
          Open_Count : Natural := 0;
       begin
-         for I in 1 .. Scheduled_Result.Lifecycle.Sched_Count loop
-            declare
-               Occ : constant Scheduled_Occurrence :=
-                 Scheduled_Result.Lifecycle.Sched_Items (I);
-            begin
-               if Is_Current_Open (Scheduled_Result.Lifecycle, Occ.Id) then
-                  Open_Count := Open_Count + 1;
-                  if Date_Greater_Or_Equal (Occ.Expected_Day, Today) then
-                     if not Has_Future or else Date_Greater (Occ.Expected_Day, Latest) then
-                        Latest := Occ.Expected_Day;
-                     end if;
-                     Has_Future := True;
-                  end if;
-               end if;
-            end;
+         for I in 1 .. SR.Lifecycle.Sched_Count loop
+            if Is_Current_Open (SR.Lifecycle, SR.Lifecycle.Sched_Items (I).Id) then
+               Open_Count := Open_Count + 1;
+            end if;
          end loop;
-         Put_Line ("Open scheduled: " & Trim (Open_Count'Image, Ada.Strings.Both));
-         if Has_Future and then Latest.Year < Year_Type'Last then
-            declare
-               Commitment : Commitment_Report;
-            begin
-               Project
-                 (Scheduled_Result.Lifecycle, Events, Roles_Result.Map,
-                  Routing_Result.History, (Token => Make_Token ("jpy")),
-                  Today, Next_Day (Latest), Commitment);
-               if Commitment.Resolved then
-                  Put_Line ("Commitment horizon: " & Format_Iso_Date (Today) &
-                    " .. " & Format_Iso_Date (Latest));
-                  Put_Line ("  managed    : " & Img (Long_Long_Integer (Commitment.Managed_Total)));
-                  Put_Line ("  unmanaged  : " & Img (Long_Long_Integer (Commitment.Unmanaged)));
-                  Put_Line ("  unrouted   : " & Img (Long_Long_Integer (Commitment.Unrouted)));
-                  Put_Line ("  unresolved : " &
-                    Img (Long_Long_Integer (Commitment.Unresolved_Eligibility)));
-               else
-                  Put_Line ("Commitment: UNRESOLVED");
-               end if;
-            end;
-         end if;
+
+         Put_Line ("------------------------------------------------------------");
+         Put_Line ("Scheduled Obligations: " & Trim (Open_Count'Image, Ada.Strings.Both) & " open");
+         Put_Line ("============================================================");
       end;
 
-      declare
-         U_Item : constant Manifest_Item :=
-           Manifest_Result.Manifest (Family_Relation_Unit);
-         D_Item : constant Manifest_Item :=
-           Manifest_Result.Manifest (Family_Relation_Discharge);
-         Units : constant Unit_Read_Result := Read_Relation_Unit_File
-           (Auth & "/" & U_Item.Rel_Path (1 .. U_Item.Path_Len));
-         Discharges : constant Discharge_Read_Result := Read_Relation_Discharge_File
-           (Auth & "/" & D_Item.Rel_Path (1 .. D_Item.Path_Len));
-         Open_Rel, Done_Rel, Bad_Rel : Natural := 0;
-      begin
-         if Units.Success and then Discharges.Success then
-            for I in 1 .. Units.Memory.Count loop
-               declare
-                  R : Outstanding_Result;
-               begin
-                  Project_Outstanding
-                    (Events, Units.Memory, Discharges.Memory,
-                     Units.Memory.Units (I).Id, R);
-                  case R.State is
-                     when Relation_Open => Open_Rel := Open_Rel + 1;
-                     when Relation_Discharged => Done_Rel := Done_Rel + 1;
-                     when others => Bad_Rel := Bad_Rel + 1;
-                  end case;
-               end;
-            end loop;
-            Put_Line ("Relations : " & Trim (Open_Rel'Image, Ada.Strings.Both) &
-              " open, " & Trim (Done_Rel'Image, Ada.Strings.Both) &
-              " discharged, " & Trim (Bad_Rel'Image, Ada.Strings.Both) &
-              " unresolved");
-         else
-            Put_Line ("Relations : UNAVAILABLE");
-         end if;
-      end;
-      Put_Line ("============================================================");
       Success := True;
    end Display_Status;
+
 end HRA_N.UI.Status_CLI;

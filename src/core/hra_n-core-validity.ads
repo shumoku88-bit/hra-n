@@ -127,6 +127,13 @@ is
    --  Format Date_Type as ISO YYYY-MM-DD string.
    function Format_Iso_Date (D : Date_Type) return Iso_Date_String;
 
+   --  Parse and validate an ISO 8601 YYYY-MM-DD string into a verified Date_Type.
+   function Parse_Iso_Date
+     (Text : String;
+      Date : out Date_Type) return Boolean
+   with
+     SPARK_Mode => Off;
+
    ----------------------------------------------------------------------------
    --  Actual Validity Evidence
    ----------------------------------------------------------------------------

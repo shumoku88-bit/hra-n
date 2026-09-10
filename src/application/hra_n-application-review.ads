@@ -8,7 +8,7 @@
 
 with HRA_N.Core.Validity;           use HRA_N.Core.Validity;
 with HRA_N.Core.Description;        use HRA_N.Core.Description;
-with HRA_N.Storage.Event_Reader;    use HRA_N.Storage.Event_Reader;
+with HRA_N.Storage.Journal_Reader;   use HRA_N.Storage.Journal_Reader;
 
 package HRA_N.Application.Review is
 

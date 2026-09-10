@@ -9,7 +9,7 @@
 
 with HRA_N.Core.Types;           use HRA_N.Core.Types;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
-with HRA_N.Storage.Event_Reader; use HRA_N.Storage.Event_Reader;
+with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 
 package HRA_N.Application.Statement is
 

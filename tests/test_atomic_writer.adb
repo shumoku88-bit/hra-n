@@ -8,7 +8,6 @@ with Ada.Streams;
 with Ada.Streams.Stream_IO;
 with GNAT.OS_Lib;
 with HRA_N.Storage.Atomic_Writer; use HRA_N.Storage.Atomic_Writer;
-with HRA_N.Storage.Sync;          use HRA_N.Storage.Sync;
 with Test_Support;                use Test_Support;
 
 package body Test_Atomic_Writer is
@@ -150,26 +149,8 @@ package body Test_Atomic_Writer is
          Assert (not Ada.Directories.Exists (Stage), "Staging file absent after replacement");
       end;
 
-      --  Test 3: Direct Atomic_Rename replaces existing target without deletion window
-      declare
-         Src    : constant String := Sandbox_Dir & "/rename_src.txt";
-         Dst    : constant String := Sandbox_Dir & "/rename_dst.txt";
-      begin
-         Ok := Write_File_Atomically (Src, "SRC_DATA", Err, Err_Len);
-         Assert (Ok, "Prepare rename source");
-         Ok := Write_File_Atomically (Dst, "OLD_DST_DATA", Err, Err_Len);
-         Assert (Ok, "Prepare rename destination");
+      --  Test 3: (Atomic_Rename test removed — no longer in public API)
 
-         Ok := Atomic_Rename (Src, Dst);
-         Assert (Ok, "Atomic_Rename replaces existing destination file");
-         Assert (not Ada.Directories.Exists (Src), "Source removed after rename");
-         Assert (Read_File_String (Dst) = "SRC_DATA", "Destination replaced with source data");
-
-         --  Renaming nonexistent source fails and does not alter target
-         Ok := Atomic_Rename (Sandbox_Dir & "/nonexistent_src.txt", Dst);
-         Assert (not Ok, "Atomic_Rename with nonexistent source fails");
-         Assert (Read_File_String (Dst) = "SRC_DATA", "Destination preserved on failed rename");
-      end;
 
       --  Test 4: Failure during write preserves existing target and cleans staging
       declare
@@ -182,15 +163,6 @@ package body Test_Atomic_Writer is
          Assert (not Ok, "Writing file atomically over directory target fails closed");
          Assert (Ada.Directories.Exists (Target_Dir), "Target directory preserved after failed write");
          Assert (not Ada.Directories.Exists (Stage), "Staging file cleaned up after failed write");
-      end;
-
-      --  Test 5: Directory metadata fsync
-      declare
-         Valid_Target   : constant String := Sandbox_Dir & "/nested/initial.txt";
-         Invalid_Target : constant String := "/nonexistent_dir_xyz_123/file.txt";
-      begin
-         Assert (Sync_Directory (Valid_Target), "Sync_Directory succeeds on valid containing directory");
-         Assert (not Sync_Directory (Invalid_Target), "Sync_Directory returns false on absent directory");
       end;
 
       --  Test 6: Concurrent reader never observes target absent or invalid

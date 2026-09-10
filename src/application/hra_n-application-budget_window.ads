@@ -14,7 +14,7 @@ with HRA_N.Core.Types;          use HRA_N.Core.Types;
 with HRA_N.Core.Capacity;       use HRA_N.Core.Capacity;
 with HRA_N.Core.Actual_Routing; use HRA_N.Core.Actual_Routing;
 with HRA_N.Core.Validity;       use HRA_N.Core.Validity;
-with HRA_N.Storage.Event_Reader; use HRA_N.Storage.Event_Reader;
+with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 
 package HRA_N.Application.Budget_Window is
 
