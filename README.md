@@ -1,8 +1,8 @@
 # HRA-N: Verified Household Engine
 
 [![SPARK Level 2](https://img.shields.io/badge/SPARK-Level%202%20Silver%2FGold-green.svg)](https://www.adacore.com/about-spark)
-[![SMT Proved](https://img.shields.io/badge/Checks%20Proved-100%25%20(291%2F291)-brightgreen.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-459%20Passed-brightgreen.svg)]()
+[![SMT Proved](https://img.shields.io/badge/Checks%20Proved-100%25%20(295%2F295)-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-469%20Passed-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/Style-Ada%20Quality%20%26%20Style-blue.svg)]()
 [![License](https://img.shields.io/badge/License-MIT%20%2F%20Apache--2.0-blue.svg)]()
 
@@ -164,8 +164,8 @@ HRA-N enforces a strict one-command qualification gate:
 ```
 
 The qualification pipeline executes three mandatory phases:
-1. **SPARK Formal Proof**: 291 checks proved by Why3, Alt-Ergo, CVC5, and Z3 with zero warnings and zero unproved obligations.
-2. **Unit Test Suite**: 459 unit and integration tests covering arithmetic overflow prevention, manifest parsing, scheduled lifecycle, double-reversal prevention, POSIX lock contention, accounting role projection, envelope budget window projection, catalog presentation evidence, relation discharge admission, and publisher durability.
+1. **SPARK Formal Proof**: 295 checks proved by Why3, Alt-Ergo, CVC5, and Z3 with zero warnings and zero unproved obligations.
+2. **Unit Test Suite**: 469 unit and integration tests covering arithmetic overflow prevention, manifest parsing, scheduled lifecycle, double-reversal prevention, POSIX lock contention, accounting role projection, envelope budget window projection, catalog presentation evidence, relation discharge admission, and publisher durability.
 3. **Production Build**: Compiles optimized production binary with full style checks.
 
 ---

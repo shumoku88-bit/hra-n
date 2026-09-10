@@ -28,6 +28,7 @@ with Test_Catalog;
 with Test_Relation;
 with Test_Scheduled_Routing;
 with Test_Scheduled_Commitment;
+with Test_Correction;
 
 procedure Test_Runner is
 begin
@@ -100,6 +101,9 @@ begin
 
    Put_Line ("--> Running Test_Scheduled_Commitment...");
    Test_Scheduled_Commitment.Run;
+
+   Put_Line ("--> Running Test_Correction...");
+   Test_Correction.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");
