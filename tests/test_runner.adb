@@ -32,6 +32,7 @@ with Test_Correction;
 with Test_Atomic_Writer;
 with Test_Authority_Transaction;
 with Test_Correction_Publisher;
+with Test_Actual_Validity_Publisher;
 
 procedure Test_Runner is
 begin
@@ -116,6 +117,9 @@ begin
 
    Put_Line ("--> Running Test_Correction_Publisher...");
    Test_Correction_Publisher.Run;
+
+   Put_Line ("--> Running Test_Actual_Validity_Publisher...");
+   Test_Actual_Validity_Publisher.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");

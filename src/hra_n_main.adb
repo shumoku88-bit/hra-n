@@ -31,6 +31,7 @@ with HRA_N.Storage.Actual_Routing_Reader;
 with HRA_N.Storage.Boundary_Presets_Reader;
 with HRA_N.Application.Budget_Window;     use HRA_N.Application.Budget_Window;
 with HRA_N.Application.Correction_Publisher; use HRA_N.Application.Correction_Publisher;
+with HRA_N.Application.Actual_Validity_Publisher; use HRA_N.Application.Actual_Validity_Publisher;
 with HRA_N.UI.Budget_CLI;
 with HRA_N.UI.Relation_CLI;
 with HRA_N.UI.Status_CLI;
@@ -248,6 +249,61 @@ begin
          return;
       end if;
 
+      --  Branch: Occurrence-date correction (correct-date)
+      if (Command = "movement" and then Rem_Args >= 1 and then Ada.Command_Line.Argument (Command_Idx + 1) = "correct-date")
+        or else Command = "correct-date"
+      then
+         declare
+            Arg_Offset : constant Positive :=
+              (if Command = "correct-date" then Command_Idx else Command_Idx + 1);
+            Eff_Rem    : constant Natural :=
+              (if Command = "correct-date" then Rem_Args else Rem_Args - 1);
+         begin
+            if Eff_Rem < 2 then
+               Put_Line ("Usage: hra-n correct-date <EVENT_ID> <YYYY-MM-DD>");
+               Put_Line ("   or: hra-n movement correct-date <EVENT_ID> <YYYY-MM-DD>");
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               return;
+            end if;
+
+            declare
+               Target_Id : constant String := Ada.Command_Line.Argument (Arg_Offset + 1);
+               Date_Arg  : constant String := Ada.Command_Line.Argument (Arg_Offset + 2);
+               Receipt   : constant Date_Receipt :=
+                 Publish_Date
+                   (Authority_Dir   => Auth_Dir,
+                    Correction_Path => Correction_Path_Str (Paths),
+                    Target_Str      => Target_Id,
+                    Date_Str        => Date_Arg);
+            begin
+               if Receipt.Success then
+                  Put_Line ("============================================================");
+                  if Receipt.Changed then
+                     if Receipt.First_Date then
+                        Put_Line (" [OK] Admitted initial occurrence date for Event: " & Target_Id);
+                     else
+                        Put_Line (" [OK] Admitted and published occurrence-date correction: " & Target_Id);
+                     end if;
+                  else
+                     Put_Line (" [OK] Occurrence date unchanged (no-op): " & Target_Id);
+                  end if;
+                  Put_Line ("      TARGET:   " & Target_Id);
+                  if Receipt.Has_Previous then
+                     Put_Line ("      PREVIOUS: " & Format_Iso_Date (Receipt.Previous));
+                  end if;
+                  Put_Line ("      VALID ON: " & Format_Iso_Date (Receipt.Valid_On));
+                  Put_Line ("      CHANGED:  " & Boolean'Image (Receipt.Changed));
+                  Put_Line ("============================================================");
+               else
+                  Put_Line ("[ERROR] Date correction rejected: " &
+                            Receipt.Error_Reason (1 .. Receipt.Error_Len));
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               end if;
+            end;
+         end;
+         return;
+      end if;
+
       --  Branch: Movement publication has its own exclusive lock and authority lifecycle
       if Command = "movement" then
          if Rem_Args = 0 then
@@ -269,6 +325,7 @@ begin
             Put_Line ("   or: hra-n movement <FROM> <TO> <AMOUNT> [YYYY-MM-DD] [DESCRIPTION]");
             Put_Line ("   or: hra-n movement revert <EVENT_ID> [YYYY-MM-DD] [REASON]");
             Put_Line ("   or: hra-n movement correct <TARGET_ID> <FROM> <TO> <AMOUNT> [DESCRIPTION]");
+            Put_Line ("   or: hra-n movement correct-date <EVENT_ID> <YYYY-MM-DD>");
             Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
             return;
          end if;

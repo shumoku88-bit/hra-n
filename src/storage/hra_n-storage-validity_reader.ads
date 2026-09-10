@@ -12,6 +12,7 @@ package HRA_N.Storage.Validity_Reader is
 
    type Read_Validity_Result is record
       Success      : Boolean := False;
+      History      : Validity_History;
       Memory       : Validity_Memory;
       Error_Line   : Natural := 0;
       Error_Reason : String (1 .. 128) := [others => ' '];
@@ -25,5 +26,8 @@ package HRA_N.Storage.Validity_Reader is
    function Parse_Iso_Date
      (Text : String;
       Date : out Date_Type) return Boolean;
+
+   --  Serialize Validity_History into canonical LOAM-ACTUAL-VALIDITY-HISTORY 2 string.
+   function Format_Validity_History (History : Validity_History) return String;
 
 end HRA_N.Storage.Validity_Reader;

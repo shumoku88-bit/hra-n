@@ -181,6 +181,82 @@ is
       Date   : out Date_Type;
       Found  : out Boolean);
 
+   ----------------------------------------------------------------------------
+   --  Actual Validity History & Correction Types
+   ----------------------------------------------------------------------------
+
+   type Validity_Fact_Id is record
+      Token : Token_Text := (Length => 0, Value => [others => ' ']);
+   end record;
+
+   type Validity_Correction_Id is record
+      Token : Token_Text := (Length => 0, Value => [others => ' ']);
+   end record;
+
+   type Validity_Fact is record
+      Id       : Validity_Fact_Id := (Token => (Length => 0, Value => [others => ' ']));
+      Event_Id : Types.Event_Id   := (Token => (Length => 0, Value => [others => ' ']));
+      Valid_On : Date_Type        := (Year => 2026, Month => 1, Day => 1);
+   end record;
+
+   type Validity_Correction is record
+      Id          : Validity_Correction_Id := (Token => (Length => 0, Value => [others => ' ']));
+      Target      : Validity_Fact_Id       := (Token => (Length => 0, Value => [others => ' ']));
+      Replacement : Validity_Fact_Id       := (Token => (Length => 0, Value => [others => ' ']));
+   end record;
+
+   Max_Validity_Facts       : constant := 1024;
+   Max_Validity_Corrections : constant := 512;
+
+   subtype Validity_Fact_Count is Natural range 0 .. Max_Validity_Facts;
+   subtype Validity_Fact_Index is Positive range 1 .. Max_Validity_Facts;
+
+   subtype Validity_Correction_Count is Natural range 0 .. Max_Validity_Corrections;
+   subtype Validity_Correction_Index is Positive range 1 .. Max_Validity_Corrections;
+
+   type Fact_Array is array (Validity_Fact_Index) of Validity_Fact;
+   type Validity_Correction_Array is array (Validity_Correction_Index) of Validity_Correction;
+
+   type Validity_History is record
+      Fact_Count       : Validity_Fact_Count       := 0;
+      Facts            : Fact_Array                := [others =>
+        (Id       => (Token => (Length => 0, Value => [others => ' '])),
+         Event_Id => (Token => (Length => 0, Value => [others => ' '])),
+         Valid_On => (Year => 2026, Month => 1, Day => 1))];
+      Correction_Count : Validity_Correction_Count := 0;
+      Corrections      : Validity_Correction_Array := [others =>
+        (Id          => (Token => (Length => 0, Value => [others => ' '])),
+         Target      => (Token => (Length => 0, Value => [others => ' '])),
+         Replacement => (Token => (Length => 0, Value => [others => ' '])))];
+   end record;
+
+   function Root_Fact_Id (Ev_Id : Event_Id) return Validity_Fact_Id;
+   function Is_Root_Fact (Fact : Validity_Fact) return Boolean;
+
+   function Fact_Ids_Are_Unique (History : Validity_History) return Boolean is
+     (for all I in 1 .. History.Fact_Count =>
+        (for all J in I + 1 .. History.Fact_Count =>
+           not Equal_Token (History.Facts (I).Id.Token,
+                            History.Facts (J).Id.Token)));
+
+   function Correction_Ids_Are_Unique (History : Validity_History) return Boolean is
+     (for all I in 1 .. History.Correction_Count =>
+        (for all J in I + 1 .. History.Correction_Count =>
+           not Equal_Token (History.Corrections (I).Id.Token,
+                            History.Corrections (J).Id.Token)));
+
+   procedure Find_Fact_By_Id
+     (History : in  Validity_History;
+      Id      : in  Validity_Fact_Id;
+      Fact    : out Validity_Fact;
+      Found   : out Boolean);
+
+   procedure Find_Correction_By_Id
+     (History : in  Validity_History;
+      Id      : in  Validity_Correction_Id;
+      Corr    : out Validity_Correction;
+      Found   : out Boolean);
+
 private
 
    type Validity_Memory is record
