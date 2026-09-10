@@ -37,19 +37,26 @@ is
         (for all J in I + 1 .. Effects.Count =>
            not Equal_Token (Effects.Values (I).Key.Token, Effects.Values (J).Key.Token)));
 
-   type Event is record
-      Id      : Event_Id;
-      Effects : Effect_List;
-   end record;
+   -- Strictly encapsulated private type.
+   -- Can only be constructed through Make_Event, which enforces Keys_Are_Unique.
+   type Event is private;
 
    function Make_Event
      (Id      : Event_Id;
       Effects : Effect_List) return Event
    with
-     Pre  => Keys_Are_Unique (Effects),
-     Post => Make_Event'Result.Id = Id
-             and then Make_Event'Result.Effects = Effects
-             and then Keys_Are_Unique (Make_Event'Result.Effects);
+     Pre  => Keys_Are_Unique (Effects);
+
+   -- Inspection / Getter functions
+   function Id (Ev : Event) return Event_Id;
+   function Effects (Ev : Event) return Effect_List;
+   function Effect_Count (Ev : Event) return Effect_Count_Type;
+
+   function Effect_At
+     (Ev    : Event;
+      Index : Effect_Index_Type) return Effect
+   with
+     Pre => Index <= Effect_Count (Ev);
 
    -- Project net quantity at a given (Locus, Measure) coordinate
    function Quantity_At
@@ -61,5 +68,26 @@ is
    function Is_Balanced_Single_Measure
      (Ev      : Event;
       Measure : Measure_Id) return Boolean;
+
+private
+
+   type Event is record
+      Id      : Event_Id;
+      Effects : Effect_List;
+   end record;
+
+   function Id (Ev : Event) return Event_Id is
+     (Ev.Id);
+
+   function Effects (Ev : Event) return Effect_List is
+     (Ev.Effects);
+
+   function Effect_Count (Ev : Event) return Effect_Count_Type is
+     (Ev.Effects.Count);
+
+   function Effect_At
+     (Ev    : Event;
+      Index : Effect_Index_Type) return Effect is
+     (Ev.Effects.Values (Index));
 
 end HRA_N.Core.Event;

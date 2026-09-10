@@ -29,24 +29,52 @@ is
    function Is_Balanced (Changes : Movement_Change_List) return Boolean is
      (Changes.Count >= 2 and then Total_Quanta (Changes) = 0);
 
-   -- The Balanced_Movement type guarantees at the contract boundary
-   -- that its changes close exactly to zero within one Measure.
-   type Balanced_Movement is record
-      Measure : Measure_Id;
-      Changes : Movement_Change_List;
-   end record;
+   -- Strictly encapsulated private type.
+   -- Can only be constructed through Make_Balanced_Movement, which statically
+   -- enforces that the represented changes close to zero within one Measure.
+   type Balanced_Movement is private;
 
    function Make_Balanced_Movement
      (Measure : Measure_Id;
       Changes : Movement_Change_List) return Balanced_Movement
    with
-     Pre  => Is_Balanced (Changes),
-     Post => Is_Balanced (Make_Balanced_Movement'Result.Changes)
-             and then Make_Balanced_Movement'Result.Measure = Measure;
+     Pre  => Is_Balanced (Changes);
+
+   -- Inspection / Getter functions
+   function Measure (Movement : Balanced_Movement) return Measure_Id;
+   function Changes (Movement : Balanced_Movement) return Movement_Change_List;
+   function Change_Count (Movement : Balanced_Movement) return Change_Count_Type;
+
+   function Change_At
+     (Movement : Balanced_Movement;
+      Index    : Change_Index_Type) return Movement_Change
+   with
+     Pre => Index <= Change_Count (Movement);
 
    -- Project net quantity at a given coordinate
    function Quantity_At
      (Movement : Balanced_Movement;
       Locus    : Locus_Id) return Long_Long_Integer;
+
+private
+
+   type Balanced_Movement is record
+      Measure : Measure_Id;
+      Changes : Movement_Change_List;
+   end record;
+
+   function Measure (Movement : Balanced_Movement) return Measure_Id is
+     (Movement.Measure);
+
+   function Changes (Movement : Balanced_Movement) return Movement_Change_List is
+     (Movement.Changes);
+
+   function Change_Count (Movement : Balanced_Movement) return Change_Count_Type is
+     (Movement.Changes.Count);
+
+   function Change_At
+     (Movement : Balanced_Movement;
+      Index    : Change_Index_Type) return Movement_Change is
+     (Movement.Changes.Values (Index));
 
 end HRA_N.Core.Movement;

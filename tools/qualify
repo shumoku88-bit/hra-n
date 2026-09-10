@@ -4,10 +4,24 @@ set -euo pipefail
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_root"
 
+echo "========================================"
 echo "==> 1. Running SPARK Proof..."
+echo "========================================"
 ./tools/prove
 
-echo "==> 2. Building Executable..."
+echo ""
+echo "========================================"
+echo "==> 2. Running Unit Test Suite..."
+echo "========================================"
+./tools/test
+
+echo ""
+echo "========================================"
+echo "==> 3. Building Production Executable..."
+echo "========================================"
 ./tools/build
 
-echo "==> Qualification PASSED."
+echo ""
+echo "========================================"
+echo "==> QUALIFICATION PASSED (All Proofs & Tests Green)"
+echo "========================================"
