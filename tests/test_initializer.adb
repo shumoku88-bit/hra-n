@@ -46,7 +46,7 @@ package body Test_Initializer is
 
          Assert (Report.Overall_Healthy, "Newly initialized household is 100% healthy");
          Assert_Equal_Int (0, Long_Long_Integer (Report.Total_Events), "Fresh household has 0 events");
-         Assert_Equal_Int (3, Long_Long_Integer (Report.Total_Loci), "Fresh household has 3 roles from initial policy");
+         Assert_Equal_Int (5, Long_Long_Integer (Report.Total_Loci), "Fresh household has 5 role assignments");
          Assert_Equal_Int (2, Long_Long_Integer (Report.Total_Coverage), "Fresh household has 2 zero-origin coords");
       end;
 
