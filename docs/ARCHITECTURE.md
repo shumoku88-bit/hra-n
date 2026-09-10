@@ -48,6 +48,13 @@
 - **Strict Encapsulation**: All core semantic values (`Balanced_Movement`, `Event`, etc.) are declared `private`. Invalid states cannot be constructed by bypassing constructors.
 - **Fail-Closed Admission**: Raw input from storage or UI must pass validation at the Ada boundary before entering the SPARK core.
 
+### Authority Transactions
+
+Manifest and sidecar publication ordering, crash states, retry semantics, and
+required fault tests are normative in [AUTHORITY_TRANSACTIONS.md](AUTHORITY_TRANSACTIONS.md).
+Writers must use that shared protocol rather than constructing `CURRENT` text
+or recovery paths independently.
+
 ---
 
 ## 3. Quanta Arithmetic & Bound Sizing
