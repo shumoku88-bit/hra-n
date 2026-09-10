@@ -31,10 +31,12 @@ package HRA_N.Application.Publisher is
       Explicit_Id   : String := "") return Publish_Result;
 
    --  Publish an exact inverse reversal event canceling a previous movement.
+   --  Optionally synchronizes with LOAM-ACTUAL-REVERSAL-MEMORY file.
    function Publish_Reversal
      (Authority_Dir   : String;
       Target_Event_Id : String;
       Valid_On        : Date_Type;
-      Description     : String := "") return Publish_Result;
+      Description     : String := "";
+      Reversals_Path  : String := "") return Publish_Result;
 
 end HRA_N.Application.Publisher;

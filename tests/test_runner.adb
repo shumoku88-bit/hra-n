@@ -21,6 +21,7 @@ with Test_Doctor;
 with Test_Initializer;
 with Test_Scheduled;
 with Test_Path_Resolver;
+with Test_Actual_Reversal;
 
 procedure Test_Runner is
 begin
@@ -72,6 +73,9 @@ begin
 
    Put_Line ("--> Running Test_Path_Resolver...");
    Test_Path_Resolver.Run;
+
+   Put_Line ("--> Running Test_Actual_Reversal...");
+   Test_Actual_Reversal.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");

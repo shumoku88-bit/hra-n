@@ -32,6 +32,11 @@ package body HRA_N.Application.Path_Resolver is
       return Config.Scheduled_Path (1 .. Config.Sched_Len);
    end Scheduled_Path_Str;
 
+   function Reversals_Path_Str (Config : Path_Config) return String is
+   begin
+      return Config.Reversals_Path (1 .. Config.Rev_Len);
+   end Reversals_Path_Str;
+
    ----------------------------------------------------------------------------
    --  Set path fields in Path_Config
    ----------------------------------------------------------------------------
@@ -40,7 +45,8 @@ package body HRA_N.Application.Path_Resolver is
       Data_Path : String;
       Auth_Path : String;
       Cov_Path  : String;
-      Sch_Path  : String)
+      Sch_Path  : String;
+      Rev_Path  : String)
    is
    begin
       Config.Data_Len := Natural'Min (Data_Path'Length, Config.Data_Dir'Length);
@@ -58,6 +64,10 @@ package body HRA_N.Application.Path_Resolver is
       Config.Sched_Len := Natural'Min (Sch_Path'Length, Config.Scheduled_Path'Length);
       Config.Scheduled_Path (1 .. Config.Sched_Len) :=
         Sch_Path (Sch_Path'First .. Sch_Path'First + Config.Sched_Len - 1);
+
+      Config.Rev_Len := Natural'Min (Rev_Path'Length, Config.Reversals_Path'Length);
+      Config.Reversals_Path (1 .. Config.Rev_Len) :=
+        Rev_Path (Rev_Path'First .. Rev_Path'First + Config.Rev_Len - 1);
    end Set_Paths;
 
    ----------------------------------------------------------------------------
@@ -76,8 +86,9 @@ package body HRA_N.Application.Path_Resolver is
                else D & "/movement-authority");
             C : constant String := D & "/zero-origin-coverage.loam";
             S : constant String := D & "/scheduled.loam";
+            R : constant String := D & "/actual-reversals.loam";
          begin
-            Set_Paths (Config, D, A, C, S);
+            Set_Paths (Config, D, A, C, S, R);
             return Config;
          end;
       end if;
@@ -92,8 +103,9 @@ package body HRA_N.Application.Path_Resolver is
                else D & "/movement-authority");
             C : constant String := D & "/zero-origin-coverage.loam";
             S : constant String := D & "/scheduled.loam";
+            R : constant String := D & "/actual-reversals.loam";
          begin
-            Set_Paths (Config, D, A, C, S);
+            Set_Paths (Config, D, A, C, S, R);
             return Config;
          end;
       elsif Ada.Environment_Variables.Exists ("LOAM_DATA_DIR") then
@@ -105,8 +117,9 @@ package body HRA_N.Application.Path_Resolver is
                else D & "/movement-authority");
             C : constant String := D & "/zero-origin-coverage.loam";
             S : constant String := D & "/scheduled.loam";
+            R : constant String := D & "/actual-reversals.loam";
          begin
-            Set_Paths (Config, D, A, C, S);
+            Set_Paths (Config, D, A, C, S, R);
             return Config;
          end;
       end if;
@@ -118,7 +131,8 @@ package body HRA_N.Application.Path_Resolver is
             Data_Path => ".",
             Auth_Path => "./movement-authority",
             Cov_Path  => "./zero-origin-coverage.loam",
-            Sch_Path  => "./scheduled.loam");
+            Sch_Path  => "./scheduled.loam",
+            Rev_Path  => "./actual-reversals.loam");
          return Config;
       elsif Ada.Directories.Exists ("./CURRENT") then
          Set_Paths
@@ -126,7 +140,8 @@ package body HRA_N.Application.Path_Resolver is
             Data_Path => ".",
             Auth_Path => ".",
             Cov_Path  => "./zero-origin-coverage.loam",
-            Sch_Path  => "./scheduled.loam");
+            Sch_Path  => "./scheduled.loam",
+            Rev_Path  => "./actual-reversals.loam");
          return Config;
       elsif Ada.Directories.Exists ("./hra-data/movement-authority/CURRENT") then
          Set_Paths
@@ -134,7 +149,8 @@ package body HRA_N.Application.Path_Resolver is
             Data_Path => "./hra-data",
             Auth_Path => "./hra-data/movement-authority",
             Cov_Path  => "./hra-data/zero-origin-coverage.loam",
-            Sch_Path  => "./hra-data/scheduled.loam");
+            Sch_Path  => "./hra-data/scheduled.loam",
+            Rev_Path  => "./hra-data/actual-reversals.loam");
          return Config;
       end if;
 
@@ -150,8 +166,9 @@ package body HRA_N.Application.Path_Resolver is
            (if Ada.Environment_Variables.Exists ("LOAM_SCHEDULED_PATH")
             then Ada.Environment_Variables.Value ("LOAM_SCHEDULED_PATH")
             else D & "/scheduled.loam");
+         R : constant String := D & "/actual-reversals.loam";
       begin
-         Set_Paths (Config, D, A, C, S);
+         Set_Paths (Config, D, A, C, S, R);
          return Config;
       end;
    end Resolve_Paths;

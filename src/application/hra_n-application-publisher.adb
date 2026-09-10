@@ -15,7 +15,8 @@ with HRA_N.Storage.Manifest;        use HRA_N.Storage.Manifest;
 with HRA_N.Storage.Locus_Reader;    use HRA_N.Storage.Locus_Reader;
 with HRA_N.Core.Admission;          use HRA_N.Core.Admission;
 with HRA_N.Core.Event;              use HRA_N.Core.Event;
-with HRA_N.Storage.Event_Reader;    use HRA_N.Storage.Event_Reader;
+with HRA_N.Storage.Event_Reader;           use HRA_N.Storage.Event_Reader;
+with HRA_N.Storage.Actual_Reversal_Writer; use HRA_N.Storage.Actual_Reversal_Writer;
 
 package body HRA_N.Application.Publisher is
 
@@ -426,7 +427,8 @@ package body HRA_N.Application.Publisher is
      (Authority_Dir   : String;
       Target_Event_Id : String;
       Valid_On        : Date_Type;
-      Description     : String := "") return Publish_Result
+      Description     : String := "";
+      Reversals_Path  : String := "") return Publish_Result
    is
       Result        : Publish_Result;
       Reversal_Id   : constant String := "reversal-of:" & Target_Event_Id;
@@ -600,6 +602,29 @@ package body HRA_N.Application.Publisher is
                end if;
 
                Release_Lock (Lock);
+
+               --  Synchronize actual-reversals.loam if present
+               declare
+                  Sidecar_Path : constant String :=
+                    (if Reversals_Path'Length > 0 then Reversals_Path
+                     elsif Ada.Directories.Exists (Authority_Dir & "/../actual-reversals.loam")
+                     then Authority_Dir & "/../actual-reversals.loam"
+                     else "");
+                  Side_Buf : String (1 .. 128) := [others => ' '];
+                  Side_Len : Natural           := 0;
+               begin
+                  if Sidecar_Path'Length > 0 then
+                     if not Append_Actual_Reversal
+                       (File_Path   => Sidecar_Path,
+                        Target_Id   => Target_Event_Id,
+                        Reversal_Id => Reversal_Id,
+                        Err_Buf     => Side_Buf,
+                        Err_Len     => Side_Len)
+                     then
+                        null;
+                     end if;
+                  end if;
+               end;
 
                Result.Success := True;
                Result.Event_Id_Len := Reversal_Id'Length;

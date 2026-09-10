@@ -18,6 +18,8 @@ with HRA_N.Storage.Validity_Reader;   use HRA_N.Storage.Validity_Reader;
 with HRA_N.Storage.Description_Reader; use HRA_N.Storage.Description_Reader;
 with HRA_N.Application.Publisher;     use HRA_N.Application.Publisher;
 with HRA_N.Application.Doctor;        use HRA_N.Application.Doctor;
+with HRA_N.Storage.Actual_Reversal_Reader;
+with HRA_N.Core.Actual_Reversal;      use HRA_N.Core.Actual_Reversal;
 with Test_Support;                    use Test_Support;
 
 package body Test_Publisher is
@@ -116,7 +118,7 @@ package body Test_Publisher is
       declare
          Man_Res    : constant Read_Manifest_Result :=
            Read_Manifest_File (Sandbox_Dir & "/CURRENT");
-         Failed_Fam : Manifest_Family := Family_Event;
+         Failed_Fam : Manifest_Family;
       begin
          Assert (Man_Res.Success, "Updated CURRENT manifest loads successfully");
          Assert
@@ -224,7 +226,8 @@ package body Test_Publisher is
         (Authority_Dir   => Sandbox_Dir,
          Target_Event_Id => "record-29",
          Valid_On        => D,
-         Description     => "Reverting test transfer record-29");
+         Description     => "Reverting test transfer record-29",
+         Reversals_Path  => Sandbox_Dir & "/actual-reversals.loam");
       Assert (Res.Success, "Publish_Reversal of record-29 succeeds");
       Assert
         (Res.Event_Id_Str (1 .. Res.Event_Id_Len) = "reversal-of:record-29",
@@ -265,12 +268,24 @@ package body Test_Publisher is
             "paypay effect is inverted to -500 JPY");
       end;
 
+      --  Verify actual-reversals.loam sidecar persistence
+      declare
+         Rev_Res : constant HRA_N.Storage.Actual_Reversal_Reader.Read_Result :=
+           HRA_N.Storage.Actual_Reversal_Reader.Read_Actual_Reversal_File
+             (Sandbox_Dir & "/actual-reversals.loam");
+      begin
+         Assert (Rev_Res.Success, "actual-reversals.loam loads successfully after Publish_Reversal");
+         Assert_Equal_Int (1, Long_Long_Integer (Entry_Count (Rev_Res.Memory)), "actual-reversals has 1 entry");
+         Assert (Is_Target_Reversed (Rev_Res.Memory, (Token => Make_Token ("record-29"))), "record-29 marked reversed in sidecar");
+      end;
+
       --  13. Fail-Closed prevention of double-reversal
       Res := Publish_Reversal
         (Authority_Dir   => Sandbox_Dir,
          Target_Event_Id => "record-29",
          Valid_On        => D,
-         Description     => "Second reversal attempt");
+         Description     => "Second reversal attempt",
+         Reversals_Path  => Sandbox_Dir & "/actual-reversals.loam");
       Assert (not Res.Success, "Double reversal of record-29 is strictly rejected");
 
       --  14. Overall Doctor health audit on the reversed authority

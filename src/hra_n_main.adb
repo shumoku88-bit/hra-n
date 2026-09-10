@@ -45,6 +45,7 @@ begin
       Auth_Dir       : constant String  := Authority_Dir_Str (Paths);
       Scheduled_Path : constant String  := Scheduled_Path_Str (Paths);
       Coverage_Path  : constant String  := Coverage_Path_Str (Paths);
+      Reversals_Path : constant String  := Reversals_Path_Str (Paths);
       Arg_Count      : constant Natural := Ada.Command_Line.Argument_Count;
       Rem_Args       : constant Natural :=
         (if Arg_Count >= Command_Idx then Arg_Count - Command_Idx else 0);
@@ -138,7 +139,8 @@ begin
                       (Authority_Dir   => Auth_Dir,
                        Target_Event_Id => Target_Id,
                        Valid_On        => Date_Val,
-                       Description     => Desc_Val);
+                       Description     => Desc_Val,
+                       Reversals_Path  => Reversals_Path);
                begin
                   if Pub_Res.Success then
                      Put_Line ("============================================================");
