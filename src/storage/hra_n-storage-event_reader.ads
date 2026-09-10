@@ -1,3 +1,10 @@
+-------------------------------------------------------------------------------
+--  HRA-N: Verified Household Engine
+--  Package: HRA_N.Storage.Event_Reader
+--
+--  Parses LOAM-EVENT-MEMORY v1 files into SPARK-verified Event collections.
+-------------------------------------------------------------------------------
+
 with Ada.Containers.Vectors;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 

@@ -1,3 +1,8 @@
+-------------------------------------------------------------------------------
+--  HRA-N: Verified Household Engine
+--  Package body: Test_Support
+-------------------------------------------------------------------------------
+
 with Ada.Text_IO; use Ada.Text_IO;
 
 package body Test_Support is
@@ -6,7 +11,10 @@ package body Test_Support is
    Passed_Count : Natural := 0;
    Failed_Count : Natural := 0;
 
-   procedure Assert (Condition : Boolean; Message : String) is
+   procedure Assert
+     (Condition : Boolean;
+      Message   : String)
+   is
    begin
       Total_Count := Total_Count + 1;
       if Condition then
@@ -18,23 +26,35 @@ package body Test_Support is
       end if;
    end Assert;
 
-   procedure Assert_Equal_Int (Expected, Actual : Long_Long_Integer; Message : String) is
+   procedure Assert_Equal_Int
+     (Expected : Long_Long_Integer;
+      Actual   : Long_Long_Integer;
+      Message  : String)
+   is
    begin
       if Expected = Actual then
          Assert (True, Message);
       else
-         Assert (False, Message & " (expected: " & Long_Long_Integer'Image (Expected) &
-                                  ", got: " & Long_Long_Integer'Image (Actual) & ")");
+         Assert
+           (False,
+            Message & " (expected: " & Long_Long_Integer'Image (Expected) &
+            ", got: " & Long_Long_Integer'Image (Actual) & ")");
       end if;
    end Assert_Equal_Int;
 
-   procedure Assert_Equal_Bool (Expected, Actual : Boolean; Message : String) is
+   procedure Assert_Equal_Bool
+     (Expected : Boolean;
+      Actual   : Boolean;
+      Message  : String)
+   is
    begin
       if Expected = Actual then
          Assert (True, Message);
       else
-         Assert (False, Message & " (expected: " & Boolean'Image (Expected) &
-                                  ", got: " & Boolean'Image (Actual) & ")");
+         Assert
+           (False,
+            Message & " (expected: " & Boolean'Image (Expected) &
+            ", got: " & Boolean'Image (Actual) & ")");
       end if;
    end Assert_Equal_Bool;
 

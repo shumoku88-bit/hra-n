@@ -1,3 +1,11 @@
+-------------------------------------------------------------------------------
+--  HRA-N: Verified Household Engine
+--  Package: HRA_N.Core.Quantity
+--
+--  Exact signed indivisible quantity representation and overflow-free arithmetic.
+--  Contains no division, rounding, valuation, or commodity policy.
+-------------------------------------------------------------------------------
+
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 
 package HRA_N.Core.Quantity with
@@ -5,32 +13,50 @@ package HRA_N.Core.Quantity with
 is
    pragma Pure;
 
+   --  Exact signed quantity wrapping an indivisible number of quanta.
    type Quantity_Type is record
       Quanta : Quanta_Type := Zero_Quanta;
    end record;
 
    Zero : constant Quantity_Type := (Quanta => Zero_Quanta);
 
-   function Of_Quanta (Q : Quanta_Type) return Quantity_Type is ((Quanta => Q));
+   --  Basic constructors and projections
+   function Of_Quanta (Q : Quanta_Type) return Quantity_Type is
+     ((Quanta => Q));
 
-   function To_Quanta (Q : Quantity_Type) return Quanta_Type is (Q.Quanta);
+   function To_Quanta (Q : Quantity_Type) return Quanta_Type is
+     (Q.Quanta);
 
-   function Is_Zero (Q : Quantity_Type) return Boolean is (Q.Quanta = 0);
-   function Is_Positive (Q : Quantity_Type) return Boolean is (Q.Quanta > 0);
-   function Is_Negative (Q : Quantity_Type) return Boolean is (Q.Quanta < 0);
+   --  Sign predicates
+   function Is_Zero (Q : Quantity_Type) return Boolean is
+     (Q.Quanta = 0);
+
+   function Is_Positive (Q : Quantity_Type) return Boolean is
+     (Q.Quanta > 0);
+
+   function Is_Negative (Q : Quantity_Type) return Boolean is
+     (Q.Quanta < 0);
+
+   ----------------------------------------------------------------------------
+   --  Overflow & Range Safety Predicates
+   ----------------------------------------------------------------------------
 
    function Can_Add (Left, Right : Quanta_Type) return Boolean is
      ((Right >= 0 and then Left <= Max_Quanta_Value - Right)
       or else
-      (Right < 0 and then Left >= Min_Quanta_Value - Right));
+      (Right < 0  and then Left >= Min_Quanta_Value - Right));
 
    function Can_Subtract (Left, Right : Quanta_Type) return Boolean is
      ((Right >= 0 and then Left >= Min_Quanta_Value + Right)
       or else
-      (Right < 0 and then Left <= Max_Quanta_Value + Right));
+      (Right < 0  and then Left <= Max_Quanta_Value + Right));
 
    function Can_Negate (Q : Quanta_Type) return Boolean is
      (Q > Min_Quanta_Value);
+
+   ----------------------------------------------------------------------------
+   --  Verified Arithmetic Operations
+   ----------------------------------------------------------------------------
 
    function Add (Left, Right : Quantity_Type) return Quantity_Type with
      Pre  => Can_Add (Left.Quanta, Right.Quanta),

@@ -1,3 +1,8 @@
+-------------------------------------------------------------------------------
+--  HRA-N: Verified Household Engine
+--  Package body: HRA_N.Core.Event
+-------------------------------------------------------------------------------
+
 package body HRA_N.Core.Event with
   SPARK_Mode => On
 is

@@ -1,3 +1,8 @@
+-------------------------------------------------------------------------------
+--  HRA-N: Verified Household Engine
+--  Main test runner
+-------------------------------------------------------------------------------
+
 with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Command_Line;
 with Test_Support;

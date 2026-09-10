@@ -1,3 +1,8 @@
+-------------------------------------------------------------------------------
+--  HRA-N: Verified Household Engine
+--  Package body: HRA_N.Storage.Event_Reader
+-------------------------------------------------------------------------------
+
 with Ada.Text_IO; use Ada.Text_IO;
 with HRA_N.Core.Types;    use HRA_N.Core.Types;
 with HRA_N.Core.Quantity; use HRA_N.Core.Quantity;
@@ -42,12 +47,17 @@ package body HRA_N.Storage.Event_Reader is
       Count := Idx;
    end Split_Tabs;
 
-   function Set_Error (Result : in out Read_Result; Line_Num : Natural; Msg : String) return Read_Result is
+   function Set_Error
+     (Result   : in out Read_Result;
+      Line_Num : Natural;
+      Msg      : String) return Read_Result
+   is
    begin
-      Result.Success := False;
-      Result.Error_Line := Line_Num;
-      Result.Error_Len := Natural'Min (Msg'Length, Result.Error_Reason'Length);
-      Result.Error_Reason (1 .. Result.Error_Len) := Msg (Msg'First .. Msg'First + Result.Error_Len - 1);
+      Result.Success      := False;
+      Result.Error_Line   := Line_Num;
+      Result.Error_Len    := Natural'Min (Msg'Length, Result.Error_Reason'Length);
+      Result.Error_Reason (1 .. Result.Error_Len) :=
+        Msg (Msg'First .. Msg'First + Result.Error_Len - 1);
       return Result;
    end Set_Error;
 
@@ -68,7 +78,7 @@ package body HRA_N.Storage.Event_Reader is
                raise Constraint_Error with "Duplicate effect keys in event";
             end if;
             Result.Events.Append (Make_Event (Curr_Id, Curr_Effects));
-            Have_Event := False;
+            Have_Event         := False;
             Curr_Effects.Count := 0;
          end if;
       end Flush_Current_Event;
@@ -111,9 +121,9 @@ package body HRA_N.Storage.Event_Reader is
 
                            Flush_Current_Event;
 
-                           Curr_Id := (Token => Make_Token (Line (Fields (2).First .. Fields (2).Last)));
+                           Curr_Id            := (Token => Make_Token (Line (Fields (2).First .. Fields (2).Last)));
                            Curr_Effects.Count := 0;
-                           Have_Event := True;
+                           Have_Event         := True;
 
                         elsif Tag = "EFFECT" then
                            if not Have_Event then
@@ -168,7 +178,7 @@ package body HRA_N.Storage.Event_Reader is
          if Is_Open (File) then
             Close (File);
          end if;
-         return Set_Error (Result, Line_Num, "Error parsing file");
+         return Set_Error (Result, Line_Num, "Error parsing event memory file");
    end Read_Event_Memory_File;
 
 end HRA_N.Storage.Event_Reader;

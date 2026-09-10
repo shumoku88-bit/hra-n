@@ -1,3 +1,8 @@
+-------------------------------------------------------------------------------
+--  HRA-N: Verified Household Engine
+--  Package body: HRA_N.Core.Movement
+-------------------------------------------------------------------------------
+
 package body HRA_N.Core.Movement with
   SPARK_Mode => On
 is
