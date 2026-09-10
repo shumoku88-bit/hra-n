@@ -54,6 +54,9 @@ is
      (Left.Length = Right.Length
       and then Left.Value (1 .. Left.Length) = Right.Value (1 .. Right.Length));
 
+   --  Lexicographical less-than comparison over active prefix.
+   function Token_Less (Left, Right : Token_Text) return Boolean;
+
    ----------------------------------------------------------------------------
    --  Orthogonal Semantic Coordinates (Loam Ontology)
    ----------------------------------------------------------------------------
