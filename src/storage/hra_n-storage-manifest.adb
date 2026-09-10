@@ -8,6 +8,8 @@ with Ada.Streams;           use Ada.Streams;
 with Ada.Streams.Stream_IO;
 with GNAT.SHA256;
 
+with HRA_N.Storage.Text_Fields; use HRA_N.Storage.Text_Fields;
+
 package body HRA_N.Storage.Manifest is
 
    function Family_Name (Family : Manifest_Family) return String is
@@ -50,44 +52,6 @@ package body HRA_N.Storage.Manifest is
          return False;
       end if;
    end Parse_Family;
-
-   type Field_Slice is record
-      First : Positive;
-      Last  : Natural;
-   end record;
-
-   type Field_Array is array (1 .. 8) of Field_Slice;
-
-   procedure Split_Tabs
-     (Line   : String;
-      Fields : out Field_Array;
-      Count  : out Natural)
-   is
-      Pos   : Positive := Line'First;
-      Idx   : Natural  := 0;
-      Start : Positive;
-   begin
-      Count := 0;
-      if Line'Length = 0 then
-         return;
-      end if;
-
-      while Pos <= Line'Last and then Idx < Fields'Last loop
-         Start := Pos;
-         while Pos <= Line'Last and then Line (Pos) /= ASCII.HT loop
-            Pos := Pos + 1;
-         end loop;
-
-         Idx := Idx + 1;
-         Fields (Idx) := (First => Start, Last => Pos - 1);
-
-         if Pos <= Line'Last and then Line (Pos) = ASCII.HT then
-            Pos := Pos + 1;
-         end if;
-      end loop;
-
-      Count := Idx;
-   end Split_Tabs;
 
    function Set_Error
      (Result   : in out Read_Manifest_Result;

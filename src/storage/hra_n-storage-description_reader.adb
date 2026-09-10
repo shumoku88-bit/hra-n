@@ -6,14 +6,9 @@
 with Ada.Text_IO; use Ada.Text_IO;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 
+with HRA_N.Storage.Text_Fields; use HRA_N.Storage.Text_Fields;
+
 package body HRA_N.Storage.Description_Reader is
-
-   type Field_Slice is record
-      First : Positive;
-      Last  : Natural;
-   end record;
-
-   type Field_Array is array (1 .. 8) of Field_Slice;
 
    procedure Split_Tabs
      (Line   : String;
