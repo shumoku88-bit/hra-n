@@ -131,7 +131,11 @@ package body Test_Accounting_Role is
          --  Fundamental Accounting Equation Check
          --  Assets = (Liabilities + Equity) + (Income - Expense)
          --  370,000 = (50,000 + 100,000) + (250,000 - 30,000) = 150,000 + 220,000 = 370,000
+         Assert (Rep.Summary.Status = Statement_Complete, "Mock status is Statement_Complete");
+         Assert (Is_Complete (Rep.Summary), "Mock scenario is complete");
          Assert (Is_Coherent (Rep.Summary), "Mock scenario is 100% mathematically coherent");
+         Assert (Universal_Conservation_Holds (Rep.Summary), "Mock scenario universal conservation holds");
+         Assert_Equal_Int (0, Conservation_Residual (Rep.Summary), "Mock scenario residual is 0");
       end;
 
       --  3. Real Production Household Authority Projection (588 events)
@@ -146,7 +150,6 @@ package body Test_Accounting_Role is
             Event_Res    : constant HRA_N.Storage.Event_Reader.Read_Result :=
               Read_Event_Memory_File (Event_Full);
             Rep          : Statement_Report;
-            Imbalance    : Long_Long_Integer;
          begin
             Assert (Manifest_Res.Success, "Real manifest loaded for statement test");
             Assert (Event_Res.Success, "Real event memory loaded for statement test");
@@ -157,15 +160,16 @@ package body Test_Accounting_Role is
             Assert_Equal_Int (588, Long_Long_Integer (Rep.Total_Events), "Statement report aggregated exact 588 real events");
             Assert_Equal_Int (3, Long_Long_Integer (Rep.Unresolved_Count), "Exact 3 historical unclassified accounts detected");
 
-            --  Strict Conservation Invariant:
-            --  Assets - ((Liabilities + Equity) + (Income - Expense)) + Unresolved_Quanta = 0
-            Imbalance :=
-              Rep.Summary.Total_Assets -
-              ((Rep.Summary.Total_Liabilities + Rep.Summary.Total_Equity) +
-               (Rep.Summary.Total_Income - Rep.Summary.Total_Expense)) +
-              Rep.Summary.Unresolved_Quanta;
+            --  Epistemic Completeness & Fail-Closed Assertions:
+            --  Because 3 accounts lack affirmative classification, the statement is Partial.
+            Assert (Rep.Summary.Status = Statement_Partial, "Real data status is Statement_Partial");
+            Assert (not Is_Complete (Rep.Summary), "Real data is not complete due to frontier loci");
+            Assert (not Is_Coherent (Rep.Summary), "Is_Coherent is fail-closed False on partial projection");
 
-            Assert_Equal_Int (0, Imbalance, "Universal conservation law holds exactly to 0 quanta across real authority");
+            --  Strict Conservation Invariant:
+            --  Total Quanta is strictly conserved across all admitted events, regardless of classification!
+            Assert (Universal_Conservation_Holds (Rep.Summary), "Universal conservation holds across real authority");
+            Assert_Equal_Int (0, Conservation_Residual (Rep.Summary), "Universal conservation residual is exactly 0");
          end;
       end if;
 

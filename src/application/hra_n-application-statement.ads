@@ -37,7 +37,7 @@ package HRA_N.Application.Statement is
    type Statement_Report is record
       Account_Count    : Natural           := 0;
       Accounts         : Account_Array     := [others => Empty_Account];
-      Summary          : Financial_Summary := (others => 0);
+      Summary          : Financial_Summary := Empty_Financial_Summary;
       Unresolved_Count : Natural           := 0;
       Total_Events     : Natural           := 0;
    end record;

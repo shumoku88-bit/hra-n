@@ -50,7 +50,7 @@ package body HRA_N.Application.Statement is
    begin
       Report := (Account_Count    => 0,
                  Accounts         => [others => Empty_Account],
-                 Summary          => (others => 0),
+                 Summary          => Empty_Financial_Summary,
                  Unresolved_Count => 0,
                  Total_Events     => Natural (Events.Length));
 
@@ -126,6 +126,13 @@ package body HRA_N.Application.Statement is
             end if;
          end;
       end loop;
+
+      Report.Summary.Unresolved_Count := Report.Unresolved_Count;
+      if Report.Unresolved_Count > 0 then
+         Report.Summary.Status := Statement_Partial;
+      else
+         Report.Summary.Status := Statement_Complete;
+      end if;
    end Generate_Report;
 
 end HRA_N.Application.Statement;

@@ -81,22 +81,55 @@ is
 
    subtype Statement_Amount is Long_Long_Integer range Min_Statement_Quanta .. Max_Statement_Quanta;
 
+   type Completeness_Status is (Statement_Complete, Statement_Partial);
+
    type Financial_Summary is record
-      Total_Assets      : Statement_Amount := 0;  --  Positive: owned wealth
-      Total_Liabilities : Statement_Amount := 0;  --  Positive: debt owed
-      Total_Equity      : Statement_Amount := 0;  --  Positive: opening net wealth
-      Total_Income      : Statement_Amount := 0;  --  Positive: total earnings
-      Total_Expense     : Statement_Amount := 0;  --  Positive: total spending
-      Unresolved_Quanta : Statement_Amount := 0;  --  Unclassified residual
+      Total_Assets      : Statement_Amount    := 0;  --  Positive: classified owned wealth
+      Total_Liabilities : Statement_Amount    := 0;  --  Positive: classified debt owed
+      Total_Equity      : Statement_Amount    := 0;  --  Positive: classified opening equity
+      Total_Income      : Statement_Amount    := 0;  --  Positive: classified earnings
+      Total_Expense     : Statement_Amount    := 0;  --  Positive: classified spending
+      Unresolved_Quanta : Statement_Amount    := 0;  --  Net signed quanta of unclassified frontier
+      Unresolved_Count  : Natural             := 0;  --  Number of unclassified loci
+      Status            : Completeness_Status := Statement_Complete;
    end record;
 
+   Empty_Financial_Summary : constant Financial_Summary :=
+     (Total_Assets      => 0,
+      Total_Liabilities => 0,
+      Total_Equity      => 0,
+      Total_Income      => 0,
+      Total_Expense     => 0,
+      Unresolved_Quanta => 0,
+      Unresolved_Count  => 0,
+      Status            => Statement_Complete);
+
+   --  Epistemic Completeness: A statement is complete if and only if every
+   --  admitted effect locus has affirmative AccountingRole evidence.
+   function Is_Complete (S : Financial_Summary) return Boolean is
+     (S.Unresolved_Count = 0 and then S.Unresolved_Quanta = 0);
+
+   --  Net Worth and Net Savings are epistemically valid only when classification is complete.
    function Net_Worth (S : Financial_Summary) return Long_Long_Integer is
      (S.Total_Assets - S.Total_Liabilities);
 
    function Net_Savings (S : Financial_Summary) return Long_Long_Integer is
      (S.Total_Income - S.Total_Expense);
 
+   --  Fundamental Accounting Equation is asserted only for Complete statements.
    function Is_Coherent (S : Financial_Summary) return Boolean is
-     (S.Total_Assets = (S.Total_Liabilities + S.Total_Equity) + (S.Total_Income - S.Total_Expense));
+     (Is_Complete (S) and then
+      S.Total_Assets = (S.Total_Liabilities + S.Total_Equity) + (S.Total_Income - S.Total_Expense));
+
+   --  Universal Conservation Law: regardless of classification completeness,
+   --  zero-sum event balance guarantees that the residual of the five classified
+   --  elements plus the unresolved frontier is exactly zero.
+   function Conservation_Residual (S : Financial_Summary) return Long_Long_Integer is
+     (S.Total_Assets -
+      ((S.Total_Liabilities + S.Total_Equity) + (S.Total_Income - S.Total_Expense)) +
+      S.Unresolved_Quanta);
+
+   function Universal_Conservation_Holds (S : Financial_Summary) return Boolean is
+     (Conservation_Residual (S) = 0);
 
 end HRA_N.Core.Accounting_Role;
