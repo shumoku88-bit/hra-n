@@ -120,18 +120,27 @@ package body HRA_N.Storage.Generation_Transaction is
          return False;
       end Event_Exists;
 
-      function Candidate_Is_Admitted
+      function Admission_Failure
         (Journal   : Journal_Result;
          Policy    : Policy_Result;
-         Scheduled : Scheduled_Journal_Result) return Boolean
+         Scheduled : Scheduled_Journal_Result) return String
       is
          Life : Scheduled_Lifecycle renames Scheduled.Lifecycle;
       begin
-         if not Journal.Success or else not Policy.Success or else not Scheduled.Success
-           or else Natural (Journal.Events.Length) > Max_Validity_Entries
-           or else not All_Role_Laws_Hold (Policy.Roles)
-           or else not Windows_Are_Sound (Policy.Windows)
-           or else not Scheduled_Ids_Are_Unique (Life)
+         if not Journal.Success then
+            return "journal: " & Journal.Error_Reason (1 .. Journal.Error_Len);
+         elsif not Policy.Success then
+            return "policy: " & Policy.Error_Reason (1 .. Policy.Error_Len);
+         elsif not Scheduled.Success then
+            return "scheduled journal rejected";
+         end if;
+         if Natural (Journal.Events.Length) > Max_Validity_Entries then
+            return "journal exceeds admitted event capacity";
+         elsif not All_Role_Laws_Hold (Policy.Roles) then
+            return "role declarations violate policy laws";
+         elsif not Windows_Are_Sound (Policy.Windows) then
+            return "window declarations violate window laws";
+         elsif not Scheduled_Ids_Are_Unique (Life)
            or else not Completions_Reference_Known (Life)
            or else not Retirements_Reference_Known (Life)
            or else not Replacements_Reference_Known (Life)
@@ -141,12 +150,12 @@ package body HRA_N.Storage.Generation_Transaction is
            or else not Terminal_Targets_Are_Unique (Life)
            or else not Replacement_History_Is_Acyclic (Life)
          then
-            return False;
+            return "scheduled lifecycle law violated";
          end if;
 
          for Item of Journal.Events loop
             if not Is_Balanced_Per_Measure (Item) then
-               return False;
+               return "journal movement breaks per-measure conservation";
             end if;
          end loop;
 
@@ -156,23 +165,23 @@ package body HRA_N.Storage.Generation_Transaction is
                Sum  : Long_Long_Integer := 0;
             begin
                if Item.Changes.Count < 2 then
-                  return False;
+                  return "scheduled occurrence needs two changes";
                end if;
                for Change_Index in 1 .. Item.Changes.Count loop
                   if Item.Changes.Values (Change_Index).Amount = 0 then
-                     return False;
+                     return "scheduled change must be non-zero";
                   end if;
                   Sum := Sum + Long_Long_Integer
                     (Item.Changes.Values (Change_Index).Amount);
                end loop;
                if Sum /= 0 then
-                  return False;
+                  return "scheduled occurrence breaks conservation";
                end if;
                for Other in Index + 1 .. Life.Sched_Count loop
                   if Equal_Token
                     (Item.Id.Token, Life.Sched_Items (Other).Id.Token)
                   then
-                     return False;
+                     return "duplicate scheduled identity";
                   end if;
                end loop;
             end;
@@ -180,11 +189,11 @@ package body HRA_N.Storage.Generation_Transaction is
 
          for Index in 1 .. Life.Comp_Count loop
             if not Event_Exists (Journal, Life.Comp_Items (Index).Actual) then
-               return False;
+               return "scheduled completion references unknown actual";
             end if;
          end loop;
-         return True;
-      end Candidate_Is_Admitted;
+         return "";
+      end Admission_Failure;
 
    begin
       if not Acquire (Lock_Path, Lock) then
@@ -262,9 +271,16 @@ package body HRA_N.Storage.Generation_Transaction is
             Scheduled : constant Scheduled_Journal_Result :=
               Read_Scheduled_Journal_File (S_Path);
          begin
-            if not Candidate_Is_Admitted (Journal, Policy, Scheduled) then
-               return Fail ("candidate generation failed complete admission", True);
-            elsif Inject_Fault = After_Admission then
+            declare
+               Reason : constant String :=
+                 Admission_Failure (Journal, Policy, Scheduled);
+            begin
+               if Reason'Length > 0 then
+                  return Fail ("candidate generation failed complete admission: "
+                               & Reason, True);
+               end if;
+            end;
+            if Inject_Fault = After_Admission then
                return Fail ("injected failure after complete candidate admission");
             end if;
          end;

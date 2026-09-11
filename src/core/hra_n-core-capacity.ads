@@ -124,4 +124,17 @@ is
 
    function Effective_Evidence_Complete (Mem : Capacity_Memory) return Boolean;
 
+   --  Admission laws for effective evidence. Completeness (every movement
+   --  dated) is a projection concern, not admission: these two hold on every
+   --  admitted snapshot whether or not evidence is complete.
+   function Effective_References_Are_Closed (Mem : Capacity_Memory) return Boolean;
+   function Effectives_Are_One_To_One (Mem : Capacity_Memory) return Boolean;
+
+   --  All-time signed entitlement at one coordinate in one currency.
+   --  Window filtering is a projection question, never part of this sum.
+   function Entitlement_At
+     (Mem      : Capacity_Memory;
+      Coord    : Capacity_Coordinate;
+      Currency : Token_Text) return Quanta_Type;
+
 end HRA_N.Core.Capacity;

@@ -74,6 +74,8 @@ package body HRA_N.Application.Actual_Detail_Query is
                   Result.Purpose := Metadata.Purpose.Value;
                   Result.Has_Replaces := Metadata.Replaces.Present;
                   Result.Replaces := Metadata.Replaces.Value.Token;
+                  Result.Has_Reverses := Metadata.Reverses.Present;
+                  Result.Reverses := Metadata.Reverses.Value.Token;
                   Result.Has_Relation := Metadata.Relation.Present;
                   Result.Relation := Metadata.Relation.Value;
                   Result.Has_Discharge := Metadata.Discharge.Present;
@@ -93,6 +95,21 @@ package body HRA_N.Application.Actual_Detail_Query is
                Result.Is_Superseded := Succ_Found;
                if Succ_Found then
                   Result.Superseded_By := Successor.Token;
+               end if;
+            end;
+
+            declare
+               Reversal   : HRA_N.Core.Types.Event_Id;
+               Rev_Found  : Boolean;
+            begin
+               Find_Reverser
+                 (Journal.Metadata,
+                  Id (Item),
+                  Reversal,
+                  Rev_Found);
+               Result.Is_Reversed := Rev_Found;
+               if Rev_Found then
+                  Result.Reversed_By := Reversal.Token;
                end if;
             end;
 

@@ -25,7 +25,8 @@ package HRA_N.Storage.Journal_Writer is
       Description   : String := "";
       Replaces_Id   : String := "";
       Relation_Str  : String := "";
-      Discharge_Str : String := "") return String;
+      Discharge_Str : String := "";
+      Reverses_Id   : String := "") return String;
 
    function Append_Transaction
      (Journal_Path : String;
@@ -36,7 +37,8 @@ package HRA_N.Storage.Journal_Writer is
       Description   : String := "";
       Replaces_Id   : String := "";
       Relation_Str  : String := "";
-      Discharge_Str : String := "") return Append_Result;
+      Discharge_Str : String := "";
+      Reverses_Id   : String := "") return Append_Result;
 
    function Encode_Assertion
      (As_Id       : String;

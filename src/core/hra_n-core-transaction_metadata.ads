@@ -19,6 +19,7 @@ is
       Event       : Event_Id;
       Purpose     : Optional_Token;
       Replaces    : Optional_Event_Id;
+      Reverses    : Optional_Event_Id;
       Relation    : Optional_Token;
       Discharge   : Optional_Token;
    end record;
@@ -33,6 +34,8 @@ is
       Purpose   => (Present => False, Value => (Length => 0, Value => [others => ' '])),
       Replaces  => (Present => False,
                     Value => (Token => (Length => 0, Value => [others => ' ']))),
+      Reverses  => (Present => False,
+                    Value => (Token => (Length => 0, Value => [others => ' ']))),
       Relation  => (Present => False, Value => (Length => 0, Value => [others => ' '])),
       Discharge => (Present => False, Value => (Length => 0, Value => [others => ' '])));
 
@@ -45,6 +48,13 @@ is
    function Replacement_References_Are_Closed (Entries : Metadata_List) return Boolean;
    function Replacements_Are_One_To_One (Entries : Metadata_List) return Boolean;
    function Replacements_Are_Acyclic (Entries : Metadata_List) return Boolean;
+   --  A reversal is an explicit link from an inverse movement to its target.
+   --  Both endpoints remain historical facts and both remain part of physical
+   --  quantity accumulation; a reversal never supersedes its target.
+   function Reversal_References_Are_Closed (Entries : Metadata_List) return Boolean;
+   function Reversals_Are_One_To_One (Entries : Metadata_List) return Boolean;
+   function Reversals_Have_No_Chains (Entries : Metadata_List) return Boolean;
+   function Reversals_Respect_Replacement (Entries : Metadata_List) return Boolean;
 
    type Metadata_Memory is private;
 
@@ -64,6 +74,13 @@ is
       Target    : in Event_Id;
       Successor : out Event_Id;
       Found     : out Boolean);
+
+   --  Find the unique reversal event linked to one target, if any.
+   procedure Find_Reverser
+     (Memory   : in Metadata_Memory;
+      Target   : in Event_Id;
+      Reversal : out Event_Id;
+      Found    : out Boolean);
 
 private
    type Metadata_Memory is record

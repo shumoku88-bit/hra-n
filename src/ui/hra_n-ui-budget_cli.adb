@@ -154,6 +154,10 @@ package body HRA_N.UI.Budget_CLI is
       New_Line;
 
       Put_Line ("--- VERIFICATION & CONSERVATION ---");
+      if not Report.Effective_Complete then
+         Put_Line ("  Effective Evidence   : [WARN] retained movements lack effective dates;");
+         Put_Line ("                         entitlements are partial, not authority.");
+      end if;
       if Universal_Capacity_Holds (Report) then
          Put_Line ("  Universal Capacity Sum : [PASS] Delta = 0 (Total Entitlements + Unallocated strictly conserved)");
       else

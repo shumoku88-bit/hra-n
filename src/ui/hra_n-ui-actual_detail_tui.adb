@@ -5,6 +5,8 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Actual_Detail_Query; use HRA_N.Application.Actual_Detail_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
+with HRA_N.Application.Movement_Command;
+with HRA_N.Application.Review; use HRA_N.Application.Review;
 with HRA_N.UI.Record_TUI; use HRA_N.UI.Record_TUI;
 with HRA_N.UI.Snapshot_Label;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
@@ -46,6 +48,8 @@ package body HRA_N.UI.Actual_Detail_TUI is
                   "Status       " &
                   (if View.Is_Superseded
                    then "SUPERSEDED by " & Token_String (View.Superseded_By)
+                   elsif View.Is_Reversed
+                   then "REVERSED by " & Token_String (View.Reversed_By)
                    else "ACTIVE"));
                Put_Clipped
                  (4,
@@ -66,27 +70,32 @@ package body HRA_N.UI.Actual_Detail_TUI is
                  (8, "Replaces     " &
                     (if View.Has_Replaces then Token_String (View.Replaces) else "(none)"));
                Put_Clipped
-                 (9, "Relation     " &
+                 (9, "Reverses     " &
+                    (if View.Has_Reverses then Token_String (View.Reverses) else "(none)"));
+               Put_Clipped
+                 (10, "Relation     " &
                     (if View.Has_Relation then Token_String (View.Relation) else "(none)"));
                Put_Clipped
-                 (10, "Discharge    " &
+                 (11, "Discharge    " &
                     (if View.Has_Discharge then Token_String (View.Discharge) else "(none)"));
-               Put_Clipped (12, "Effects");
+               Put_Clipped (13, "Effects");
                for Index in 1 .. View.Effect_Count loop
                   Put_Clipped
-                    (12 + Index,
+                    (13 + Index,
                      "  " & Token_String (View.Effects (Index).Locus) & "  " &
                      Amount_Image (View.Effects (Index).Amount) & " " &
                      Token_String (View.Effects (Index).Measure));
                end loop;
                Put_Clipped
-                 (14 + Natural (View.Effect_Count),
+                 (15 + Natural (View.Effect_Count),
                   "Snapshot: " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
             end if;
 
             if Rows > 2 then
-               if not View.Is_Superseded and then View.Status /= Query_Rejected then
-                  Put_Clipped (Rows - 2, "c: correct   r: reload   b/Esc: Actual");
+               if not View.Is_Superseded and then not View.Is_Reversed
+                 and then View.Status /= Query_Rejected
+               then
+                  Put_Clipped (Rows - 2, "c: correct   v: reverse   r: reload   b/Esc: Actual");
                else
                   Put_Clipped (Rows - 2, "r: reload   b/Esc: Actual");
                end if;
@@ -142,6 +151,41 @@ package body HRA_N.UI.Actual_Detail_TUI is
                      if Committed then
                         Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
                         Current_Event_Id := New_Id;
+                     end if;
+                  end;
+               elsif (Key = Character'Pos ('v') or else Key = Character'Pos ('V'))
+                 and then not View.Is_Superseded
+                 and then not View.Is_Reversed
+                 and then View.Status /= Query_Rejected
+               then
+                  Put_Clipped (Rows - 1, "Reverse this Actual with an inverse movement? (y/n): ");
+                  Curses.Refresh;
+                  declare
+                     Confirm : constant Integer := Integer (Curses.Get_Keystroke);
+                  begin
+                     if Confirm = Character'Pos ('y') or else Confirm = Character'Pos ('Y') then
+                        declare
+                           use HRA_N.Application.Movement_Command;
+                           Prop : constant Proposal_Result := Propose_Reversal
+                             (Current_Paths,
+                              (Target_Id   => Current_Event_Id,
+                               Valid_On    =>
+                                 (if View.Has_Date then View.Valid_On
+                                  else Get_System_Date),
+                               Description => (0, [others => ' '])));
+                        begin
+                           if Prop.Success then
+                              declare
+                                 Rec : constant Movement_Receipt := Commit (Prop.Proposal);
+                              begin
+                                 if Rec.Success then
+                                    Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+                                    Current_Event_Id :=
+                                      Make_Token (Rec.Event_Id (1 .. Rec.Event_Id_Len));
+                                 end if;
+                              end;
+                           end if;
+                        end;
                      end if;
                   end;
                else

@@ -13,6 +13,7 @@
 with HRA_N.Core.Types;          use HRA_N.Core.Types;
 with HRA_N.Core.Capacity;       use HRA_N.Core.Capacity;
 with HRA_N.Core.Actual_Routing; use HRA_N.Core.Actual_Routing;
+with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 with HRA_N.Core.Validity;       use HRA_N.Core.Validity;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 
@@ -56,6 +57,9 @@ package HRA_N.Application.Budget_Window is
       Capacity_Sum        : Long_Long_Integer  := 0;
       Movements_Count     : Natural            := 0;
       Events_Considered   : Natural            := 0;
+      --  False when retained capacity movements lack effective evidence;
+      --  entitlements are then partial and must not read as authority.
+      Effective_Complete  : Boolean            := True;
    end record;
 
    function Universal_Capacity_Holds (Rep : Budget_Window_Report) return Boolean is
@@ -65,6 +69,7 @@ package HRA_N.Application.Budget_Window is
      (Capacity_Mem : Capacity_Memory;
       Events       : Event_Vectors.Vector;
       Validities   : Validity_Memory;
+      Metadata     : Metadata_Memory;
       Routing      : Routing_Map;
       Start_Y      : Natural;
       Start_M      : Natural;

@@ -363,6 +363,110 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("already exists", res.stderr + res.stdout)
         self.assertEqual(self.current_snapshot(), "g00000014")
 
+        # 34. Reverse e0004 via the generation authority. The reversal keeps
+        # both endpoints retained: exact inverse effects plus an explicit link.
+        res = self.run_cmd("revert", "e0004", "2026-09-16", "Voided coffee update")
+        self.assertEqual(res.returncode, 0, f"revert failed: {res.stderr}")
+        self.assertIn("[OK] Committed Reversal: e0006", res.stdout)
+        self.assertIn("REVERSED: e0004", res.stdout)
+        self.assertIn("SNAPSHOT: g00000015", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000015")
+        with open(
+            os.path.join(self.test_dir, ".hra", "generations", "g00000015", "journal.hra"),
+            "r", encoding="utf-8",
+        ) as f:
+            journal = f.read()
+        self.assertIn("reverses:e0004", journal)
+
+        # 35. Second reversal of one target fails closed
+        res = self.run_cmd("revert", "e0004", "2026-09-16", "Double void")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("already reversed", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000015")
+
+        # 36. Reverse via the 'movement revert' alias
+        res = self.run_cmd("movement", "revert", "e0003", "2026-09-16", "Voided update")
+        self.assertEqual(res.returncode, 0, f"movement revert failed: {res.stderr}")
+        self.assertIn("[OK] Committed Reversal: e0007", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000016")
+
+        # 37. Reversal of a superseded target fails closed
+        res = self.run_cmd("revert", "e0001", "2026-09-16", "Void superseded")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("already superseded", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000016")
+
+        # 38. Reversal of an absent target fails closed
+        res = self.run_cmd("revert", "e9999", "2026-09-16", "Void absent")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("does not exist in journal", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000016")
+
+        # 39. Capacity readout on empty authority
+        res = self.run_cmd("capacity")
+        self.assertEqual(res.returncode, 0, f"capacity failed: {res.stderr}")
+        self.assertIn("unallocated: 0", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000016")
+
+        # 40. Capacity transfer via generation authority
+        res = self.run_cmd("capacity", "transfer", "unallocated", "food", "5000", "2026-09-05")
+        self.assertEqual(res.returncode, 0, f"capacity transfer failed: {res.stderr}")
+        self.assertIn("[OK] Committed Capacity Transfer: cap0001", res.stdout)
+        self.assertIn("SNAPSHOT: g00000017", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000017")
+
+        res = self.run_cmd("capacity")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("food: 5000", res.stdout)
+        self.assertIn("unallocated: -5000", res.stdout)
+
+        # 41. Overdrawing transfer fails closed
+        res = self.run_cmd("capacity", "transfer", "food", "misc", "6000", "2026-09-05")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("would become negative", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000017")
+
+        # 42. Capacity rebalance via generation authority
+        res = self.run_cmd(
+            "capacity", "rebalance", "2026-09-06",
+            "food:-1000", "misc:+600", "unallocated:+400",
+        )
+        self.assertEqual(res.returncode, 0, f"capacity rebalance failed: {res.stderr}")
+        self.assertIn("[OK] Committed Capacity Rebalance: cap0002", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000018")
+
+        # 43. Unbalanced rebalance fails closed
+        res = self.run_cmd(
+            "capacity", "rebalance", "2026-09-06",
+            "food:-1000", "misc:+600",
+        )
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("balance to zero", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000018")
+
+        # 44. Budget consumption counts the correction frontier only: the
+        # superseded original must not contribute alongside its replacement.
+        res = self.run_cmd("capacity", "transfer", "unallocated", "Snacks", "2000", "2026-09-07")
+        self.assertEqual(res.returncode, 0, f"snacks funding failed: {res.stderr}")
+        self.assertIn("[OK] Committed Capacity Transfer: cap0003", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000019")
+        res = self.run_cmd("movement", "cash", "snackshop", "1000", "2026-09-10", "Lunch")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("[OK] Committed Movement: e0008", res.stdout)
+        res = self.run_cmd("correct", "e0008", "cash", "snackshop", "1200", "2026-09-10", "Bigger lunch")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("[OK] Committed Correction: e0009", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000021")
+        gen_policy = os.path.join(self.test_dir, ".hra", "generations", "g00000021", "policy.hra")
+        with open(gen_policy, "a", encoding="utf-8") as f:
+            f.write("ROUTE snackshop Snacks\n")
+        res = self.run_cmd("budget", "2026-09-01", "2026-10-01")
+        self.assertEqual(res.returncode, 0, f"budget failed: {res.stderr}")
+        snacks_lines = [line for line in res.stdout.splitlines() if "Snacks" in line]
+        self.assertEqual(len(snacks_lines), 1)
+        self.assertIn("1,200", snacks_lines[0])
+        self.assertNotIn("2,200", snacks_lines[0])
+        self.assertIn("800", snacks_lines[0])
 
 if __name__ == "__main__":
     unittest.main()

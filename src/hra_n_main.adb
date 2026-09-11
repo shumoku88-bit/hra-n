@@ -12,7 +12,6 @@ with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Initializer;   use HRA_N.Application.Initializer;
 with HRA_N.Application.Doctor;        use HRA_N.Application.Doctor;
 with HRA_N.Application.Movement_Command; use HRA_N.Application.Movement_Command;
-with HRA_N.Application.Publisher;     use HRA_N.Application.Publisher;
 with HRA_N.Application.Statement;     use HRA_N.Application.Statement;
 with HRA_N.Application.Budget_Window; use HRA_N.Application.Budget_Window;
 with HRA_N.Application.Review;        use HRA_N.Application.Review;
@@ -24,6 +23,7 @@ with HRA_N.UI.Statement_Cli;
 with HRA_N.UI.Budget_CLI;
 with HRA_N.UI.Scheduled_Cli;
 with HRA_N.UI.Balance_CLI;
+with HRA_N.UI.Capacity_CLI;
 with HRA_N.UI.Reconciliation_CLI;
 with HRA_N.UI.Policy_CLI;
 with HRA_N.UI.Interactive_Movement;
@@ -124,27 +124,46 @@ begin
                end if;
 
                declare
-                  Pub_Res : constant Publish_Result := Publish_Reversal
-                    (Journal_Path    => J_Path,
-                     Target_Event_Id => Target_Id,
-                     Valid_On        => Date_Val,
-                     Description     => Desc_Val);
+                  Desc_Len : constant Natural :=
+                    Natural'Min (Desc_Val'Length, 128);
+                  Intent : constant Reversal_Intent :=
+                    (Target_Id   => Make_Token (Target_Id),
+                     Valid_On    => Date_Val,
+                     Description => Make_Token
+                       ((if Desc_Len > 0
+                         then Desc_Val (Desc_Val'First .. Desc_Val'First + Desc_Len - 1)
+                         else "")));
+                  Prop_Res : constant Proposal_Result :=
+                    Propose_Reversal (Paths, Intent);
                begin
-                  if Pub_Res.Success then
-                     Put_Line ("============================================================");
-                     Put_Line (" [OK] Published Reversal receipt: " &
-                               Pub_Res.Event_Id_Str (1 .. Pub_Res.Event_Id_Len));
-                     Put_Line ("      TARGET: " & Target_Id);
-                     Put_Line ("      DATE:   " & Format_Iso_Date (Date_Val));
-                     if Desc_Val'Length > 0 then
-                        Put_Line ("      REASON: " & Desc_Val);
-                     end if;
-                     Put_Line ("============================================================");
-                  else
+                  if not Prop_Res.Success then
                      Put_Line ("[ERROR] Reversal rejected: " &
-                               Pub_Res.Error_Reason (1 .. Pub_Res.Error_Len));
+                               Prop_Res.Error (1 .. Prop_Res.Error_Len));
                      Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                     return;
                   end if;
+
+                  declare
+                     Receipt : constant Movement_Receipt := Commit (Prop_Res.Proposal);
+                  begin
+                     if Receipt.Success then
+                        Put_Line ("============================================================");
+                        Put_Line (" [OK] Committed Reversal: " &
+                                  Receipt.Event_Id (1 .. Receipt.Event_Id_Len));
+                        Put_Line ("      REVERSED: " & Target_Id);
+                        Put_Line ("      SNAPSHOT: " &
+                                  Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                        Put_Line ("      DATE:   " & Format_Iso_Date (Date_Val));
+                        if Desc_Val'Length > 0 then
+                           Put_Line ("      REASON: " & Desc_Val);
+                        end if;
+                        Put_Line ("============================================================");
+                     else
+                        Put_Line ("[ERROR] Reversal commit rejected: " &
+                                  Receipt.Error (1 .. Receipt.Error_Len));
+                        Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                     end if;
+                  end;
                end;
             end;
          end;
@@ -388,6 +407,15 @@ begin
          return;
       end if;
 
+      --  Branch: Capacity authority
+      if Command = "capacity" then
+         HRA_N.UI.Capacity_CLI.Dispatch (Paths, Command_Idx, Rem_Args, Success);
+         if not Success then
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         end if;
+         return;
+      end if;
+
       --  Branch: Balance assertion
       if Command = "assert" then
          HRA_N.UI.Reconciliation_CLI.Dispatch_Assert
@@ -497,6 +525,7 @@ begin
               (Capacity_Mem => P_Res.Capacities,
                Events       => J_Res.Events,
                Validities   => J_Res.Validities,
+               Metadata     => J_Res.Metadata,
                Routing      => P_Res.Routing,
                Start_Y      => SY,
                Start_M      => SM,

@@ -35,6 +35,10 @@ package HRA_N.Application.Actual_Detail_Query is
       Replaces       : Token_Text;
       Is_Superseded  : Boolean := False;
       Superseded_By  : Token_Text := (Length => 0, Value => [others => ' ']);
+      Has_Reverses   : Boolean := False;
+      Reverses       : Token_Text;
+      Is_Reversed    : Boolean := False;
+      Reversed_By    : Token_Text := (Length => 0, Value => [others => ' ']);
       Has_Relation   : Boolean := False;
       Relation       : Token_Text;
       Has_Discharge  : Boolean := False;

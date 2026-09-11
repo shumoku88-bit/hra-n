@@ -136,4 +136,75 @@ is
       return True;
    end Effective_Evidence_Complete;
 
+   ----------------------------------------------------------------------------
+   --  Effective_References_Are_Closed
+   ----------------------------------------------------------------------------
+   function Effective_References_Are_Closed
+     (Mem : Capacity_Memory) return Boolean
+   is
+   begin
+      for I in 1 .. Mem.Effective_Count loop
+         declare
+            Found : Boolean := False;
+         begin
+            for J in 1 .. Mem.Movement_Count loop
+               Found := Found or else Equal_Token
+                 (Mem.Effective (I).Movement_Id, Mem.Movements (J).Id);
+            end loop;
+            if not Found then
+               return False;
+            end if;
+         end;
+      end loop;
+      return True;
+   end Effective_References_Are_Closed;
+
+   ----------------------------------------------------------------------------
+   --  Effectives_Are_One_To_One
+   ----------------------------------------------------------------------------
+   function Effectives_Are_One_To_One
+     (Mem : Capacity_Memory) return Boolean
+   is
+   begin
+      for I in 1 .. Mem.Effective_Count loop
+         for J in I + 1 .. Mem.Effective_Count loop
+            if Equal_Token
+              (Mem.Effective (I).Movement_Id, Mem.Effective (J).Movement_Id)
+            then
+               return False;
+            end if;
+         end loop;
+      end loop;
+      return True;
+   end Effectives_Are_One_To_One;
+
+   ----------------------------------------------------------------------------
+   --  Entitlement_At
+   ----------------------------------------------------------------------------
+   function Entitlement_At
+     (Mem      : Capacity_Memory;
+      Coord    : Capacity_Coordinate;
+      Currency : Token_Text) return Quanta_Type
+   is
+      Total : Long_Long_Integer := 0;
+   begin
+      for I in 1 .. Mem.Movement_Count loop
+         pragma Loop_Invariant
+           (Total >= Long_Long_Integer (I - 1) * Long_Long_Integer (Quanta_Type'First)
+            and then Total <= Long_Long_Integer (I - 1) * Long_Long_Integer (Quanta_Type'Last));
+         if Equal_Token (Mem.Movements (I).Currency, Currency) then
+            Total := Total +
+              Long_Long_Integer (Quantity_At (Mem.Movements (I), Coord));
+         end if;
+      end loop;
+
+      if Total > Long_Long_Integer (Quanta_Type'Last) then
+         return Quanta_Type'Last;
+      elsif Total < Long_Long_Integer (Quanta_Type'First) then
+         return Quanta_Type'First;
+      else
+         return Quanta_Type (Total);
+      end if;
+   end Entitlement_At;
+
 end HRA_N.Core.Capacity;

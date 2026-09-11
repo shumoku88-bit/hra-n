@@ -201,6 +201,52 @@ def main() -> None:
             # Return to Home
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
+
+            # Open Actual workspace and reverse the oldest record (e0001)
+            os.write(fd, b"a")
+            read_until(fd, output, b"ACTUAL  ALL CURRENT")
+            time.sleep(0.05)
+            os.write(fd, b"j")
+            time.sleep(0.05)
+            os.write(fd, b"j")
+            time.sleep(0.05)
+            os.write(fd, b"j")
+            time.sleep(0.05)
+            os.write(fd, b"\n")
+            read_until(fd, output, b"DETAIL  e0001")
+            assert b"v: reverse" in output
+
+            # Reverse e0001 with an inverse movement committed via generation.
+            # The reload redraws the reversal record: its default description
+            # is emitted contiguously while unchanged header cells are not.
+            os.write(fd, b"v")
+            read_until(fd, output, b"Reverse this Actual")
+            os.write(fd, b"y")
+            read_until(fd, output, b"Reversal of e0001")
+
+            # The reversed target now reports its reverser and hides actions
+            os.write(fd, b"b")
+            read_until(fd, output, b"Order:")
+            time.sleep(0.05)
+            os.write(fd, b"j")
+            time.sleep(0.05)
+            os.write(fd, b"j")
+            time.sleep(0.05)
+            os.write(fd, b"j")
+            time.sleep(0.05)
+            os.write(fd, b"j")
+            time.sleep(0.05)
+            os.write(fd, b"\n")
+            read_until(fd, output, b"REVERSED by e0005")
+            last_reversed = output[output.rfind(b"DETAIL  e0001"):]
+            assert b"v: reverse" not in last_reversed
+            assert b"c: correct" not in last_reversed
+
+            # Return to Home
+            os.write(fd, b"b")
+            read_until(fd, output, b"Order:")
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
         except Exception:
             os.kill(pid, signal.SIGKILL)
             os.waitpid(pid, 0)

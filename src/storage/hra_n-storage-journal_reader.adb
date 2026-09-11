@@ -194,6 +194,18 @@ package body HRA_N.Storage.Journal_Reader is
                                    (Present => True,
                                     Value => (Token => Make_Token
                                       (Tok_Str (Tok_Str'First + 9 .. Tok_Str'Last))));
+                              elsif Tok_Str'Length >= 9 and then Tok_Str (Tok_Str'First .. Tok_Str'First + 8) = "reverses:" then
+                                 if Meta.Reverses.Present or else Tok_Str'Length = 9
+                                   or else Tok_Str'Length - 9 > Max_Token_Length
+                                 then
+                                    Set_Error ("Invalid or duplicate reversal metadata");
+                                    Ada.Text_IO.Close (File);
+                                    return Result;
+                                 end if;
+                                 Meta.Reverses :=
+                                   (Present => True,
+                                    Value => (Token => Make_Token
+                                      (Tok_Str (Tok_Str'First + 9 .. Tok_Str'Last))));
                               elsif Tok_Str'Length >= 9 and then Tok_Str (Tok_Str'First .. Tok_Str'First + 8) = "relation:" then
                                  if Meta.Relation.Present or else Tok_Str'Length = 9
                                    or else Tok_Str'Length - 9 > Max_Token_Length
@@ -426,6 +438,18 @@ package body HRA_N.Storage.Journal_Reader is
          return Result;
       elsif not Replacements_Are_Acyclic (Meta_List) then
          Set_Error ("Replacement history contains a cycle");
+         return Result;
+      elsif not Reversal_References_Are_Closed (Meta_List) then
+         Set_Error ("Reversal references unknown Event_Id");
+         return Result;
+      elsif not Reversals_Are_One_To_One (Meta_List) then
+         Set_Error ("Reversal history branches");
+         return Result;
+      elsif not Reversals_Have_No_Chains (Meta_List) then
+         Set_Error ("Reversal chain is not admitted");
+         return Result;
+      elsif not Reversals_Respect_Replacement (Meta_List) then
+         Set_Error ("Reversal and replacement histories conflict");
          return Result;
       end if;
       Result.Metadata := Make_Metadata_Memory (Meta_List);

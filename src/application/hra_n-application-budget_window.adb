@@ -38,6 +38,7 @@ package body HRA_N.Application.Budget_Window is
      (Capacity_Mem : Capacity_Memory;
       Events       : Event_Vectors.Vector;
       Validities   : Validity_Memory;
+      Metadata     : Metadata_Memory;
       Routing      : Routing_Map;
       Start_Y      : Natural;
       Start_M      : Natural;
@@ -90,7 +91,8 @@ package body HRA_N.Application.Budget_Window is
          Total_Remaining   => Zero_Quanta,
          Capacity_Sum      => 0,
          Movements_Count   => Capacity_Mem.Movement_Count,
-         Events_Considered => Natural (Events.Length));
+         Events_Considered => Natural (Events.Length),
+         Effective_Complete => Effective_Evidence_Complete (Capacity_Mem));
 
       --  1. Discover remembered purposes in order of appearance in CapacityMemory
       for I in 1 .. Capacity_Mem.Movement_Count loop
@@ -140,14 +142,21 @@ package body HRA_N.Application.Budget_Window is
          end;
       end loop;
 
-      --  3. Project Actual Consumption from Events valid in [Start, End)
+      --  3. Project Actual Consumption from effective Events valid in
+      --  [Start, End). A superseded Event never contributes, even when its
+      --  day falls in the window; its successor carries the current answer.
+      --  Reversed Events are not superseded, so both endpoints contribute.
       for Cursor in Events.Iterate loop
          declare
             Ev       : constant Event := Event_Vectors.Element (Cursor);
             Has_Val  : Boolean;
             Val_Date : Date_Type;
+            Successor : Event_Id;
+            Superseded : Boolean;
          begin
-            Find_Occurrence_Date (Validities, Id (Ev), Val_Date, Has_Val);
+            Find_Successor (Metadata, Id (Ev), Successor, Superseded);
+            if not Superseded then
+               Find_Occurrence_Date (Validities, Id (Ev), Val_Date, Has_Val);
             if Has_Val
               and then In_Half_Open
                          (Val_Date.Year, Val_Date.Month, Val_Date.Day,
@@ -180,6 +189,7 @@ package body HRA_N.Application.Budget_Window is
                      end if;
                   end;
                end loop;
+               end if;
             end if;
          end;
       end loop;

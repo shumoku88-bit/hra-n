@@ -4,6 +4,8 @@
 -------------------------------------------------------------------------------
 
 with Test_Support;                            use Test_Support;
+with Ada.Text_IO;
+with HRA_N.Core.Capacity;                      use HRA_N.Core.Capacity;
 with HRA_N.Core.Types;                         use HRA_N.Core.Types;
 with HRA_N.Core.Event;                         use HRA_N.Core.Event;
 with HRA_N.Core.Validity;                      use HRA_N.Core.Validity;
@@ -82,6 +84,16 @@ package body Test_HRA_Storage is
          Assert_Equal_Int (40, Long_Long_Integer (P_Res.Roles.Count), "Loaded 40 accounting roles");
          Assert_Equal_Int (5, Long_Long_Integer (Coordinate_Count (P_Res.Coverage)), "Loaded 5 zero-origin coverage coordinates");
          Assert_Equal_Int (6, Long_Long_Integer (P_Res.Capacities.Movement_Count), "Loaded 6 capacity envelope movements");
+         Assert_Equal_Int (6, Long_Long_Integer (P_Res.Capacities.Effective_Count), "Loaded 6 capacity effective facts");
+         Assert (Equal_Token
+                   (P_Res.Capacities.Movements (1).Id, Make_Token ("cap0001")),
+                 "First capacity movement carries a stable identity");
+         Assert (Has_Effective_Date
+                   (P_Res.Capacities,
+                    P_Res.Capacities.Movements (1).Id),
+                 "Backfilled effective evidence resolves");
+         Assert (Effective_Evidence_Complete (P_Res.Capacities),
+                 "Real capacity evidence is complete");
          Assert_Equal_Int (22, Long_Long_Integer (P_Res.Routing.Count), "Loaded 22 actual routing rules");
       end;
 
@@ -168,6 +180,88 @@ package body Test_HRA_Storage is
             Assert (Read_Back.Success, "Read back rewritten scheduled.hra succeeds");
             Assert_Equal_Int (13, Long_Long_Integer (Read_Back.Lifecycle.Sched_Count), "All 13 scheduled items preserved");
             Assert_Equal_Int (2, Long_Long_Integer (Read_Back.Lifecycle.Comp_Count), "All 2 completions preserved");
+         end;
+      end;
+
+      --  6. Test capacity wire admission (TRANSFER, REBALANCE, EFFECTIVE)
+      declare
+         Tmp_Policy : constant String := "/tmp/test_capacity_wire.hra";
+
+         procedure Write_Policy (Content : String) is
+            File : Ada.Text_IO.File_Type;
+         begin
+            Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Tmp_Policy);
+            Ada.Text_IO.Put (File, Content);
+            Ada.Text_IO.Close (File);
+         end Write_Policy;
+      begin
+         Write_Policy
+           ("CAPACITY food 5000 jpy" & ASCII.LF
+            & "EFFECTIVE cap0001 2026-09-01" & ASCII.LF
+            & "TRANSFER unallocated misc 2000 jpy 2026-09-02" & ASCII.LF
+            & "REBALANCE jpy 2026-09-03 food:-1000 misc:800 unallocated:200" & ASCII.LF);
+         declare
+            R : constant Policy_Result := Read_Policy_File (Tmp_Policy);
+         begin
+            Assert (R.Success, "Capacity wire with backfilled effective stays admitted");
+            Assert_Equal_Int (3, Long_Long_Integer (R.Capacities.Movement_Count),
+                              "Three capacity movements retained");
+            Assert (Effective_Evidence_Complete (R.Capacities),
+                    "Inline and backfilled effectives complete the evidence");
+            Assert (All_Movements_Conserved (R.Capacities),
+                    "All wire movements conserve");
+            Assert (Entitlement_At
+                      (R.Capacities, Make_Unallocated_Coordinate,
+                       Make_Token ("jpy")) = -6_800,
+                    "Unallocated entitlement nets funding, transfer, and rebalance");
+         end;
+
+         Write_Policy
+           ("CAPACITY food 5000 jpy" & ASCII.LF
+            & "EFFECTIVE cap0001 2026-09-01" & ASCII.LF
+            & "EFFECTIVE cap0001 2026-09-02" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Duplicate effective coordinate fails closed");
+
+         Write_Policy ("EFFECTIVE cap0007 2026-09-01" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Dangling effective reference fails closed");
+
+         Write_Policy
+           ("TRANSFER unallocated misc 2000 jpy 2026-09-02" & ASCII.LF
+            & "EFFECTIVE cap0001 2026-09-03" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Second coordinate for an inline-dated movement fails closed");
+
+         Write_Policy
+           ("REBALANCE jpy 2026-09-03 food:-1000 misc:800 unallocated:100" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Unbalanced rebalance fails closed");
+
+         Write_Policy
+           ("REBALANCE jpy 2026-09-03 food:-1000 food:1000" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Rebalance repeating a coordinate fails closed");
+
+         Write_Policy
+           ("REBALANCE jpy 2026-09-03 food:-1000 unallocated:0 misc:1000" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Rebalance with a zero change fails closed");
+
+         Write_Policy
+           ("TRANSFER food food 1000 jpy 2026-09-03" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Transfer with identical endpoints fails closed");
+
+         Write_Policy
+           ("CAPACITY food 100 euro" & ASCII.LF);
+         declare
+            R : constant Policy_Result := Read_Policy_File (Tmp_Policy);
+         begin
+            Assert (R.Success, "Non-jpy capacity remains readable compat input");
+            Assert (Equal_Token
+                      (R.Capacities.Movements (1).Currency, Make_Token ("euro")),
+                    "Currency is retained exactly, never silently defaulted");
          end;
       end;
 

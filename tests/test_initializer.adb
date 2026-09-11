@@ -10,7 +10,8 @@ with HRA_N.Core.Validity;            use HRA_N.Core.Validity;
 with HRA_N.Application.Initializer;  use HRA_N.Application.Initializer;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Doctor;       use HRA_N.Application.Doctor;
-with HRA_N.Application.Publisher;    use HRA_N.Application.Publisher;
+with HRA_N.Core.Event;               use HRA_N.Core.Event;
+with HRA_N.Storage.Journal_Writer;  use HRA_N.Storage.Journal_Writer;
 
 package body Test_Initializer is
 
@@ -62,21 +63,32 @@ package body Test_Initializer is
          Assert (not Res2.Success, "Initializer safely refuses to overwrite existing authority");
       end;
 
-      --  4. A selected generation is immutable until the generation transaction
-      --  writer is connected.
+      --  4. A selected generation is immutable; direct appends are rejected
+      --  and all writes go through the generation transaction.
       declare
-         Paths   : constant Path_Config := Resolve_Paths (Test_Dir);
-         Pub_Res : constant Publish_Result :=
-           Publish_Movement
-             (Journal_Path => Journal_Path_Str (Paths),
-              Policy_Path  => Policy_Path_Str (Paths),
-              From_Locus   => "cash",
-              To_Locus     => "food",
-              Amount       => 800,
-              Valid_On     => (Year => 2026, Month => 9, Day => 4),
-              Description  => "Initial test grocery");
+         Paths : constant Path_Config := Resolve_Paths (Test_Dir);
+         Effs  : Effect_List;
+         JPY   : constant Measure_Id := (Token => Make_Token ("jpy"));
+         App_Res : Append_Result;
       begin
-         Assert (not Pub_Res.Success, "Direct mutation of selected generation is rejected");
+         Effs.Count := 2;
+         Effs.Values (1) :=
+           (Key     => (Token => Make_Token ("0")),
+            Locus   => (Token => Make_Token ("cash")),
+            Measure => JPY,
+            Amount  => (Quanta => -800));
+         Effs.Values (2) :=
+           (Key     => (Token => Make_Token ("1")),
+            Locus   => (Token => Make_Token ("food")),
+            Measure => JPY,
+            Amount  => (Quanta => 800));
+         App_Res := Append_Transaction
+           (Journal_Path => Journal_Path_Str (Paths),
+            Tx_Id        => "e9999",
+            Valid_On     => (Year => 2026, Month => 9, Day => 4),
+            Effects      => Effs,
+            Description  => "Initial test grocery");
+         Assert (not App_Res.Success, "Direct mutation of selected generation is rejected");
       end;
 
       --  Clean up

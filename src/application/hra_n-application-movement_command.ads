@@ -24,6 +24,16 @@ package HRA_N.Application.Movement_Command is
       Description : Token_Text;
    end record;
 
+   --  A reversal names only its target. The inverse effects are derived from
+   --  the retained target, never re-entered, so the link cannot drift from
+   --  the amounts. Both endpoints remain historical facts; a reversal never
+   --  supersedes its target.
+   type Reversal_Intent is record
+      Target_Id   : Token_Text;
+      Valid_On    : Date_Type;
+      Description : Token_Text;
+   end record;
+
    type Movement_Proposal is private;
 
    type Proposal_Result is record
@@ -50,6 +60,10 @@ package HRA_N.Application.Movement_Command is
    function Propose_Correction
      (Paths  : Path_Config;
       Intent : Correction_Intent) return Proposal_Result;
+
+   function Propose_Reversal
+     (Paths  : Path_Config;
+      Intent : Reversal_Intent) return Proposal_Result;
 
    function Commit (Proposal : Movement_Proposal) return Movement_Receipt;
 

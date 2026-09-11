@@ -12,7 +12,8 @@ package body HRA_N.Storage.Journal_Writer is
       Description   : String := "";
       Replaces_Id   : String := "";
       Relation_Str  : String := "";
-      Discharge_Str : String := "") return String
+      Discharge_Str : String := "";
+      Reverses_Id   : String := "") return String
    is
       Buf : Unbounded_String;
    begin
@@ -47,6 +48,9 @@ package body HRA_N.Storage.Journal_Writer is
       if Discharge_Str'Length > 0 then
          Append (Buf, " discharges:" & Discharge_Str);
       end if;
+      if Reverses_Id'Length > 0 then
+         Append (Buf, " reverses:" & Reverses_Id);
+      end if;
       return To_String (Buf);
    end Encode_Transaction;
 
@@ -59,7 +63,8 @@ package body HRA_N.Storage.Journal_Writer is
       Description  : String := "";
       Replaces_Id  : String := "";
       Relation_Str : String := "";
-      Discharge_Str : String := "") return Append_Result
+      Discharge_Str : String := "";
+      Reverses_Id   : String := "") return Append_Result
    is
       File   : Ada.Text_IO.File_Type;
       Result : Append_Result;
@@ -94,7 +99,7 @@ package body HRA_N.Storage.Journal_Writer is
         (File,
          Encode_Transaction
            (Tx_Id, Valid_On, Effects, Purpose, Description, Replaces_Id,
-            Relation_Str, Discharge_Str));
+            Relation_Str, Discharge_Str, Reverses_Id));
       Ada.Text_IO.Close (File);
       Result.Success := True;
       return Result;

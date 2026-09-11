@@ -39,6 +39,7 @@ sig Transaction extends Record {
     effectiveDay : one Day,
     postings     : some Posting,
     replaces     : lone Transaction,
+    reverses     : lone Transaction,
     purpose      : lone Purpose
 }
 
@@ -105,6 +106,47 @@ sig PriceObservation extends Record {
     quoteAmount : one Int
 }
 
+--  Capacity plane: allocation and spending authority, never physical holdings.
+--  Capacity reuses the balanced-movement algebra under a distinct coordinate
+--  wrapper. Forgetting the wrapper must never let capacity contribute to
+--  physical Event quantities; the type separation below is that wrapper.
+abstract sig CapCoord {}
+one sig Unallocated extends CapCoord {}
+sig PurposeCap extends CapCoord {
+    capPurpose : one Purpose
+}
+
+sig CapPosting {
+    capCoord  : one CapCoord,
+    capDelta  : one Int
+}
+
+sig CapacityMovement extends Record {
+    capMeasure  : one Measure,
+    capPostings : some CapPosting
+}
+
+--  Effective-coordinate evidence lives apart from the movement algebra: one
+--  retained coordinate per movement at most, never guessed from a query.
+sig CapacityEffective extends Record {
+    movement : one CapacityMovement,
+    on       : one Day
+}
+
+--  Locus-to-purpose routing evidence. Consumption resolves each posting
+--  through the retained routing of the answering snapshot.
+sig RoutingEntry extends Record {
+    routeLocus   : one Locus,
+    routePurpose : one Purpose
+}
+
+--  A budget window is a caller-supplied half-open query coordinate, never a
+--  retained period identity. There is no Period, Cycle, or Envelope object.
+sig BudgetQuery {
+    from : one Day,
+    to   : one Day
+}
+
 sig Snapshot {
     retained : set Record
 }
@@ -143,6 +185,72 @@ fun OpenSchedules[s : Snapshot] : set ScheduledDeclaration {
 
 fun ActiveRoles[s : Snapshot] : set RoleAssignment {
     RolesAt[s] - RolesAt[s].replaces
+}
+
+fun CapMovementsAt[s : Snapshot] : set CapacityMovement {
+    CapacityMovement & s.retained
+}
+
+pred InHalfOpen[d, from, to : Day] {
+    DayOrder/lte[from, d] and DayOrder/lt[d, to]
+}
+
+pred ValidWindow[q : BudgetQuery] {
+    DayOrder/lt[q.from, q.to]
+}
+
+fun CapPurposeAmount[cm : CapacityMovement, purp : Purpose] : Int {
+    sum p : cm.capPostings |
+        (p.capCoord in PurposeCap and (p.capCoord & PurposeCap).capPurpose = purp) =>
+            p.capDelta else 0
+}
+
+fun CapUnallocatedAmount[cm : CapacityMovement] : Int {
+    sum p : cm.capPostings |
+        p.capCoord in Unallocated => p.capDelta else 0
+}
+
+fun CapTotal[cm : CapacityMovement] : Int {
+    sum p : cm.capPostings | p.capDelta
+}
+
+--  Entitlement projects capacity authority effective in the query window.
+--  It is a pure projection, never retained state.
+fun Entitlement[s : Snapshot, q : BudgetQuery, purp : Purpose, m : Measure] : Int {
+    sum cm : CapMovementsAt[s], e : CapacityEffective & s.retained |
+        (e.movement = cm and cm.capMeasure = m and InHalfOpen[e.on, q.from, q.to]) =>
+            CapPurposeAmount[cm, purp] else 0
+}
+
+fun UnallocatedInWindow[s : Snapshot, q : BudgetQuery, m : Measure] : Int {
+    sum cm : CapMovementsAt[s], e : CapacityEffective & s.retained |
+        (e.movement = cm and cm.capMeasure = m and InHalfOpen[e.on, q.from, q.to]) =>
+            CapUnallocatedAmount[cm] else 0
+}
+
+--  Consumption sums signed physical postings of effective transactions only:
+--  a superseded transaction never contributes, even when its day falls in
+--  the window. Missing validity is absent from EffectiveTransactions by
+--  construction of the frontier, never guessed.
+fun Consumption[s : Snapshot, q : BudgetQuery, purp : Purpose, m : Measure] : Int {
+    sum t : EffectiveTransactions[s], p : t.postings |
+        (InHalfOpen[t.effectiveDay, q.from, q.to]
+            and p.coord.measure = m
+            and some e : RoutingEntry & s.retained |
+                e.routeLocus = p.coord.locus and e.routePurpose = purp) =>
+            p.delta else 0
+}
+
+--  Remaining is derived at query time. There is no stored Remaining,
+--  Headroom, or SafeToSpend fact anywhere in this model.
+fun Remaining[s : Snapshot, q : BudgetQuery, purp : Purpose, m : Measure] : Int {
+    Entitlement[s, q, purp, m] - Consumption[s, q, purp, m]
+}
+
+fun UniversalSum[s : Snapshot, q : BudgetQuery, m : Measure] : Int {
+    sum cm : CapMovementsAt[s], e : CapacityEffective & s.retained |
+        (e.movement = cm and cm.capMeasure = m and InHalfOpen[e.on, q.from, q.to]) =>
+            CapTotal[cm] else 0
 }
 
 fun ScheduleSuccessor[s : Snapshot] : ScheduledDeclaration -> ScheduledDeclaration {
@@ -188,6 +296,19 @@ pred TransactionRevisionsAreSound[s : Snapshot] {
     all old : TxAt[s] | lone new : TxAt[s] | new.replaces = old
 }
 
+--  A reversal names its target explicitly. Both endpoints stay retained and
+--  both stay in physical accumulation: a reversal never supersedes. One
+--  target has at most one reverser, chains are rejected, and a target is
+--  never both replaced and reversed.
+pred ReversalsAreSound[s : Snapshot] {
+    no t : TxAt[s] | t.reverses = t
+    all old : TxAt[s] | lone new : TxAt[s] | new.reverses = old
+    no t : TxAt[s] | some t.reverses and some t.replaces
+    no old : TxAt[s] | (some new : TxAt[s] | new.reverses = old)
+        and (some succ : TxAt[s] | succ.replaces = old)
+    no t : TxAt[s] | some t.reverses and some u : TxAt[s] | u.reverses = t
+}
+
 pred ScheduledLifecycleIsSound[s : Snapshot] {
     all d : SchedulesAt[s] | lone e : TerminalsAt[s] | e.target = d
     all e : ScheduledReplacement & TerminalsAt[s] | e.replacement != e.target
@@ -217,12 +338,42 @@ pred PolicyIsSound[s : Snapshot] {
     }
 }
 
+--  One measure per capacity movement, exact conservation, no empty changes.
+pred CapacityMovementsConserve[s : Snapshot] {
+    all cm : CapMovementsAt[s] | {
+        all p : cm.capPostings | p.capDelta != 0
+        (sum p : cm.capPostings | p.capDelta) = 0
+    }
+}
+
+--  Effective coordinates are retained per-movement evidence: closed
+--  references and at most one coordinate per movement. A query window never
+--  supplies a missing effective coordinate.
+pred CapacityEffectiveSound[s : Snapshot] {
+    all e : CapacityEffective & s.retained | e.movement in CapMovementsAt[s]
+    all cm : CapMovementsAt[s] |
+        lone e : CapacityEffective & s.retained | e.movement = cm
+}
+
+pred RoutingFunctional[s : Snapshot] {
+    all l : Locus | lone e : RoutingEntry & s.retained | e.routeLocus = l
+}
+
+pred CapPostingOwnershipIsUnique[s : Snapshot] {
+    all p : CapPosting | one cm : CapMovementsAt[s] | p in cm.capPostings
+}
+
 pred Admitted[s : Snapshot] {
     ReferencesClosed[s]
     IdentitiesUnique[s]
     PostingOwnershipIsUnique[s]
     MovementsConserveEachMeasure[s]
     TransactionRevisionsAreSound[s]
+    ReversalsAreSound[s]
+    CapacityMovementsConserve[s]
+    CapacityEffectiveSound[s]
+    RoutingFunctional[s]
+    CapPostingOwnershipIsUnique[s]
     ScheduledLifecycleIsSound[s]
     RelationsAreSound[s]
     PolicyIsSound[s]
@@ -240,6 +391,33 @@ assert EffectiveTransactionsHaveNoRetainedSuccessor {
     all s : Snapshot | Admitted[s] implies
         no t : EffectiveTransactions[s] |
             some successor : TxAt[s] | successor.replaces = t
+}
+
+--  A reversal never supersedes: a reversed target stays effective alongside
+--  its reverser, so both remain in physical quantity accumulation.
+assert ReversedTargetsRemainEffective {
+    all s : Snapshot | Admitted[s] implies
+        all old : TxAt[s] |
+            (some new : TxAt[s] | new.reverses = old) implies
+                old in EffectiveTransactions[s]
+}
+
+--  Universal capacity conservation: entitlements plus unallocated sum to
+--  zero in every valid window, because each admitted movement conserves.
+assert UniversalCapacityHolds {
+    all s : Snapshot, q : BudgetQuery, m : Measure |
+        (Admitted[s] and ValidWindow[q]) implies UniversalSum[s, q, m] = 0
+}
+
+--  Remaining is derived. This pin guards the wiring; the deeper legacy
+--  double-count trap (a superseded transaction and its replacement both
+--  contributing to one window) is closed by construction because
+--  Consumption ranges over EffectiveTransactions only, and will be
+--  pinned again by executable tests in the implementation slice.
+assert RemainingIsDerived {
+    all s : Snapshot, q : BudgetQuery, purp : Purpose, m : Measure |
+        Remaining[s, q, purp, m] =
+            Entitlement[s, q, purp, m] - Consumption[s, q, purp, m]
 }
 
 assert OpenSchedulesHaveNoTerminalEvidence {
@@ -304,9 +482,61 @@ pred RejectedCorrectionBranch {
     all s : Snapshot | some s.retained implies not Admitted[s]
 }
 
+pred RejectedDoubleReversal {
+    some s : Snapshot, old : TxAt[s] |
+        #(old.~reverses & TxAt[s]) > 1
+    all s : Snapshot | some s.retained implies not Admitted[s]
+}
+
+pred RejectedReversalChain {
+    some s : Snapshot, t : TxAt[s] |
+        some t.reverses and some u : TxAt[s] | u.reverses = t
+    all s : Snapshot | some s.retained implies not Admitted[s]
+}
+
+pred RejectedReversedAndReplaced {
+    some s : Snapshot, old : TxAt[s] |
+        (some new : TxAt[s] | new.reverses = old)
+        and (some succ : TxAt[s] | succ.replaces = old)
+    all s : Snapshot | some s.retained implies not Admitted[s]
+}
+
 pred RejectedOverDischarge {
     some s : Snapshot, r : ClaimsAt[s] |
         (sum d : DischargesAt[s] | d.target = r => d.amount else 0) > r.amount
+    all s : Snapshot | some s.retained implies not Admitted[s]
+}
+
+pred CapacityScenario {
+    some s : Snapshot, q : BudgetQuery, purp : Purpose, m : Measure |
+        Admitted[s] and ValidWindow[q]
+        and some cm : CapMovementsAt[s] |
+            cm.capMeasure = m and CapPurposeAmount[cm, purp] > 0
+            and some e : CapacityEffective & s.retained |
+                e.movement = cm and InHalfOpen[e.on, q.from, q.to]
+}
+
+pred RejectedUnbalancedCapacity {
+    some s : Snapshot, cm : CapMovementsAt[s] |
+        (sum p : cm.capPostings | p.capDelta) != 0
+    all s : Snapshot | some s.retained implies not Admitted[s]
+}
+
+pred RejectedDoubleEffective {
+    some s : Snapshot, cm : CapMovementsAt[s] |
+        #(cm.~movement & (CapacityEffective & s.retained)) > 1
+    all s : Snapshot | some s.retained implies not Admitted[s]
+}
+
+pred RejectedDanglingEffective {
+    some s : Snapshot, e : CapacityEffective & s.retained |
+        e.movement not in CapMovementsAt[s]
+    all s : Snapshot | some s.retained implies not Admitted[s]
+}
+
+pred RejectedNonfunctionalRouting {
+    some s : Snapshot, l : Locus |
+        #{e : RoutingEntry & s.retained | e.routeLocus = l} > 1
     all s : Snapshot | some s.retained implies not Admitted[s]
 }
 
@@ -314,9 +544,20 @@ run ValidScenario for 18 but exactly 3 Snapshot, 4 Day, 2 Measure, 5 Int
 run RejectedUnbalancedTransaction for 8 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedScheduledConflict for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedCorrectionBranch for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run RejectedDoubleReversal for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run RejectedReversalChain for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run RejectedReversedAndReplaced for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run CapacityScenario for 12 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run RejectedUnbalancedCapacity for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run RejectedDoubleEffective for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run RejectedDanglingEffective for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run RejectedNonfunctionalRouting for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedOverDischarge for 12 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 
 check EffectiveTransactionsHaveNoRetainedSuccessor for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
+check ReversedTargetsRemainEffective for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
+check UniversalCapacityHolds for 10 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
+check RemainingIsDerived for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
 check OpenSchedulesHaveNoTerminalEvidence for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
 check CompletionIsClosedOverActualAuthority for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
 check EffectivePhysicalMovementsConservePerMeasure for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int

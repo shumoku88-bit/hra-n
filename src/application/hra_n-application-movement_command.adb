@@ -140,6 +140,20 @@ package body HRA_N.Application.Movement_Command is
                return Fail ("correction target event is already superseded");
             end if;
          end;
+
+         declare
+            Reversal   : Event_Id;
+            Rev_Found  : Boolean;
+         begin
+            Find_Reverser
+              (Memory   => Journal.Metadata,
+               Target   => (Token => Target_Token),
+               Reversal => Reversal,
+               Found    => Rev_Found);
+            if Rev_Found then
+               return Fail ("correction target event has been reversed");
+            end if;
+         end;
       end if;
 
       J_Bytes := HRA_N.Storage.Exact_File.Read_All (Journal_Path_Str (Paths));
@@ -238,6 +252,157 @@ package body HRA_N.Application.Movement_Command is
          Target_Token  => Intent.Target_Id,
          Is_Correction => True);
    end Propose_Correction;
+
+   function Propose_Reversal
+     (Paths  : Path_Config;
+      Intent : Reversal_Intent) return Proposal_Result
+   is
+      Result  : Proposal_Result;
+      Journal : Journal_Result;
+      Policy  : Policy_Result;
+      J_Bytes : HRA_N.Storage.Exact_File.Read_Result;
+      P_Bytes : HRA_N.Storage.Exact_File.Read_Result;
+      S_Bytes : HRA_N.Storage.Exact_File.Read_Result;
+      Found_Ev    : Event;
+      Found_Target : Boolean := False;
+
+      function Fail (Message : String) return Proposal_Result is
+         Len : constant Natural := Natural'Min (Message'Length, Result.Error'Length);
+      begin
+         Result.Success := False;
+         Result.Error_Len := Len;
+         Result.Error (1 .. Len) := Message (Message'First .. Message'First + Len - 1);
+         return Result;
+      end Fail;
+   begin
+      if not Paths.Resolution_Ok or else not Paths.Is_Versioned then
+         return Fail ("reversal proposal requires a selected versioned authority");
+      elsif Intent.Target_Id.Length = 0 then
+         return Fail ("reversal target identity cannot be empty");
+      elsif not Coordinate_Is_Encodable (Intent.Target_Id) then
+         return Fail ("reversal target identity is not canonically encodable");
+      elsif not Description_Is_Encodable (Intent.Description) then
+         return Fail ("reversal description is not canonically encodable");
+      elsif not Is_Valid_Date
+        (Intent.Valid_On.Year, Intent.Valid_On.Month, Intent.Valid_On.Day)
+      then
+         return Fail ("reversal occurrence date is invalid");
+      end if;
+
+      Journal := Read_Journal_File (Journal_Path_Str (Paths));
+      Policy := Read_Policy_File (Policy_Path_Str (Paths));
+      if not Journal.Success or else not Policy.Success then
+         return Fail ("cannot propose from an unadmitted authority snapshot");
+      end if;
+
+      for Item of Journal.Events loop
+         if Equal_Token (Id (Item).Token, Intent.Target_Id) then
+            Found_Ev := Item;
+            Found_Target := True;
+            exit;
+         end if;
+      end loop;
+      if not Found_Target then
+         return Fail ("reversal target event does not exist in journal");
+      end if;
+
+      declare
+         Successor  : Event_Id;
+         Succ_Found : Boolean;
+      begin
+         Find_Successor
+           (Memory    => Journal.Metadata,
+            Target    => (Token => Intent.Target_Id),
+            Successor => Successor,
+            Found     => Succ_Found);
+         if Succ_Found then
+            return Fail ("reversal target event is already superseded");
+         end if;
+      end;
+
+      declare
+         Existing   : Event_Id;
+         Rev_Found  : Boolean;
+      begin
+         Find_Reverser
+           (Memory   => Journal.Metadata,
+            Target   => (Token => Intent.Target_Id),
+            Reversal => Existing,
+            Found    => Rev_Found);
+         if Rev_Found then
+            return Fail ("reversal target event is already reversed");
+         end if;
+      end;
+
+      declare
+         Own      : Transaction_Metadata_Entry;
+         Own_Found : Boolean;
+      begin
+         Find_Metadata
+           (Memory => Journal.Metadata,
+            Event  => (Token => Intent.Target_Id),
+            Item   => Own,
+            Found  => Own_Found);
+         if Own_Found and then Own.Reverses.Present then
+            return Fail ("reversal chains are not admitted");
+         end if;
+      end;
+
+      J_Bytes := HRA_N.Storage.Exact_File.Read_All (Journal_Path_Str (Paths));
+      P_Bytes := HRA_N.Storage.Exact_File.Read_All (Policy_Path_Str (Paths));
+      S_Bytes := HRA_N.Storage.Exact_File.Read_All (Scheduled_Path_Str (Paths));
+      if not J_Bytes.Success or else not P_Bytes.Success or else not S_Bytes.Success then
+         return Fail ("cannot read exact authority bytes for proposal");
+      end if;
+
+      declare
+         Inv_Effects : Effect_List := Effects (Found_Ev);
+         Event_Id : constant String :=
+           Format_Event_Id (Natural (Journal.Events.Length) + 1);
+         Description : constant String :=
+           (if Intent.Description.Length > 0
+            then Intent.Description.Value (1 .. Intent.Description.Length)
+            else "Reversal of " & Intent.Target_Id.Value (1 .. Intent.Target_Id.Length));
+         Target_Str : constant String :=
+           Intent.Target_Id.Value (1 .. Intent.Target_Id.Length);
+      begin
+         for I in 1 .. Inv_Effects.Count loop
+            Inv_Effects.Values (I).Amount.Quanta :=
+              -Inv_Effects.Values (I).Amount.Quanta;
+         end loop;
+         declare
+            Encoded : constant String := Encode_Transaction
+              (Tx_Id       => Event_Id,
+               Valid_On    => Intent.Valid_On,
+               Effects     => Inv_Effects,
+               Description => Description,
+               Reverses_Id => Target_Str);
+            Existing : constant String := To_String (J_Bytes.Content);
+         begin
+            if Existing'Length > 0 and then Existing (Existing'Last) /= ASCII.LF then
+               return Fail ("journal must end with a newline before proposal append");
+            end if;
+            Result.Proposal.Valid := True;
+            Result.Proposal.Base_Len := Paths.Data_Len;
+            Result.Proposal.Base_Dir (1 .. Paths.Data_Len) := Data_Dir_Str (Paths);
+            Result.Proposal.Expected_Len := Paths.Snapshot_Len;
+            Result.Proposal.Expected_Id (1 .. Paths.Snapshot_Len) := Snapshot_Id_Str (Paths);
+            Result.Proposal.Event_Len := Event_Id'Length;
+            Result.Proposal.Event_Id (1 .. Event_Id'Length) := Event_Id;
+            Result.Proposal.Target_Len := Target_Str'Length;
+            Result.Proposal.Target_Id (1 .. Target_Str'Length) := Target_Str;
+            Result.Proposal.Journal := To_Unbounded_String (Existing & Encoded & ASCII.LF);
+            Result.Proposal.Policy := P_Bytes.Content;
+            Result.Proposal.Scheduled := S_Bytes.Content;
+         end;
+      end;
+      Result.Success := True;
+      return Result;
+   exception
+      when E : others =>
+         return Fail
+           ("unexpected reversal proposal failure: " & Ada.Exceptions.Exception_Message (E));
+   end Propose_Reversal;
 
    function Commit (Proposal : Movement_Proposal) return Movement_Receipt is
       Receipt : Movement_Receipt;
