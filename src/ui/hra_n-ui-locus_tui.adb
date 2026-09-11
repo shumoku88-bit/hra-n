@@ -74,13 +74,20 @@ package body HRA_N.UI.Locus_TUI is
       end;
    end Run_Add;
 
-   procedure Draw (Paths : Path_Config) is
+   procedure Draw
+     (Paths  : Path_Config;
+      Scroll : Natural;
+      Count  : out Natural)
+   is
       View : constant Locus_View := Execute_Locus_Query (Paths);
       Capacity : constant Natural := (if Rows > 7 then Rows - 7 else 0);
+      First    : Positive := 1;
+      Last     : Natural := 0;
    begin
       Curses.Erase;
       Put_Clipped (0, "LOCUS NEW-WRITE ADMISSION");
       Put_Clipped (1, "============================================================");
+      Count := View.Row_Count;
       if View.Status = Query_Rejected then
          if View.Diagnostic_Len > 0 then
             Put_Clipped
@@ -91,11 +98,15 @@ package body HRA_N.UI.Locus_TUI is
       else
          Put_Clipped
            (3, "Admitted stable identities (" & View.Row_Count'Image & ")");
-         for I in 1 .. Natural'Min (View.Row_Count, Capacity) loop
-            Put_Clipped
-              (3 + I,
-               "  " & View.Rows (I).Value (1 .. View.Rows (I).Length));
-         end loop;
+         if Capacity > 0 and then View.Row_Count > 0 then
+            First := Natural'Min (Scroll + 1, View.Row_Count);
+            Last := Natural'Min (View.Row_Count, First + Capacity - 1);
+            for I in First .. Last loop
+               Put_Clipped
+                 (4 + I - First,
+                  "  " & View.Rows (I).Value (1 .. View.Rows (I).Length));
+            end loop;
+         end if;
          if Rows > 3 then
             Put_Clipped
               (Rows - 3,
@@ -105,25 +116,53 @@ package body HRA_N.UI.Locus_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "n: admit new Locus  R: reload  b/Esc/q: home");
+            "j/k: scroll  n: admit new Locus  R: reload  b/Esc/q: home");
       end if;
       Curses.Refresh;
    end Draw;
 
    procedure Run (Paths : Path_Config) is
       Current_Paths : Path_Config := Paths;
+      Scroll  : Natural := 0;
+      Count   : Natural := 0;
       Running : Boolean := True;
    begin
       while Running loop
-         Draw (Current_Paths);
+         Draw (Current_Paths, Scroll, Count);
          declare
             Key : constant Integer := Integer (Curses.Get_Keystroke);
+            Capacity : constant Natural := (if Rows > 7 then Rows - 7 else 5);
          begin
             if Key = Character'Pos ('b') or else Key = Character'Pos ('B')
               or else Key = Character'Pos ('q') or else Key = Character'Pos ('Q')
               or else Key = 27
             then
                Running := False;
+            elsif Key = Character'Pos ('j') or else Key = Integer (Curses.KEY_DOWN) then
+               if Count > Capacity and then Scroll + Capacity < Count then
+                  Scroll := Scroll + 1;
+               end if;
+            elsif Key = Character'Pos ('k') or else Key = Integer (Curses.KEY_UP) then
+               if Scroll > 0 then
+                  Scroll := Scroll - 1;
+               end if;
+            elsif Key = Integer (Curses.KEY_NPAGE)
+              or else Key = 4
+              or else Key = 32
+            then
+               if Count > Capacity then
+                  Scroll := Natural'Min (Count - Capacity, Scroll + Capacity);
+               end if;
+            elsif Key = Integer (Curses.KEY_PPAGE)
+              or else Key = 21
+            then
+               Scroll := (if Scroll > Capacity then Scroll - Capacity else 0);
+            elsif Key = Character'Pos ('G') then
+               if Count > Capacity then
+                  Scroll := Count - Capacity;
+               end if;
+            elsif Key = Character'Pos ('g') then
+               Scroll := 0;
             elsif Key = Character'Pos ('n') or else Key = Character'Pos ('N') then
                declare
                   Done : Boolean := False;

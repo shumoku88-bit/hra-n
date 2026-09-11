@@ -131,6 +131,25 @@ package body HRA_N.UI.Budget_TUI is
                if Cursor > 1 then
                   Cursor := Cursor - 1;
                end if;
+            elsif Key = Integer (Curses.KEY_NPAGE)
+              or else Key = 4
+              or else Key = 32
+            then
+               declare
+                  Step : constant Positive :=
+                    Positive'Max (1, (if Rows > 10 then Rows - 10 else 5));
+               begin
+                  Cursor := (if Count > 0 then Natural'Min (Count, Cursor + Step) else 1);
+               end;
+            elsif Key = Integer (Curses.KEY_PPAGE)
+              or else Key = 21
+            then
+               declare
+                  Step : constant Positive :=
+                    Positive'Max (1, (if Rows > 10 then Rows - 10 else 5));
+               begin
+                  Cursor := (if Cursor > Step then Cursor - Step else 1);
+               end;
             elsif (Key = Character'Pos ('g') or else Key = Character'Pos ('G'))
               and then Count > 0
             then

@@ -35,6 +35,9 @@ package body HRA_N.UI.Actual_Detail_TUI is
       Current_Paths    : Path_Config := Paths;
       Current_Event_Id : HRA_N.Core.Types.Token_Text := Event_Id;
       Running          : Boolean := True;
+      Scroll_Offset    : Natural := 0;
+      Last_Total_Lines : Natural := 0;
+      Last_Avail_Rows  : Natural := 0;
 
       --  Open-claim picker: select visible objects instead of retyping
       --  internal identities. Returns the picked claim or Found = False.
@@ -249,87 +252,105 @@ package body HRA_N.UI.Actual_Detail_TUI is
                Put_Clipped (3, "CURRENT IDENTITY REJECTED");
                Put_Clipped (4, View.Diagnostic (1 .. View.Diagnostic_Len));
             else
-               Put_Clipped
-                 (3,
-                  "Status       " &
-                  (if View.Is_Superseded
-                   then "SUPERSEDED by " & Token_String (View.Superseded_By)
-                   elsif View.Is_Reversed
-                   then "REVERSED by " & Token_String (View.Reversed_By)
-                   else "ACTIVE"));
-               Put_Clipped
-                 (4,
-                  "Date         " &
-                  (if View.Has_Date
-                   then Format_Iso_Date (View.Valid_On)
-                   else "UNKNOWN"));
-               Put_Clipped
-                 (5,
-                  "Description  " &
-                  (if View.Description.Length = 0
-                   then "(none)"
-                   else To_String (View.Description)));
-               Put_Clipped
-                 (7, "Purpose      " &
-                    (if View.Has_Purpose then Token_String (View.Purpose) else "(none)"));
-               Put_Clipped
-                 (8, "Replaces     " &
-                    (if View.Has_Replaces then Token_String (View.Replaces) else "(none)"));
-               Put_Clipped
-                 (9, "Reverses     " &
-                    (if View.Has_Reverses then Token_String (View.Reverses) else "(none)"));
-               Put_Clipped
-                 (10, "Relation     " &
-                    (if View.Has_Relation then Token_String (View.Relation) else "(none)"));
-               Put_Clipped
-                 (11, "Discharge    " &
-                    (if View.Has_Discharge then Token_String (View.Discharge) else "(none)"));
                declare
-                  Link_Row : Natural := 12;
+                  Total_Lines : Natural := 0;
+                  Avail_Rows  : constant Natural := (if Rows > 5 then Rows - 5 else 0);
+
+                  procedure Emit (Text : String) is
+                  begin
+                     Total_Lines := Total_Lines + 1;
+                     if Total_Lines > Scroll_Offset
+                       and then Total_Lines <= Scroll_Offset + Avail_Rows
+                     then
+                        Put_Clipped (3 + Total_Lines - Scroll_Offset - 1, Text);
+                     end if;
+                  end Emit;
                begin
-                  for C in 1 .. View.Links.Claim_Shown loop
-                     Put_Clipped
-                       (Link_Row,
-                        "  claim " &
-                        Token_String (View.Links.Claims (C).Id) & "  " &
-                        HRA_N.Application.Relation_Query.Endpoint_Label
-                          (View.Links.Claims (C).Debtor) & " -> " &
-                        HRA_N.Application.Relation_Query.Endpoint_Label
-                          (View.Links.Claims (C).Creditor) & "  remaining " &
-                        Amount_Image (View.Links.Claims (C).Remaining) & " " &
-                        Token_String (View.Links.Claims (C).Measure));
-                     Link_Row := Link_Row + 1;
-                  end loop;
-                  for D in 1 .. View.Links.Discharge_Shown loop
-                     Put_Clipped
-                       (Link_Row,
-                        "  settles " &
-                        Token_String (View.Links.Discharges (D).Claim) & "  " &
-                        Amount_Image (View.Links.Discharges (D).Amount));
-                     Link_Row := Link_Row + 1;
-                  end loop;
-                  Put_Clipped (Link_Row + 1, "Effects");
+                  Emit
+                    ("Status       " &
+                     (if View.Is_Superseded
+                      then "SUPERSEDED by " & Token_String (View.Superseded_By)
+                      elsif View.Is_Reversed
+                      then "REVERSED by " & Token_String (View.Reversed_By)
+                      else "ACTIVE"));
+                  Emit
+                    ("Date         " &
+                     (if View.Has_Date
+                      then Format_Iso_Date (View.Valid_On)
+                      else "UNKNOWN"));
+                  Emit
+                    ("Description  " &
+                     (if View.Description.Length = 0
+                      then "(none)"
+                      else To_String (View.Description)));
+                  Emit ("");
+                  Emit
+                    ("Purpose      " &
+                     (if View.Has_Purpose then Token_String (View.Purpose) else "(none)"));
+                  Emit
+                    ("Replaces     " &
+                     (if View.Has_Replaces then Token_String (View.Replaces) else "(none)"));
+                  Emit
+                    ("Reverses     " &
+                     (if View.Has_Reverses then Token_String (View.Reverses) else "(none)"));
+                  Emit
+                    ("Relation     " &
+                     (if View.Has_Relation then Token_String (View.Relation) else "(none)"));
+                  Emit
+                    ("Discharge    " &
+                     (if View.Has_Discharge then Token_String (View.Discharge) else "(none)"));
+
+                  if View.Links.Claim_Shown > 0 or else View.Links.Discharge_Shown > 0 then
+                     Emit ("");
+                     for C in 1 .. View.Links.Claim_Shown loop
+                        Emit
+                          ("  claim " &
+                           Token_String (View.Links.Claims (C).Id) & "  " &
+                           HRA_N.Application.Relation_Query.Endpoint_Label
+                             (View.Links.Claims (C).Debtor) & " -> " &
+                           HRA_N.Application.Relation_Query.Endpoint_Label
+                             (View.Links.Claims (C).Creditor) & "  remaining " &
+                           Amount_Image (View.Links.Claims (C).Remaining) & " " &
+                           Token_String (View.Links.Claims (C).Measure));
+                     end loop;
+                     for D in 1 .. View.Links.Discharge_Shown loop
+                        Emit
+                          ("  settles " &
+                           Token_String (View.Links.Discharges (D).Claim) & "  " &
+                           Amount_Image (View.Links.Discharges (D).Amount));
+                     end loop;
+                  end if;
+
+                  Emit ("");
+                  Emit ("Effects");
                   for Index in 1 .. View.Effect_Count loop
-                     Put_Clipped
-                       (Link_Row + 1 + Index,
-                        "  " & Token_String (View.Effects (Index).Locus) & "  " &
+                     Emit
+                       ("  " & Token_String (View.Effects (Index).Locus) & "  " &
                         Amount_Image (View.Effects (Index).Amount) & " " &
                         Token_String (View.Effects (Index).Measure));
                   end loop;
-                  Put_Clipped
-                    (Link_Row + 3 + Natural (View.Effect_Count),
-                     "Snapshot: " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
-               end;
-            end if;
 
-            if Rows > 2 then
-               if not View.Is_Superseded and then not View.Is_Reversed
-                 and then View.Status /= Query_Rejected
-               then
-                  Put_Clipped (Rows - 2, "c: correct   v: reverse   l: relate   d: settle   r: reload   b/Esc: Actual");
-               else
-                  Put_Clipped (Rows - 2, "r: reload   b/Esc: Actual");
-               end if;
+                  Emit ("");
+                  Emit ("Snapshot: " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
+
+                  Last_Total_Lines := Total_Lines;
+                  Last_Avail_Rows  := Avail_Rows;
+
+                  if Rows > 2 then
+                     declare
+                        Scroll_Hint : constant String :=
+                          (if Total_Lines > Avail_Rows then "j/k: scroll   " else "");
+                     begin
+                        if not View.Is_Superseded and then not View.Is_Reversed
+                          and then View.Status /= Query_Rejected
+                        then
+                           Put_Clipped (Rows - 2, Scroll_Hint & "c: correct   v: reverse   l: relate   d: settle   r: reload   b/Esc: Actual");
+                        else
+                           Put_Clipped (Rows - 2, Scroll_Hint & "r: reload   b/Esc: Actual");
+                        end if;
+                     end;
+                  end if;
+               end;
             end if;
             Curses.Refresh;
 
@@ -342,6 +363,37 @@ package body HRA_N.UI.Actual_Detail_TUI is
                   Running := False;
                elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R') then
                   Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+               elsif Key = Character'Pos ('j') or else Key = Integer (Curses.KEY_DOWN) then
+                  if Last_Total_Lines > Last_Avail_Rows
+                    and then Scroll_Offset + Last_Avail_Rows < Last_Total_Lines
+                  then
+                     Scroll_Offset := Scroll_Offset + 1;
+                  end if;
+               elsif Key = Character'Pos ('k') or else Key = Integer (Curses.KEY_UP) then
+                  if Scroll_Offset > 0 then
+                     Scroll_Offset := Scroll_Offset - 1;
+                  end if;
+               elsif Key = Integer (Curses.KEY_NPAGE)
+                 or else Key = 4
+                 or else Key = 32
+               then
+                  if Last_Total_Lines > Last_Avail_Rows then
+                     Scroll_Offset :=
+                       Natural'Min (Last_Total_Lines - Last_Avail_Rows, Scroll_Offset + Last_Avail_Rows);
+                  end if;
+               elsif Key = Integer (Curses.KEY_PPAGE)
+                 or else Key = 21
+               then
+                  Scroll_Offset :=
+                    (if Scroll_Offset > Last_Avail_Rows
+                     then Scroll_Offset - Last_Avail_Rows
+                     else Natural (0));
+               elsif Key = Character'Pos ('G') then
+                  if Last_Total_Lines > Last_Avail_Rows then
+                     Scroll_Offset := Last_Total_Lines - Last_Avail_Rows;
+                  end if;
+               elsif Key = Character'Pos ('g') then
+                  Scroll_Offset := 0;
                elsif (Key = Character'Pos ('c') or else Key = Character'Pos ('C'))
                  and then not View.Is_Superseded
                  and then View.Status /= Query_Rejected

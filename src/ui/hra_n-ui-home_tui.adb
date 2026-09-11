@@ -281,10 +281,17 @@ package body HRA_N.UI.Home_TUI is
          end if;
       end if;
 
-      if Rows > 2 then
+      if Rows > 3 and then Columns < 120 then
+         Put_Clipped
+           (Rows - 3,
+            "h/l: day  k/j: week  g: today  Enter: sel day  n: record  a: Actual  s/p: Sched");
          Put_Clipped
            (Rows - 2,
-            "h/l: day  k/j: week  Enter: sel day  n: record  a: Actual  s: Sched  b: Balances  c: Budget  e: Capacity  r: Route  v: Loci  g: today  q: quit");
+            "b: Balances  c: Budget  e: Capacity  r/u: Route  v: Loci  i: Attention  q: quit");
+      elsif Rows > 2 then
+         Put_Clipped
+           (Rows - 2,
+            "h/l: day  k/j: week  g: today  Enter: sel day  n: record  a: Actual  s/p: Sched  b: Balances  c: Budget  e: Capacity  r/u: Route  v: Loci  i: Attention  q: quit");
       end if;
       Curses.Refresh;
    end Draw;
@@ -334,7 +341,9 @@ package body HRA_N.UI.Home_TUI is
                Current_Paths :=
                  HRA_N.Application.Path_Resolver.Resolve_Paths
                    (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-            elsif Key = Character'Pos ('s') or else Key = Character'Pos ('S') then
+            elsif Key = Character'Pos ('s') or else Key = Character'Pos ('S')
+              or else Key = Character'Pos ('p') or else Key = Character'Pos ('P')
+            then
                HRA_N.UI.Scheduled_TUI.Run
                  (Current_Paths,
                   Selected,
