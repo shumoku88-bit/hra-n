@@ -13,6 +13,7 @@ with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Text_IO; use Ada.Text_IO;
 with HRA_N.Application.Balance_Query;
 with HRA_N.Application.Budget_Query;
+with HRA_N.Application.Budget_Window;
 with HRA_N.Application.Capacity_Query;
 with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
