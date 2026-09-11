@@ -9,6 +9,7 @@ with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Home_Query;
 with HRA_N.Application.Review; use HRA_N.Application.Review;
 with HRA_N.UI.Actual_TUI;
+with HRA_N.UI.Snapshot_Label;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with Terminal_Interface.Curses;
 
@@ -64,7 +65,8 @@ package body HRA_N.UI.Home_TUI is
             (if View.Unresolved_Loci = 0
              then "none from this projection"
              else Image (View.Unresolved_Loci) & " unclassified loci"));
-         Put_Clipped (11, "Snapshot   UNVERSIONED (read-only)");
+         Put_Clipped
+           (11, "Snapshot   " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
       end if;
 
       if Rows > 2 then

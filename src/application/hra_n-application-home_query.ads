@@ -31,8 +31,8 @@ package HRA_N.Application.Home_Query is
    end record;
 
    --  Acquire all three logical streams once and derive a presentation-neutral
-   --  Home projection. The current storage has no generation selector, so a
-   --  successful result is explicitly marked Snapshot_Unversioned.
+   --  Home projection. A selected generation carries its snapshot identity;
+   --  legacy root files remain explicitly unversioned.
    function Execute
      (Paths : HRA_N.Application.Path_Resolver.Path_Config;
       Query : Home_Query) return Home_View;

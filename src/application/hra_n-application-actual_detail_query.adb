@@ -25,6 +25,15 @@ package body HRA_N.Application.Actual_Detail_Query is
    begin
       Result.Event_Id := Event_Id;
 
+      if not Paths.Resolution_Ok then
+         Set_Diagnostic (Paths.Error_Reason (1 .. Paths.Error_Len));
+         return Result;
+      elsif Paths.Is_Versioned then
+         Result.Snapshot :=
+           (Kind     => Snapshot_Versioned,
+            Identity => Make_Token (Snapshot_Id_Str (Paths)));
+      end if;
+
       if not Journal.Success then
          Set_Diagnostic
            ("journal.hra: " &

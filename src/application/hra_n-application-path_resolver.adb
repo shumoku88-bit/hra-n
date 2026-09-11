@@ -6,6 +6,7 @@
 with Ada.Command_Line;
 with Ada.Directories;
 with Ada.Environment_Variables;
+with Ada.Text_IO;
 
 package body HRA_N.Application.Path_Resolver is
 
@@ -20,6 +21,9 @@ package body HRA_N.Application.Path_Resolver is
 
    function Scheduled_Path_Str (Config : Path_Config) return String is
      (Config.Scheduled_Path (1 .. Config.Sched_Len));
+
+   function Snapshot_Id_Str (Config : Path_Config) return String is
+     (Config.Snapshot_Id (1 .. Config.Snapshot_Len));
 
    procedure Parse_Cli_Args
      (Explicit_Dir : out String;
@@ -99,22 +103,110 @@ package body HRA_N.Application.Path_Resolver is
       Config.Data_Dir (1 .. Len) := Dir (1 .. Len);
 
       declare
-         Base  : constant String := Dir (1 .. Len);
-         J_Str : constant String := Base & "/journal.hra";
-         P_Str : constant String := Base & "/policy.hra";
-         S_Str : constant String := Base & "/scheduled.hra";
+         Base         : constant String := Dir (1 .. Len);
+         Selector     : constant String := Base & "/.hra/CURRENT";
+         Selected_Dir : String (1 .. Max_Path_Length) := [others => ' '];
+         Selected_Len : Natural := 0;
+
+         procedure Set_Error (Message : String) is
+            Msg_Len : constant Natural :=
+              Natural'Min (Message'Length, Config.Error_Reason'Length);
+         begin
+            Config.Resolution_Ok := False;
+            Config.Error_Len := Msg_Len;
+            Config.Error_Reason (1 .. Msg_Len) :=
+              Message (Message'First .. Message'First + Msg_Len - 1);
+         end Set_Error;
+
+         function Valid_Snapshot_Id (Value : String) return Boolean is
+         begin
+            if Value'Length = 0 or else Value'Length > Max_Snapshot_Id_Length then
+               return False;
+            end if;
+            for Ch of Value loop
+               if Ch not in 'a' .. 'z'
+                 and then Ch not in '0' .. '9'
+                 and then Ch /= '-'
+               then
+                  return False;
+               end if;
+            end loop;
+            return True;
+         end Valid_Snapshot_Id;
+
+         procedure Assign_Paths (Root : String) is
+            J_Str : constant String := Root & "/journal.hra";
+            P_Str : constant String := Root & "/policy.hra";
+            S_Str : constant String := Root & "/scheduled.hra";
+         begin
+            if J_Str'Length > Max_Path_Length
+              or else P_Str'Length > Max_Path_Length
+              or else S_Str'Length > Max_Path_Length
+            then
+               Set_Error ("resolved authority path exceeds capacity");
+               return;
+            end if;
+
+            Config.Journ_Len := J_Str'Length;
+            Config.Journal_Path (1 .. Config.Journ_Len) := J_Str;
+            Config.Pol_Len := P_Str'Length;
+            Config.Policy_Path (1 .. Config.Pol_Len) := P_Str;
+            Config.Sched_Len := S_Str'Length;
+            Config.Scheduled_Path (1 .. Config.Sched_Len) := S_Str;
+         end Assign_Paths;
+
       begin
-         Config.Journ_Len := Natural'Min (J_Str'Length, Max_Path_Length);
-         Config.Journal_Path (1 .. Config.Journ_Len) :=
-           J_Str (J_Str'First .. J_Str'First + Config.Journ_Len - 1);
+         if Ada.Directories.Exists (Selector) then
+            declare
+               File : Ada.Text_IO.File_Type;
+            begin
+               Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Selector);
+               declare
+                  Selected  : constant String := Ada.Text_IO.Get_Line (File);
+                  Extra_Row : constant Boolean := not Ada.Text_IO.End_Of_File (File);
+               begin
+                  Ada.Text_IO.Close (File);
+                  if Extra_Row then
+                     Set_Error (".hra/CURRENT must contain exactly one identity row");
+                  elsif not Valid_Snapshot_Id (Selected) then
+                     Set_Error ("invalid snapshot identity in .hra/CURRENT");
+                  else
+                     Config.Is_Versioned := True;
+                     Config.Snapshot_Len := Selected'Length;
+                     Config.Snapshot_Id (1 .. Config.Snapshot_Len) := Selected;
+                     declare
+                        Gen : constant String :=
+                          Base & "/.hra/generations/" & Selected;
+                     begin
+                        if Gen'Length > Selected_Dir'Length then
+                           Set_Error ("selected generation path exceeds capacity");
+                        else
+                           Selected_Len := Gen'Length;
+                           Selected_Dir (1 .. Selected_Len) := Gen;
+                           Assign_Paths (Selected_Dir (1 .. Selected_Len));
+                        end if;
+                     end;
+                  end if;
+               end;
+            exception
+               when others =>
+                  if Ada.Text_IO.Is_Open (File) then
+                     Ada.Text_IO.Close (File);
+                  end if;
+                  Set_Error ("cannot read .hra/CURRENT");
+            end;
+         else
+            Assign_Paths (Base);
+         end if;
 
-         Config.Pol_Len := Natural'Min (P_Str'Length, Max_Path_Length);
-         Config.Policy_Path (1 .. Config.Pol_Len) :=
-           P_Str (P_Str'First .. P_Str'First + Config.Pol_Len - 1);
-
-         Config.Sched_Len := Natural'Min (S_Str'Length, Max_Path_Length);
-         Config.Scheduled_Path (1 .. Config.Sched_Len) :=
-           S_Str (S_Str'First .. S_Str'First + Config.Sched_Len - 1);
+         if Config.Resolution_Ok and then Config.Is_Versioned
+           and then
+             (not Ada.Directories.Exists (Journal_Path_Str (Config))
+              or else not Ada.Directories.Exists (Policy_Path_Str (Config))
+              or else not Ada.Directories.Exists (Scheduled_Path_Str (Config)))
+         then
+            Set_Error ("selected generation is incomplete");
+         end if;
       end;
 
       return Config;

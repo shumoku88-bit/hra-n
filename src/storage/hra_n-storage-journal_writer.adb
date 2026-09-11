@@ -5,6 +5,7 @@
 
 with Ada.Text_IO;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 
 package body HRA_N.Storage.Journal_Writer is
 
@@ -32,6 +33,11 @@ package body HRA_N.Storage.Journal_Writer is
       end Set_Error;
 
    begin
+      if Index (Journal_Path, "/.hra/generations/") /= 0 then
+         Set_Error ("Selected generations are immutable; use an authority transaction");
+         return Result;
+      end if;
+
       --  Build line
       Append (Buf, "TX ");
       Append (Buf, Tx_Id);

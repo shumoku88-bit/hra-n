@@ -26,9 +26,22 @@ The logical household authority consists of three canonical data streams:
 - `policy.hra`
 - `scheduled.hra`
 
-Their grammar and publication representation remain under canonical-ledger-v2
-design. The three logical streams do not imply that three independently replaced
-live files are transactionally safe.
+A newly initialized household stores those streams in an immutable generation:
+
+```text
+.hra/
+├── CURRENT
+└── generations/
+    └── g00000001/
+        ├── journal.hra
+        ├── policy.hra
+        └── scheduled.hra
+```
+
+`CURRENT` is the sole activation edge. Invalid selectors and incomplete selected
+generations fail closed without falling back to legacy root files. Legacy
+three-file roots remain readable as explicitly unversioned snapshots during the
+redesign.
 
 ## Formal design
 
@@ -78,7 +91,8 @@ The TUI supports day navigation, Selected Day and all-Actual workspaces,
 chronology toggling, row selection, identity-revalidated Actual detail, return-to-
 today, reload, resize/redraw, and clean quit. Detail currently exposes date,
 description, and exact `(Locus, Measure, Amount)` effects. Write actions remain
-disabled while snapshots are unversioned. Scheduled, balances, budget, and report
+disabled until the generation transaction writer is connected; direct mutation
+of a selected generation is rejected. Scheduled, balances, budget, and report
 workspaces are added through the same shared query boundary.
 
 The combined repository gate is:

@@ -15,4 +15,7 @@ package HRA_N.Storage.Atomic_Writer is
       Error_Msg   : out String;
       Error_Len   : out Natural) return Boolean;
 
+   --  Durably retain directory entries created directly by a caller.
+   function Sync_Containing_Directory (Path : String) return Boolean;
+
 end HRA_N.Storage.Atomic_Writer;

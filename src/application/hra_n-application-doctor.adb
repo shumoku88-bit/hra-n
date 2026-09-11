@@ -11,6 +11,7 @@ with HRA_N.Core.Validity;          use HRA_N.Core.Validity;
 with HRA_N.Core.Description;       use HRA_N.Core.Description;
 with HRA_N.Core.Accounting_Role;   use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Coverage;          use HRA_N.Core.Coverage;
+with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Policy_Reader;  use HRA_N.Storage.Policy_Reader;
 with HRA_N.Storage.Scheduled_Journal_Reader; use HRA_N.Storage.Scheduled_Journal_Reader;
@@ -36,15 +37,11 @@ package body HRA_N.Application.Doctor is
       Report        : out Doctor_Report;
       Quiet         : Boolean := False)
    is
-      Base_Dir : constant String :=
-        (if Authority_Dir'Length >= 19
-            and then Authority_Dir (Authority_Dir'Last - 18 .. Authority_Dir'Last) = "/movement-authority"
-         then Authority_Dir (Authority_Dir'First .. Authority_Dir'Last - 19)
-         else Authority_Dir);
-
-      J_Path : constant String := Base_Dir & "/journal.hra";
-      P_Path : constant String := Base_Dir & "/policy.hra";
-      S_Path : constant String := Base_Dir & "/scheduled.hra";
+      Paths    : constant Path_Config := Resolve_Paths (Authority_Dir);
+      Base_Dir : constant String := Data_Dir_Str (Paths);
+      J_Path   : constant String := Journal_Path_Str (Paths);
+      P_Path   : constant String := Policy_Path_Str (Paths);
+      S_Path   : constant String := Scheduled_Path_Str (Paths);
 
       JR : Journal_Result;
       PR : Policy_Result;

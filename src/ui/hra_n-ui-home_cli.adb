@@ -8,6 +8,7 @@ with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Home_Query;
 with HRA_N.Application.Review; use HRA_N.Application.Review;
 with HRA_N.UI.Output; use HRA_N.UI.Output;
+with HRA_N.UI.Snapshot_Label;
 
 package body HRA_N.UI.Home_CLI is
 
@@ -52,7 +53,7 @@ package body HRA_N.UI.Home_CLI is
       else
          Put_Line ("Attention   none from this projection");
       end if;
-      Put_Line ("Snapshot    UNVERSIONED (read-only view)");
+      Put_Line ("Snapshot    " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
       Put_Line ("------------------------------------------------------------");
       Put_Line ("Use explicit commands for current write operations.");
 

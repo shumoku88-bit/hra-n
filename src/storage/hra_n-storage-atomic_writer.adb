@@ -35,7 +35,7 @@ package body HRA_N.Storage.Atomic_Writer is
       return POSIX_Fsync (Interfaces.C.int (FD)) = 0;
    end Sync_File;
 
-   function Sync_Directory (Path : String) return Boolean is
+   function Sync_Containing_Directory (Path : String) return Boolean is
       Dir_Path     : constant String := Ada.Directories.Containing_Directory (Path);
       FD           : GNAT.OS_Lib.File_Descriptor := GNAT.OS_Lib.Invalid_FD;
       Synced       : Boolean := False;
@@ -55,7 +55,7 @@ package body HRA_N.Storage.Atomic_Writer is
             GNAT.OS_Lib.Close (FD, Close_Status);
          end if;
          return False;
-   end Sync_Directory;
+   end Sync_Containing_Directory;
 
    function Atomic_Rename
      (Source_Path : String;
@@ -160,7 +160,7 @@ package body HRA_N.Storage.Atomic_Writer is
       end if;
 
       --  7. Sync containing directory metadata
-      if not Sync_Directory (Target_Path) then
+      if not Sync_Containing_Directory (Target_Path) then
          return Set_Error
            ("fsync directory failed for: " & Target_Path, Error_Msg, Error_Len);
       end if;

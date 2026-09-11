@@ -3,6 +3,7 @@ with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Actual_Detail_Query; use HRA_N.Application.Actual_Detail_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
+with HRA_N.UI.Snapshot_Label;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with Terminal_Interface.Curses;
 
@@ -59,7 +60,8 @@ package body HRA_N.UI.Actual_Detail_TUI is
                   "Purpose/revision/relation metadata: not yet admitted");
                Put_Clipped
                  (9 + Natural (View.Effect_Count),
-                  "Snapshot: UNVERSIONED; write actions disabled");
+                  "Snapshot: " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot) &
+                  "; write actions disabled");
             end if;
 
             if Rows > 2 then

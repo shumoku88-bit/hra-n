@@ -4,6 +4,7 @@
 -------------------------------------------------------------------------------
 
 with Ada.Strings.Unbounded;         use Ada.Strings.Unbounded;
+with Ada.Strings.Fixed;             use Ada.Strings.Fixed;
 with HRA_N.Core.Types;              use HRA_N.Core.Types;
 with HRA_N.Core.Validity;           use HRA_N.Core.Validity;
 with HRA_N.Storage.Atomic_Writer;   use HRA_N.Storage.Atomic_Writer;
@@ -28,6 +29,11 @@ package body HRA_N.Storage.Scheduled_Journal_Writer is
       end Set_Error;
 
    begin
+      if Index (Path, "/.hra/generations/") /= 0 then
+         Set_Error ("Selected generations are immutable; use an authority transaction");
+         return Result;
+      end if;
+
       Append (Buf, "# HRA-N Scheduled Journal" & ASCII.LF);
       Append (Buf, "# Format: SCHED <id> <due-date> <flows...> status:<status>" & ASCII.LF & ASCII.LF);
 

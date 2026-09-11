@@ -10,7 +10,6 @@ with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Home_Query;
 with HRA_N.Application.Initializer; use HRA_N.Application.Initializer;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
-with HRA_N.Application.Publisher; use HRA_N.Application.Publisher;
 with HRA_N.Storage.Atomic_Writer; use HRA_N.Storage.Atomic_Writer;
 
 package body Test_Home_Query is
@@ -34,19 +33,14 @@ package body Test_Home_Query is
 
       Paths := Resolve_Paths (Test_Dir);
 
-      declare
-         Published : constant Publish_Result :=
-           Publish_Movement
-             (Journal_Path => Journal_Path_Str (Paths),
-              Policy_Path  => Policy_Path_Str (Paths),
-              From_Locus   => "cash",
-              To_Locus     => "food",
-              Amount       => 800,
-              Valid_On     => Day,
-              Description  => "Lunch");
-      begin
-         Assert (Published.Success, "Home query fixture movement publishes");
-      end;
+      --  Fixture construction bypasses production authority writers.
+      Assert
+        (Write_File_Atomically
+           (Journal_Path_Str (Paths),
+            "TX e0001 2026-09-11 cash:-800 food:800 ""Lunch""" & ASCII.LF,
+            Error,
+            Error_Len),
+         "Home query fixture journal installs");
 
       Assert
         (Write_File_Atomically
@@ -64,8 +58,10 @@ package body Test_Home_Query is
               (Selected_Day => Day));
       begin
          Assert (View.Status = Query_Complete, "Home query is complete for classified journal");
-         Assert (View.Snapshot.Kind = Snapshot_Unversioned,
-                 "Home query honestly marks current storage unversioned");
+         Assert (View.Snapshot.Kind = Snapshot_Versioned,
+                 "Home query carries selected snapshot identity");
+         Assert (Equal_Token (View.Snapshot.Identity, Make_Token ("g00000001")),
+                 "Home query snapshot identity matches CURRENT");
          Assert_Equal_Int (1, Long_Long_Integer (View.Total_Actual), "Home query counts Actual");
          Assert_Equal_Int (1, Long_Long_Integer (View.Selected_Actual), "Home query counts selected-day Actual");
          Assert_Equal_Int (2, Long_Long_Integer (View.Total_Scheduled), "Home query counts Scheduled declarations");
@@ -76,18 +72,14 @@ package body Test_Home_Query is
          Assert_Equal_Int (0, Long_Long_Integer (View.Unresolved_Loci), "Home query has no unresolved loci");
       end;
 
-      declare
-         Published : constant Publish_Result :=
-           Publish_Movement
-             (Journal_Path => Journal_Path_Str (Paths),
-              Policy_Path  => Policy_Path_Str (Paths),
-              From_Locus   => "cash",
-              To_Locus     => "unclassified",
-              Amount       => 50,
-              Valid_On     => Day);
-      begin
-         Assert (Published.Success, "Unclassified fixture movement publishes");
-      end;
+      Assert
+        (Write_File_Atomically
+           (Journal_Path_Str (Paths),
+            "TX e0001 2026-09-11 cash:-800 food:800 ""Lunch""" & ASCII.LF &
+            "TX e0002 2026-09-11 cash:-50 unclassified:50" & ASCII.LF,
+            Error,
+            Error_Len),
+         "Partial Home query fixture journal installs");
 
       declare
          View : constant HRA_N.Application.Home_Query.Home_View :=

@@ -2,6 +2,7 @@
 --  HRA-N: shared Home query implementation
 -------------------------------------------------------------------------------
 
+with HRA_N.Core.Types;           use HRA_N.Core.Types;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Coverage;        use HRA_N.Core.Coverage;
 with HRA_N.Core.Scheduled;       use HRA_N.Core.Scheduled;
@@ -52,6 +53,15 @@ package body HRA_N.Application.Home_Query is
       end Set_Diagnostic;
 
    begin
+      if not Paths.Resolution_Ok then
+         Set_Diagnostic (Paths.Error_Reason (1 .. Paths.Error_Len));
+         return Result;
+      elsif Paths.Is_Versioned then
+         Result.Snapshot :=
+           (Kind     => Snapshot_Versioned,
+            Identity => Make_Token (Snapshot_Id_Str (Paths)));
+      end if;
+
       if not JR.Success then
          Set_Diagnostic ("journal.hra: " & JR.Error_Reason (1 .. JR.Error_Len));
          return Result;

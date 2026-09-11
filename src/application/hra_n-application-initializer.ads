@@ -2,8 +2,8 @@
 --  HRA-N: Verified Household Engine
 --  Package: HRA_N.Application.Initializer
 --
---  Creates an initial journal.hra, policy.hra, and scheduled.hra without
---  overwriting an existing household authority.
+--  Creates the first immutable three-stream generation and atomically selects
+--  it without overwriting an existing household authority.
 -------------------------------------------------------------------------------
 
 package HRA_N.Application.Initializer is
@@ -16,8 +16,8 @@ package HRA_N.Application.Initializer is
       Error_Len    : Natural           := 0;
    end record;
 
-   --  Initialize a new household directory. Refuses to overwrite an existing
-   --  journal or policy file.
+   --  Initialize a new household directory. Refuses a selected generation or
+   --  legacy root authority; unselected crash residue is retryable.
    function Initialize_Household (Base_Dir : String) return Init_Result;
 
 end HRA_N.Application.Initializer;
