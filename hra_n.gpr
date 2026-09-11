@@ -1,7 +1,7 @@
 with "lib_adacurses";
 
 project HRA_N is
-   for Languages use ("Ada");
+   for Languages use ("Ada", "C");
    for Source_Dirs use ("src", "src/core", "src/storage", "src/application", "src/ui");
    for Object_Dir use "obj";
    for Exec_Dir use "bin";
@@ -15,6 +15,12 @@ project HRA_N is
          "-gnatW8",     -- UTF-8 encoding support
          "-g",          -- Debug symbols
          "-O2"          -- Optimization
+      );
+      for Default_Switches ("C") use (
+         "-std=c11",
+         "-Wall",
+         "-Wextra",
+         "-O2"
       );
    end Compiler;
 

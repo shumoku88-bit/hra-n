@@ -4,6 +4,7 @@
 -------------------------------------------------------------------------------
 
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
+with HRA_N.UI.Terminal_UTF8;
 with Terminal_Interface.Curses;
 
 package body HRA_N.UI.Line_Edit is
@@ -36,7 +37,7 @@ package body HRA_N.UI.Line_Edit is
          Put_Clipped
            (Prompt_Row,
             Prompt_Text & "[" & Buf (1 .. Len) & "_"
-            & "] (Enter: accept   Esc: cancel)");
+            & "] (Enter: accept   Esc: cancel)          ");
          Curses.Refresh;
          declare
             Key : constant Integer := Integer (Curses.Get_Keystroke);
@@ -57,7 +58,15 @@ package body HRA_N.UI.Line_Edit is
                end if;
             elsif Key = Key_BS or else Key = Key_DEL then
                if Len > 0 then
-                  Len := Len - 1;
+                  declare
+                     Dropped : constant String :=
+                       HRA_N.UI.Terminal_UTF8.Drop_Last_Code_Point (Buf (1 .. Len));
+                  begin
+                     Len := Dropped'Length;
+                     if Len > 0 then
+                        Buf (1 .. Len) := Dropped;
+                     end if;
+                  end;
                end if;
             elsif Key >= 32 and then Key <= 126 then
                if Len < Buf'Length then
