@@ -15,10 +15,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Alire & SPARK Toolchain
+      - name: Setup Alire & GNAT Toolchain
         uses: alire-project/setup-alire@v3
         with:
-          toolchain: gnat_native gnatprove
+          toolchain: gnat_native
 
       - name: Run Qualification Pipeline (SPARK SMT Proof + Tests)
         run: |
