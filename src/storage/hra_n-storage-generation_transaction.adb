@@ -67,21 +67,34 @@ package body HRA_N.Storage.Generation_Transaction is
          return Result;
       end Success_For;
 
-      function Journal_Extends (Identity : String) return Boolean is
-         Root : constant String := Meta_Dir & "/generations/" & Identity;
-         J : constant Read_Result := Read_All (Root & "/journal.hra");
-         Existing : constant String := To_String (J.Content);
+      function Content_Extends
+        (Path      : String;
+         Candidate : String) return Boolean
+      is
+         Current  : constant Read_Result := Read_All (Path);
+         Existing : constant String := To_String (Current.Content);
       begin
-         if not J.Success or else Journal_Content'Length < Existing'Length then
+         if not Current.Success or else Candidate'Length < Existing'Length then
             return False;
-         elsif Journal_Content = Existing then
+         elsif Candidate = Existing then
             return True;
          elsif Existing'Length > 0 and then Existing (Existing'Last) /= ASCII.LF then
             return False;
          end if;
-         return Journal_Content
-           (Journal_Content'First .. Journal_Content'First + Existing'Length - 1) = Existing;
-      end Journal_Extends;
+         return Candidate
+           (Candidate'First .. Candidate'First + Existing'Length - 1) = Existing;
+      end Content_Extends;
+
+      function Streams_Preserve_Authority (Identity : String) return Boolean is
+         Root : constant String := Meta_Dir & "/generations/" & Identity;
+         Policy : constant Read_Result := Read_All (Root & "/policy.hra");
+      begin
+         return Content_Extends (Root & "/journal.hra", Journal_Content)
+           and then Content_Extends
+             (Root & "/scheduled.hra", Scheduled_Content)
+           and then Policy.Success
+           and then To_String (Policy.Content) = Policy_Content;
+      end Streams_Preserve_Authority;
 
       function Generation_Equals (Identity : String) return Boolean is
          Root : constant String := Meta_Dir & "/generations/" & Identity;
@@ -118,12 +131,15 @@ package body HRA_N.Storage.Generation_Transaction is
          if not Journal.Success or else not Policy.Success or else not Scheduled.Success
            or else Natural (Journal.Events.Length) > Max_Validity_Entries
            or else not Loci_Are_Unique (Policy.Roles)
+           or else not Scheduled_Ids_Are_Unique (Life)
            or else not Completions_Reference_Known (Life)
            or else not Retirements_Reference_Known (Life)
            or else not Replacements_Reference_Known (Life)
            or else not Terminal_Evidence_Compatible (Life)
            or else not Replacement_Terminal_Compatible (Life)
            or else not Replacements_Are_One_To_One (Life)
+           or else not Terminal_Targets_Are_Unique (Life)
+           or else not Replacement_History_Is_Acyclic (Life)
          then
             return False;
          end if;
@@ -193,8 +209,9 @@ package body HRA_N.Storage.Generation_Transaction is
                return Success_For (Identity_String (Current));
             end if;
             return Fail ("stale snapshot; authority changed before writer ownership");
-         elsif not Journal_Extends (Identity_String (Current)) then
-            return Fail ("candidate journal would remove or rewrite admitted facts");
+         elsif not Streams_Preserve_Authority (Identity_String (Current)) then
+            return Fail
+              ("candidate would rewrite facts or mutate versioned policy");
          end if;
       end;
 

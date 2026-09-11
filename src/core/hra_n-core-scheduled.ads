@@ -104,6 +104,16 @@ is
    --  Specification Functions & Predicates
    ----------------------------------------------------------------------------
 
+   function Scheduled_Ids_Are_Unique
+     (Lifecycle : Scheduled_Lifecycle) return Boolean;
+
+   --  A declaration can have at most one terminal fact of any kind.
+   function Terminal_Targets_Are_Unique
+     (Lifecycle : Scheduled_Lifecycle) return Boolean;
+
+   function Replacement_History_Is_Acyclic
+     (Lifecycle : Scheduled_Lifecycle) return Boolean;
+
    --  Check if a ScheduledId has a recorded completion
    function Is_Completed
      (Lifecycle : Scheduled_Lifecycle;

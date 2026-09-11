@@ -5,7 +5,6 @@
 
 with Ada.Strings.Unbounded;         use Ada.Strings.Unbounded;
 with Ada.Strings.Fixed;             use Ada.Strings.Fixed;
-with HRA_N.Core.Types;              use HRA_N.Core.Types;
 with HRA_N.Core.Validity;           use HRA_N.Core.Validity;
 with HRA_N.Storage.Atomic_Writer;   use HRA_N.Storage.Atomic_Writer;
 
@@ -35,7 +34,7 @@ package body HRA_N.Storage.Scheduled_Journal_Writer is
       end if;
 
       Append (Buf, "# HRA-N Scheduled Journal" & ASCII.LF);
-      Append (Buf, "# Format: SCHED <id> <due-date> <flows...> status:<status>" & ASCII.LF & ASCII.LF);
+      Append (Buf, "# Facts: SCHED, COMPLETE, RETIRE, REPLACE" & ASCII.LF & ASCII.LF);
 
       for I in 1 .. Lifecycle.Sched_Count loop
          declare
@@ -70,47 +69,34 @@ package body HRA_N.Storage.Scheduled_Journal_Writer is
                end;
             end loop;
 
-            --  Resolve status
-            if Is_Completed (Lifecycle, Occ.Id) then
-               declare
-                  Ref_Id : String (1 .. Max_Token_Length) := [others => ' '];
-                  Ref_Len : Natural := 0;
-               begin
-                  for K in 1 .. Lifecycle.Comp_Count loop
-                     if Equal_Token (Lifecycle.Comp_Items (K).Scheduled.Token, Occ.Id.Token) then
-                        Ref_Len := Lifecycle.Comp_Items (K).Actual.Token.Length;
-                        Ref_Id (1 .. Ref_Len) := Lifecycle.Comp_Items (K).Actual.Token.Value (1 .. Ref_Len);
-                        exit;
-                     end if;
-                  end loop;
-
-                  Append (Buf, " status:completed:");
-                  Append (Buf, Ref_Id (1 .. Ref_Len));
-               end;
-            elsif Is_Retired (Lifecycle, Occ.Id) then
-               Append (Buf, " status:retired");
-            elsif Is_Replaced (Lifecycle, Occ.Id) then
-               declare
-                  Succ_Id : String (1 .. Max_Token_Length) := [others => ' '];
-                  Succ_Len : Natural := 0;
-               begin
-                  for K in 1 .. Lifecycle.Repl_Count loop
-                     if Equal_Token (Lifecycle.Repl_Items (K).Original.Token, Occ.Id.Token) then
-                        Succ_Len := Lifecycle.Repl_Items (K).Replaced_By.Token.Length;
-                        Succ_Id (1 .. Succ_Len) := Lifecycle.Repl_Items (K).Replaced_By.Token.Value (1 .. Succ_Len);
-                        exit;
-                     end if;
-                  end loop;
-
-                  Append (Buf, " status:replaced-by:");
-                  Append (Buf, Succ_Id (1 .. Succ_Len));
-               end;
-            else
-               Append (Buf, " status:open");
-            end if;
-
             Append (Buf, ASCII.LF);
          end;
+      end loop;
+
+      for I in 1 .. Lifecycle.Comp_Count loop
+         Append
+           (Buf,
+            "COMPLETE " &
+            Lifecycle.Comp_Items (I).Scheduled.Token.Value
+              (1 .. Lifecycle.Comp_Items (I).Scheduled.Token.Length) & " " &
+            Lifecycle.Comp_Items (I).Actual.Token.Value
+              (1 .. Lifecycle.Comp_Items (I).Actual.Token.Length) & ASCII.LF);
+      end loop;
+      for I in 1 .. Lifecycle.Ret_Count loop
+         Append
+           (Buf,
+            "RETIRE " &
+            Lifecycle.Ret_Items (I).Scheduled.Token.Value
+              (1 .. Lifecycle.Ret_Items (I).Scheduled.Token.Length) & ASCII.LF);
+      end loop;
+      for I in 1 .. Lifecycle.Repl_Count loop
+         Append
+           (Buf,
+            "REPLACE " &
+            Lifecycle.Repl_Items (I).Original.Token.Value
+              (1 .. Lifecycle.Repl_Items (I).Original.Token.Length) & " " &
+            Lifecycle.Repl_Items (I).Replaced_By.Token.Value
+              (1 .. Lifecycle.Repl_Items (I).Replaced_By.Token.Length) & ASCII.LF);
       end loop;
 
       if Write_File_Atomically (Path, To_String (Buf), Err_Buf, Err_Len) then

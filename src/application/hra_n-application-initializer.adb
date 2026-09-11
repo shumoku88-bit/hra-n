@@ -47,7 +47,7 @@ package body HRA_N.Application.Initializer is
 
       Initial_Scheduled : constant String :=
         "# HRA-N Scheduled Journal" & ASCII.LF &
-        "# Format: SCHED <id> <due-date> <flows...> status:<status>" & ASCII.LF;
+        "# Facts: SCHED, COMPLETE, RETIRE, REPLACE" & ASCII.LF;
 
    begin
       Result.Dir_Len := Natural'Min (Base_Dir'Length, Result.Target_Dir'Length);

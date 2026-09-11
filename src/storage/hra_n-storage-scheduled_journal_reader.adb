@@ -119,12 +119,46 @@ package body HRA_N.Storage.Scheduled_Journal_Reader is
                declare
                   Tag : constant String := Slice (Line, Tokens (1));
                begin
-                  if Tag /= "SCHED" then
-                     Set_Error ("Expected 'SCHED' record header, found: " & Tag);
+                  if Tag = "COMPLETE" then
+                     if Count /= 3
+                       or else Result.Lifecycle.Comp_Count = Max_Scheduled_Entries
+                     then
+                        Set_Error ("Malformed or excessive COMPLETE fact");
+                        Ada.Text_IO.Close (File);
+                        return Result;
+                     end if;
+                     Result.Lifecycle.Comp_Count := Result.Lifecycle.Comp_Count + 1;
+                     Result.Lifecycle.Comp_Items (Result.Lifecycle.Comp_Count) :=
+                       (Scheduled => (Token => Make_Token (Slice (Line, Tokens (2)))),
+                        Actual    => (Token => Make_Token (Slice (Line, Tokens (3)))));
+                  elsif Tag = "RETIRE" then
+                     if Count /= 2
+                       or else Result.Lifecycle.Ret_Count = Max_Scheduled_Entries
+                     then
+                        Set_Error ("Malformed or excessive RETIRE fact");
+                        Ada.Text_IO.Close (File);
+                        return Result;
+                     end if;
+                     Result.Lifecycle.Ret_Count := Result.Lifecycle.Ret_Count + 1;
+                     Result.Lifecycle.Ret_Items (Result.Lifecycle.Ret_Count) :=
+                       (Scheduled => (Token => Make_Token (Slice (Line, Tokens (2)))));
+                  elsif Tag = "REPLACE" then
+                     if Count /= 3
+                       or else Result.Lifecycle.Repl_Count = Max_Scheduled_Entries
+                     then
+                        Set_Error ("Malformed or excessive REPLACE fact");
+                        Ada.Text_IO.Close (File);
+                        return Result;
+                     end if;
+                     Result.Lifecycle.Repl_Count := Result.Lifecycle.Repl_Count + 1;
+                     Result.Lifecycle.Repl_Items (Result.Lifecycle.Repl_Count) :=
+                       (Original    => (Token => Make_Token (Slice (Line, Tokens (2)))),
+                        Replaced_By => (Token => Make_Token (Slice (Line, Tokens (3)))));
+                  elsif Tag /= "SCHED" then
+                     Set_Error ("Unknown scheduled fact header: " & Tag);
                      Ada.Text_IO.Close (File);
                      return Result;
-                  end if;
-
+                  else
                   if Count < 4 then
                      Set_Error ("Malformed SCHED record: insufficient tokens");
                      Ada.Text_IO.Close (File);
@@ -167,7 +201,7 @@ package body HRA_N.Storage.Scheduled_Journal_Reader is
                                     Result.Lifecycle.Ret_Count := Result.Lifecycle.Ret_Count + 1;
                                     Result.Lifecycle.Ret_Items (Result.Lifecycle.Ret_Count) :=
                                       (Scheduled => (Token => Make_Token (Id_Str)));
-                                 elsif Stat_Val'Length >= 10 and then Stat_Val (Stat_Val'First .. Stat_Val'First + 9) = "completed:" then
+                                 elsif Stat_Val'Length > 10 and then Stat_Val (Stat_Val'First .. Stat_Val'First + 9) = "completed:" then
                                     declare
                                        Ref_Id : constant String := Stat_Val (Stat_Val'First + 10 .. Stat_Val'Last);
                                     begin
@@ -181,7 +215,7 @@ package body HRA_N.Storage.Scheduled_Journal_Reader is
                                          (Scheduled => (Token => Make_Token (Id_Str)),
                                           Actual    => (Token => Make_Token (Ref_Id)));
                                     end;
-                                 elsif Stat_Val'Length >= 12 and then Stat_Val (Stat_Val'First .. Stat_Val'First + 11) = "replaced-by:" then
+                                 elsif Stat_Val'Length > 12 and then Stat_Val (Stat_Val'First .. Stat_Val'First + 11) = "replaced-by:" then
                                     declare
                                        New_Id : constant String := Stat_Val (Stat_Val'First + 12 .. Stat_Val'Last);
                                     begin
@@ -195,6 +229,10 @@ package body HRA_N.Storage.Scheduled_Journal_Reader is
                                          (Original    => (Token => Make_Token (Id_Str)),
                                           Replaced_By => (Token => Make_Token (New_Id)));
                                     end;
+                                 else
+                                    Set_Error ("Unknown scheduled status: " & Stat_Val);
+                                    Ada.Text_IO.Close (File);
+                                    return Result;
                                  end if;
                               end;
                            else
@@ -237,12 +275,24 @@ package body HRA_N.Storage.Scheduled_Journal_Reader is
                      Result.Lifecycle.Sched_Count := Result.Lifecycle.Sched_Count + 1;
                      Result.Lifecycle.Sched_Items (Result.Lifecycle.Sched_Count) := Occ;
                   end;
+                  end if;
                end;
             end if;
          end;
       end loop;
 
       Ada.Text_IO.Close (File);
+      if not Scheduled_Ids_Are_Unique (Result.Lifecycle)
+        or else not Completions_Reference_Known (Result.Lifecycle)
+        or else not Retirements_Reference_Known (Result.Lifecycle)
+        or else not Replacements_Reference_Known (Result.Lifecycle)
+        or else not Terminal_Targets_Are_Unique (Result.Lifecycle)
+        or else not Replacements_Are_One_To_One (Result.Lifecycle)
+        or else not Replacement_History_Is_Acyclic (Result.Lifecycle)
+      then
+         Set_Error ("Scheduled lifecycle facts violate admission laws");
+         return Result;
+      end if;
       Result.Success := True;
       return Result;
 

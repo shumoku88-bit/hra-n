@@ -8,11 +8,15 @@ package body Test_Generation_Transaction is
 
    procedure Run is
       Test_Dir : constant String := "/tmp/hra_n_test_generation_transaction";
-      Policy   : constant String :=
-        "ROLE cash: ASSET" & ASCII.LF &
-        "ROLE food: EXPENSE" & ASCII.LF &
-        "ZERO-ORIGIN cash:jpy" & ASCII.LF;
-      Scheduled : constant String := "# empty" & ASCII.LF;
+      Policy : constant String :=
+        "# HRA-N Household Policy" & ASCII.LF &
+        "ROLE cash, bank: ASSET" & ASCII.LF &
+        "ROLE food, misc: EXPENSE" & ASCII.LF &
+        "ROLE salary: INCOME" & ASCII.LF &
+        "ZERO-ORIGIN cash, bank" & ASCII.LF;
+      Scheduled : constant String :=
+        "# HRA-N Scheduled Journal" & ASCII.LF &
+        "# Facts: SCHED, COMPLETE, RETIRE, REPLACE" & ASCII.LF;
       Initial_Journal : constant String :=
         "# HRA-N Canonical Journal" & ASCII.LF &
         "# Format: TX <id> <date> <flows...> [tags...] [""description""]" & ASCII.LF;
@@ -94,6 +98,22 @@ package body Test_Generation_Transaction is
                  "Candidate cannot remove an admitted journal transaction");
          Assert (Snapshot_Id_Str (Resolve_Paths (Test_Dir)) = "g00000002",
                  "Append-only rejection preserves selected generation");
+      end;
+
+      declare
+         Policy_Mutation : constant Commit_Result :=
+           Commit
+             (Test_Dir, "g00000002", First_Journal,
+              Policy & "# mutation" & ASCII.LF, Scheduled);
+         Scheduled_Rewrite : constant Commit_Result :=
+           Commit
+             (Test_Dir, "g00000002", First_Journal,
+              Policy, "# rewritten scheduled state" & ASCII.LF);
+      begin
+         Assert (not Policy_Mutation.Success,
+                 "Versioned policy is immutable without policy facts");
+         Assert (not Scheduled_Rewrite.Success,
+                 "Candidate cannot rewrite scheduled history");
       end;
 
       for Fault in After_Lock .. After_Admission loop
