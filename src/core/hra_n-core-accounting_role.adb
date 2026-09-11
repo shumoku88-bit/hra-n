@@ -34,6 +34,8 @@ is
                Steps       : Natural := 0;
             begin
                while Steps <= Map.Count loop
+                  pragma Loop_Variant (Increases => Steps);
+                  pragma Loop_Invariant (Steps <= Map.Count + 1);
                   if Equal_Token (Curr_Target, Map.Entries (I).Id) then
                      return False;  --  Cycle detected
                   end if;
@@ -139,6 +141,7 @@ is
             end;
          end if;
       end loop;
+      Item  := Empty_Assignment;
       Found := False;
    end Find_Assignment_As_Of;
 
@@ -201,6 +204,7 @@ is
       Result : Natural := 0;
    begin
       for I in 1 .. Map.Count loop
+         pragma Loop_Invariant (Result <= I);
          if not Has_Successor (Map, Map.Entries (I).Id) then
             Result := Result + 1;
          end if;
@@ -215,6 +219,7 @@ is
       Current : Natural := 0;
    begin
       for I in 1 .. Map.Count loop
+         pragma Loop_Invariant (Current <= I);
          if not Has_Successor (Map, Map.Entries (I).Id) then
             Current := Current + 1;
             if Current = Index then
