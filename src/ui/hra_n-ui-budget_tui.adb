@@ -9,8 +9,10 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Budget_Query; use HRA_N.Application.Budget_Query;
 with HRA_N.Application.Budget_Window; use HRA_N.Application.Budget_Window;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
+with HRA_N.Application.Review;
 with HRA_N.UI.Capacity_TUI;
 with HRA_N.UI.Output; use HRA_N.UI.Output;
+with HRA_N.UI.Routing_TUI;
 with HRA_N.UI.Snapshot_Label;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with Terminal_Interface.Curses;
@@ -102,7 +104,7 @@ package body HRA_N.UI.Budget_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "j/k: select   g: grant shortage   r: rebalance   R: reload   b/Esc/q: home");
+            "j/k: select   g: grant shortage   u: route   r: rebalance   R: reload   b/Esc/q: home");
       end if;
       Curses.Refresh;
    end Draw;
@@ -172,6 +174,16 @@ package body HRA_N.UI.Budget_TUI is
                        Resolve_Paths (Data_Dir_Str (Current_Paths));
                      Cursor := 1;
                   end if;
+               end;
+            elsif Key = Character'Pos ('u') or else Key = Character'Pos ('U') then
+               declare
+                  Sys_Date : constant HRA_N.Core.Validity.Date_Type :=
+                    HRA_N.Application.Review.Get_System_Date;
+               begin
+                  HRA_N.UI.Routing_TUI.Run (Current_Paths, Sys_Date);
+                  Current_Paths :=
+                    Resolve_Paths (Data_Dir_Str (Current_Paths));
+                  Cursor := 1;
                end;
             elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R')
               or else Key = Ctrl_L or else Key = Integer (Curses.Key_Resize)

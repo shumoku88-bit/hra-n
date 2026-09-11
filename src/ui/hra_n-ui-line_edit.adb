@@ -68,7 +68,7 @@ package body HRA_N.UI.Line_Edit is
                      end if;
                   end;
                end if;
-            elsif Key >= 32 and then Key <= 126 then
+            elsif (Key in 32 .. 126 | 128 .. 255) then
                if Len < Buf'Length then
                   Len := Len + 1;
                   Buf (Len) := Character'Val (Key);
