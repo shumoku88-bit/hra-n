@@ -105,6 +105,22 @@ package body Test_Generation_Transaction is
                  "Post-activation failure exposes only the complete new authority");
       end;
 
+      declare
+         Recovered : constant Commit_Result :=
+           Commit
+             (Test_Dir, "g00000002",
+              "TX e0002 2026-09-12 cash:-50 food:50" & ASCII.LF,
+              Policy, Scheduled);
+      begin
+         Assert (Recovered.Success,
+                 "Retry recovers receipt from the already selected candidate");
+         Assert (Recovered.Snapshot_Id (1 .. Recovered.Snapshot_Len) = "g00000003",
+                 "Recovered receipt identifies durable selected generation");
+         Assert (not Ada.Directories.Exists
+                   (Test_Dir & "/.hra/generations/g00000004"),
+                 "Idempotent retry does not allocate another generation");
+      end;
+
       Ada.Directories.Delete_Tree (Test_Dir);
 
       --  Two writers may prepare from one snapshot, but only the writer that

@@ -1,11 +1,13 @@
 with Ada.Directories;
 with Ada.Exceptions;
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Core.Scheduled; use HRA_N.Core.Scheduled;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Storage.Atomic_Writer; use HRA_N.Storage.Atomic_Writer;
+with HRA_N.Storage.Exact_File; use HRA_N.Storage.Exact_File;
 with HRA_N.Storage.File_Lock; use HRA_N.Storage.File_Lock;
 with HRA_N.Storage.Generation; use HRA_N.Storage.Generation;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
@@ -55,6 +57,27 @@ package body HRA_N.Storage.Generation_Transaction is
            Message (Message'First .. Message'First + Len - 1);
          return Result;
       end Fail;
+
+      function Success_For (Identity : String) return Commit_Result is
+      begin
+         Release (Lock);
+         Result.Success := True;
+         Result.Snapshot_Len := Identity'Length;
+         Result.Snapshot_Id (1 .. Identity'Length) := Identity;
+         return Result;
+      end Success_For;
+
+      function Generation_Equals (Identity : String) return Boolean is
+         Root : constant String := Meta_Dir & "/generations/" & Identity;
+         J : constant Read_Result := Read_All (Root & "/journal.hra");
+         P : constant Read_Result := Read_All (Root & "/policy.hra");
+         S : constant Read_Result := Read_All (Root & "/scheduled.hra");
+      begin
+         return J.Success and then P.Success and then S.Success
+           and then To_String (J.Content) = Journal_Content
+           and then To_String (P.Content) = Policy_Content
+           and then To_String (S.Content) = Scheduled_Content;
+      end Generation_Equals;
 
       function Event_Exists
         (Journal : Journal_Result;
@@ -143,12 +166,17 @@ package body HRA_N.Storage.Generation_Transaction is
       begin
          if not Current.Success or else not Current.Found then
             return Fail ("selected versioned authority is required");
-         elsif Identity_String (Current) /= Expected_Snapshot then
-            return Fail ("stale snapshot; authority changed before writer ownership");
          elsif not Next_Identity
-           (Identity_String (Current), Next_Id, Next_Len)
+           (Expected_Snapshot, Next_Id, Next_Len)
          then
-            return Fail ("selected snapshot identity cannot be advanced");
+            return Fail ("expected snapshot identity cannot be advanced");
+         elsif Identity_String (Current) /= Expected_Snapshot then
+            if Identity_String (Current) = Next_Id (1 .. Next_Len)
+              and then Generation_Equals (Identity_String (Current))
+            then
+               return Success_For (Identity_String (Current));
+            end if;
+            return Fail ("stale snapshot; authority changed before writer ownership");
          end if;
       end;
 
@@ -225,11 +253,7 @@ package body HRA_N.Storage.Generation_Transaction is
          end if;
       end;
 
-      Release (Lock);
-      Result.Success := True;
-      Result.Snapshot_Len := Next_Len;
-      Result.Snapshot_Id (1 .. Next_Len) := Next_Id (1 .. Next_Len);
-      return Result;
+      return Success_For (Next_Id (1 .. Next_Len));
    exception
       when Occurrence : others =>
          return Fail
