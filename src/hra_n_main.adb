@@ -22,6 +22,7 @@ with HRA_N.UI.Status_CLI;
 with HRA_N.UI.Statement_Cli;
 with HRA_N.UI.Budget_CLI;
 with HRA_N.UI.Scheduled_Cli;
+with HRA_N.UI.Attention_CLI;
 with HRA_N.UI.Balance_CLI;
 with HRA_N.UI.Capacity_CLI;
 with HRA_N.UI.Reconciliation_CLI;
@@ -410,6 +411,15 @@ begin
       --  Branch: Capacity authority
       if Command = "capacity" then
          HRA_N.UI.Capacity_CLI.Dispatch (Paths, Command_Idx, Rem_Args, Success);
+         if not Success then
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         end if;
+         return;
+      end if;
+
+      --  Branch: Attention items
+      if Command = "attention" then
+         HRA_N.UI.Attention_CLI.Dispatch (Paths, Command_Idx, Rem_Args, Success);
          if not Success then
             Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
          end if;

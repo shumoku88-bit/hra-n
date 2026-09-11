@@ -4,10 +4,11 @@
 --
 --  Unified parser for canonical policy.hra files.
 --  Loads Accounting Roles, Zero-Origin Coverage evidence, Budget Capacities,
---  and Expense Routing rules in a single fail-closed traversal.
+--  Expense Routing rules, and Attention items in a single fail-closed traversal.
 -------------------------------------------------------------------------------
 
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
+with HRA_N.Core.Attention;         use HRA_N.Core.Attention;
 with HRA_N.Core.Coverage;        use HRA_N.Core.Coverage;
 with HRA_N.Core.Capacity;        use HRA_N.Core.Capacity;
 with HRA_N.Core.Actual_Routing;  use HRA_N.Core.Actual_Routing;
@@ -24,6 +25,7 @@ package HRA_N.Storage.Policy_Reader is
       Coverage     : Zero_Origin_Coverage;
       Capacities   : Capacity_Memory;
       Routing      : Routing_Map;
+      Attention    : Attention_Memory;
       Has_Window   : Boolean := False;
       Window_Name  : Token_Text;
       Window_Start : Date_Type;

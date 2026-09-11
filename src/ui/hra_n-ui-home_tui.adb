@@ -10,6 +10,7 @@ with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Home_Query;
 with HRA_N.Application.Review; use HRA_N.Application.Review;
 with HRA_N.UI.Actual_TUI;
+with HRA_N.UI.Attention_TUI;
 with HRA_N.UI.Budget_TUI;
 with HRA_N.UI.Capacity_TUI;
 with HRA_N.UI.Scheduled_TUI;
@@ -67,7 +68,12 @@ package body HRA_N.UI.Home_TUI is
          Put_Clipped
            (9,
             "Attention  " &
-            (if View.Unresolved_Loci = 0
+            (if View.Open_Attentions > 0
+             then Image (View.Open_Attentions) & " open" &
+               (if View.Unresolved_Loci > 0
+                then " / " & Image (View.Unresolved_Loci) & " unclassified"
+                else "")
+             elsif View.Unresolved_Loci = 0
              then "none from this projection"
              else Image (View.Unresolved_Loci) & " unclassified loci"));
          Put_Clipped
@@ -77,7 +83,7 @@ package body HRA_N.UI.Home_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "h/l: day  Enter: sel day  a: Actual  s: Sched  b: Balances  e: Capacity  c: Budget  g: today  q: quit");
+            "h/l: day  Enter: sel day  a: Actual  s: Sched  i: Attention  b: Balances  e: Capacity  c: Budget  g: today  q: quit");
       end if;
       Curses.Refresh;
    end Draw;
@@ -147,6 +153,11 @@ package body HRA_N.UI.Home_TUI is
                    (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
             elsif Key = Character'Pos ('c') or else Key = Character'Pos ('C') then
                HRA_N.UI.Budget_TUI.Run (Current_Paths);
+               Current_Paths :=
+                 HRA_N.Application.Path_Resolver.Resolve_Paths
+                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+            elsif Key = Character'Pos ('i') or else Key = Character'Pos ('I') then
+               HRA_N.UI.Attention_TUI.Run (Current_Paths);
                Current_Paths :=
                  HRA_N.Application.Path_Resolver.Resolve_Paths
                    (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));

@@ -47,7 +47,12 @@ package body HRA_N.UI.Home_CLI is
                 Image (View.Total_Scheduled) & " retained");
       Put_Line ("Policy      " & Image (View.Role_Assignments) & " roles / " &
                 Image (View.Zero_Origins) & " zero origins");
-      if View.Unresolved_Loci > 0 then
+      if View.Open_Attentions > 0 then
+         Put_Line ("Attention   " & Image (View.Open_Attentions) & " open" &
+                   (if View.Unresolved_Loci > 0
+                    then " / " & Image (View.Unresolved_Loci) & " unclassified loci"
+                    else ""));
+      elsif View.Unresolved_Loci > 0 then
          Put_Line ("Attention   " & Image (View.Unresolved_Loci) &
                    " unclassified loci");
       else

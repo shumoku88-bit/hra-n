@@ -5,6 +5,7 @@
 
 with Ada.Strings.Fixed;
 with Ada.Text_IO;
+with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Storage.HRA_Tokenizer;   use HRA_N.Storage.HRA_Tokenizer;
 
 package body HRA_N.Storage.Policy_Reader is
@@ -565,6 +566,112 @@ package body HRA_N.Storage.Policy_Reader is
                            Day         => Eff_Date.Day);
                      end;
 
+                  elsif Tag = "ATTENTION" then
+                     --  Retained household matter: ATTENTION <id> "<context>"
+                     --  <due:YYYY-MM-DD | nodue | due-unknown>. Due meaning
+                     --  is explicit; a missing due word is never guessed.
+                     if Count /= 4
+                       or else Tokens (3).Kind /= Tok_Quoted
+                     then
+                        Set_Error ("Malformed ATTENTION declaration");
+                        Ada.Text_IO.Close (File);
+                        return Result;
+                     end if;
+
+                     declare
+                        Id_Str   : constant String := Clean_Token (Slice (Line, Tokens (2)));
+                        Ctx_Str  : constant String := Slice (Line, Tokens (3));
+                        Due_Str  : constant String := Slice (Line, Tokens (4));
+                        Due      : Attention_Due;
+                        Due_Date : Date_Type;
+                     begin
+                        if Id_Str'Length = 0
+                          or else Id_Str'Length > Max_Token_Length
+                        then
+                           Set_Error ("Invalid ATTENTION identity");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        elsif Ctx_Str'Length = 0
+                          or else Ctx_Str'Length > Max_Description_Length
+                        then
+                           Set_Error ("Invalid ATTENTION context");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        elsif Due_Str = "nodue" then
+                           Due := (Kind => No_Due_Date);
+                        elsif Due_Str = "due-unknown" then
+                           Due := (Kind => Due_Undetermined);
+                        elsif Due_Str'Length > 4
+                          and then Due_Str (Due_Str'First .. Due_Str'First + 3) = "due:"
+                          and then Parse_Iso_Date
+                            (Due_Str (Due_Str'First + 4 .. Due_Str'Last), Due_Date)
+                        then
+                           Due := (Kind => Due_On_Date, Due_Date => Due_Date);
+                        else
+                           Set_Error ("Invalid ATTENTION due meaning");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        end if;
+                        if Result.Attention.Item_Count = Max_Attention_Items then
+                           Set_Error ("Exceeded maximum attention items");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        end if;
+                        Result.Attention.Item_Count := Result.Attention.Item_Count + 1;
+                        Result.Attention.Items (Result.Attention.Item_Count) :=
+                          (Id      => Make_Token (Id_Str),
+                           Context => Make_Description (Ctx_Str),
+                           Due     => Due);
+                     end;
+
+                  elsif Tag = "ATTENTION-CLOSE" then
+                     --  Explicit lifecycle evidence: ATTENTION-CLOSE <id>
+                     --  <resolved | dropped> <YYYY-MM-DD>. At most one per
+                     --  item; provenance never closes.
+                     if Count /= 4 then
+                        Set_Error ("Malformed ATTENTION-CLOSE declaration");
+                        Ada.Text_IO.Close (File);
+                        return Result;
+                     end if;
+
+                     declare
+                        Id_Str   : constant String := Clean_Token (Slice (Line, Tokens (2)));
+                        Kind_Str : constant String := Slice (Line, Tokens (3));
+                        Date_Str : constant String := Slice (Line, Tokens (4));
+                        Kind     : Closure_Kind;
+                        Known    : Date_Type;
+                     begin
+                        if Id_Str'Length = 0
+                          or else Id_Str'Length > Max_Token_Length
+                        then
+                           Set_Error ("Invalid ATTENTION-CLOSE identity");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        elsif Kind_Str = "resolved" then
+                           Kind := Closure_Resolved;
+                        elsif Kind_Str = "dropped" then
+                           Kind := Closure_Dropped;
+                        else
+                           Set_Error ("Invalid ATTENTION-CLOSE kind");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        end if;
+                        if not Parse_Iso_Date (Date_Str, Known) then
+                           Set_Error ("Invalid ATTENTION-CLOSE date");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        elsif Result.Attention.Close_Count = Max_Attention_Items then
+                           Set_Error ("Exceeded maximum attention closures");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        end if;
+                        Result.Attention.Close_Count := Result.Attention.Close_Count + 1;
+                        Result.Attention.Closures (Result.Attention.Close_Count) :=
+                          (Target   => Make_Token (Id_Str),
+                           Kind     => Kind,
+                           Known_On => Known);
+                     end;
+
                   elsif Tag = "ROUTE" then
                      if Count < 3 then
                         Set_Error ("Malformed ROUTE declaration");
@@ -675,6 +782,15 @@ package body HRA_N.Storage.Policy_Reader is
          return Result;
       elsif not Effectives_Are_One_To_One (Result.Capacities) then
          Set_Error ("Duplicate capacity effective coordinate");
+         return Result;
+      elsif not Item_Ids_Are_Unique (Result.Attention) then
+         Set_Error ("Duplicate attention identity");
+         return Result;
+      elsif not Closure_References_Are_Closed (Result.Attention) then
+         Set_Error ("Attention closure references unknown item");
+         return Result;
+      elsif not Closures_Are_One_To_One (Result.Attention) then
+         Set_Error ("Duplicate attention closure");
          return Result;
       end if;
 

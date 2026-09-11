@@ -5,6 +5,7 @@
 
 with Test_Support;                            use Test_Support;
 with Ada.Text_IO;
+with HRA_N.Core.Attention;                   use HRA_N.Core.Attention;
 with HRA_N.Core.Capacity;                      use HRA_N.Core.Capacity;
 with HRA_N.Core.Types;                         use HRA_N.Core.Types;
 with HRA_N.Core.Event;                         use HRA_N.Core.Event;
@@ -263,6 +264,53 @@ package body Test_HRA_Storage is
                       (R.Capacities.Movements (1).Currency, Make_Token ("euro")),
                     "Currency is retained exactly, never silently defaulted");
          end;
+
+         --  7. Test attention wire admission (ATTENTION, ATTENTION-CLOSE)
+         Write_Policy
+           ("ATTENTION att0001 ""Renew insurance"" due:2026-10-01" & ASCII.LF
+            & "ATTENTION att0002 ""Deep clean"" nodue" & ASCII.LF
+            & "ATTENTION att0003 ""Mystery noise"" due-unknown" & ASCII.LF
+            & "ATTENTION-CLOSE att0001 resolved 2026-09-20" & ASCII.LF);
+         declare
+            R : constant Policy_Result := Read_Policy_File (Tmp_Policy);
+         begin
+            Assert (R.Success, "Attention wire stays admitted");
+            Assert_Equal_Int (3, Long_Long_Integer (R.Attention.Item_Count),
+                              "Three attention items retained");
+            Assert_Equal_Int (2, Long_Long_Integer (Open_Count (R.Attention)),
+                              "One closure leaves two open items");
+            Assert (not Is_Open (R.Attention, Make_Token ("att0001")),
+                    "Closed item is not open");
+            Assert (Is_Open (R.Attention, Make_Token ("att0003")),
+                    "Undated item stays open");
+         end;
+
+         Write_Policy
+           ("ATTENTION att0001 ""First"" nodue" & ASCII.LF
+            & "ATTENTION att0001 ""Second"" nodue" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Duplicate attention identity fails closed");
+
+         Write_Policy ("ATTENTION-CLOSE att0009 resolved 2026-09-20" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Dangling attention closure fails closed");
+
+         Write_Policy
+           ("ATTENTION att0001 ""First"" nodue" & ASCII.LF
+            & "ATTENTION-CLOSE att0001 resolved 2026-09-20" & ASCII.LF
+            & "ATTENTION-CLOSE att0001 dropped 2026-09-21" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Second closure of one item fails closed");
+
+         Write_Policy
+           ("ATTENTION att0001 ""No due word"" 2026-10-01" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Attention without an explicit due word fails closed");
+
+         Write_Policy
+           ("ATTENTION att0001 ""Bad kind"" someday" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Attention with an unknown due word fails closed");
       end;
 
    end Run;

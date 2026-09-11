@@ -4,6 +4,7 @@
 
 with HRA_N.Core.Types;           use HRA_N.Core.Types;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
+with HRA_N.Core.Attention;
 with HRA_N.Core.Coverage;        use HRA_N.Core.Coverage;
 with HRA_N.Core.Scheduled;       use HRA_N.Core.Scheduled;
 with HRA_N.Application.Statement; use HRA_N.Application.Statement;
@@ -32,6 +33,7 @@ package body HRA_N.Application.Home_Query is
          Role_Assignments   => 0,
          Zero_Origins       => 0,
          Unresolved_Loci    => 0,
+         Open_Attentions    => 0,
          Diagnostic         => [others => ' '],
          Diagnostic_Len     => 0);
 
@@ -77,6 +79,8 @@ package body HRA_N.Application.Home_Query is
       Result.Total_Scheduled := Natural (SR.Lifecycle.Sched_Count);
       Result.Role_Assignments := Natural (Entry_Count (PR.Roles));
       Result.Zero_Origins     := Natural (Coordinate_Count (PR.Coverage));
+      Result.Open_Attentions  :=
+        Natural (HRA_N.Core.Attention.Open_Count (PR.Attention));
 
       for Index in 1 .. Entry_Count (JR.Validities) loop
          if Equal_Date

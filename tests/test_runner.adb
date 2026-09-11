@@ -25,6 +25,7 @@ with Test_Scheduled_Query;
 with Test_Scheduled_Command;
 with Test_Balance_Query;
 with Test_Assertion;
+with Test_Attention_Command;
 with Test_Capacity_Command;
 with Test_Policy;
 
@@ -93,6 +94,9 @@ begin
 
    Put_Line ("--> Running Test_Capacity_Command...");
    Test_Capacity_Command.Run;
+
+   Put_Line ("--> Running Test_Attention_Command...");
+   Test_Attention_Command.Run;
 
    Put_Line ("--> Running Test_Policy...");
    Test_Policy.Run;

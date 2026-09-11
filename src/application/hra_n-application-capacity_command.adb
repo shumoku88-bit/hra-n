@@ -226,7 +226,7 @@ package body HRA_N.Application.Capacity_Command is
      (Paths  : Path_Config;
       Intent : Rebalance_Intent) return Proposal_Result
    is
-      Changes : Rebalance_Array := Intent.Changes;
+      Changes : constant Rebalance_Array := Intent.Changes;
    begin
       return Propose_Internal
         (Paths        => Paths,

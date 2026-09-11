@@ -147,6 +147,28 @@ sig BudgetQuery {
     to   : one Day
 }
 
+--  Attention plane: retained household matters that may need action even
+--  when no financial occurrence exists. Due meaning is not an optional
+--  date: a dated due, no due date, and an undetermined due stay distinct.
+--  Closure is explicit lifecycle evidence, at most one per item; relation
+--  provenance (not modeled here) never closes an item.
+abstract sig AttentionDue {}
+one sig DueOn, NoDueDate, DueUndetermined extends AttentionDue {}
+
+abstract sig ClosureKind {}
+one sig Resolved, Dropped extends ClosureKind {}
+
+sig AttentionItem extends Record {
+    due    : one AttentionDue,
+    dueDay : lone Day
+}
+
+sig AttentionClosure extends Record {
+    target  : one AttentionItem,
+    kind    : one ClosureKind,
+    knownOn : one Day
+}
+
 sig Snapshot {
     retained : set Record
 }
@@ -189,6 +211,19 @@ fun ActiveRoles[s : Snapshot] : set RoleAssignment {
 
 fun CapMovementsAt[s : Snapshot] : set CapacityMovement {
     CapacityMovement & s.retained
+}
+
+fun AttentionAt[s : Snapshot] : set AttentionItem {
+    AttentionItem & s.retained
+}
+
+fun ClosuresAt[s : Snapshot] : set AttentionClosure {
+    AttentionClosure & s.retained
+}
+
+--  Open items carry no closure. Storage order is representation only.
+fun OpenAttention[s : Snapshot] : set AttentionItem {
+    AttentionAt[s] - ClosuresAt[s].target
 }
 
 pred InHalfOpen[d, from, to : Day] {
@@ -363,6 +398,15 @@ pred CapPostingOwnershipIsUnique[s : Snapshot] {
     all p : CapPosting | one cm : CapMovementsAt[s] | p in cm.capPostings
 }
 
+pred AttentionDueIsCoherent[s : Snapshot] {
+    all a : AttentionAt[s] | (some a.dueDay) iff (a.due = DueOn)
+}
+
+pred AttentionClosuresAreSound[s : Snapshot] {
+    all c : ClosuresAt[s] | c.target in AttentionAt[s]
+    all a : AttentionAt[s] | lone c : ClosuresAt[s] | c.target = a
+}
+
 pred Admitted[s : Snapshot] {
     ReferencesClosed[s]
     IdentitiesUnique[s]
@@ -374,6 +418,8 @@ pred Admitted[s : Snapshot] {
     CapacityEffectiveSound[s]
     RoutingFunctional[s]
     CapPostingOwnershipIsUnique[s]
+    AttentionDueIsCoherent[s]
+    AttentionClosuresAreSound[s]
     ScheduledLifecycleIsSound[s]
     RelationsAreSound[s]
     PolicyIsSound[s]
@@ -418,6 +464,13 @@ assert RemainingIsDerived {
     all s : Snapshot, q : BudgetQuery, purp : Purpose, m : Measure |
         Remaining[s, q, purp, m] =
             Entitlement[s, q, purp, m] - Consumption[s, q, purp, m]
+}
+
+--  Open attention carries no closure evidence of either kind.
+assert OpenAttentionHasNoClosure {
+    all s : Snapshot | Admitted[s] implies
+        no a : OpenAttention[s] |
+            some c : ClosuresAt[s] | c.target = a
 }
 
 assert OpenSchedulesHaveNoTerminalEvidence {
@@ -540,6 +593,23 @@ pred RejectedNonfunctionalRouting {
     all s : Snapshot | some s.retained implies not Admitted[s]
 }
 
+pred AttentionScenario {
+    some s : Snapshot |
+        Admitted[s] and some OpenAttention[s]
+}
+
+pred RejectedDanglingClosure {
+    some s : Snapshot, c : ClosuresAt[s] |
+        c.target not in AttentionAt[s]
+    all s : Snapshot | some s.retained implies not Admitted[s]
+}
+
+pred RejectedDoubleClosure {
+    some s : Snapshot, a : AttentionAt[s] |
+        #{c : ClosuresAt[s] | c.target = a} > 1
+    all s : Snapshot | some s.retained implies not Admitted[s]
+}
+
 run ValidScenario for 18 but exactly 3 Snapshot, 4 Day, 2 Measure, 5 Int
 run RejectedUnbalancedTransaction for 8 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedScheduledConflict for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
@@ -552,12 +622,16 @@ run RejectedUnbalancedCapacity for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 
 run RejectedDoubleEffective for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedDanglingEffective for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedNonfunctionalRouting for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run AttentionScenario for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run RejectedDanglingClosure for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run RejectedDoubleClosure for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedOverDischarge for 12 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 
 check EffectiveTransactionsHaveNoRetainedSuccessor for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
 check ReversedTargetsRemainEffective for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
 check UniversalCapacityHolds for 10 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
 check RemainingIsDerived for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
+check OpenAttentionHasNoClosure for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
 check OpenSchedulesHaveNoTerminalEvidence for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
 check CompletionIsClosedOverActualAuthority for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
 check EffectivePhysicalMovementsConservePerMeasure for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int

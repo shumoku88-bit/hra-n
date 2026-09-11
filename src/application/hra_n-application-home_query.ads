@@ -26,6 +26,7 @@ package HRA_N.Application.Home_Query is
       Role_Assignments    : Natural := 0;
       Zero_Origins        : Natural := 0;
       Unresolved_Loci     : Natural := 0;
+      Open_Attentions     : Natural := 0;
       Diagnostic          : Frontend_Types.Diagnostic_Text := [others => ' '];
       Diagnostic_Len      : Frontend_Types.Diagnostic_Length := 0;
    end record;

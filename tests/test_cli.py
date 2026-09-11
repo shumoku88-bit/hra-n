@@ -468,5 +468,61 @@ class TestHraNCli(unittest.TestCase):
         self.assertNotIn("2,200", snacks_lines[0])
         self.assertIn("800", snacks_lines[0])
 
+        # 45. Attention readout on authority without matters
+        res = self.run_cmd("attention")
+        self.assertEqual(res.returncode, 0, f"attention failed: {res.stderr}")
+        self.assertIn("( 0 open)", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000021")
+
+        # 46. Raise attention with each due meaning
+        res = self.run_cmd("attention", "raise", "Renew insurance", "2026-10-01")
+        self.assertEqual(res.returncode, 0, f"raise failed: {res.stderr}")
+        self.assertIn("[OK] Raised Attention: att0001", res.stdout)
+        self.assertIn("SNAPSHOT: g00000022", res.stdout)
+        res = self.run_cmd("attention", "raise", "Deep clean", "none")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("[OK] Raised Attention: att0002", res.stdout)
+        res = self.run_cmd("attention", "raise", "Mystery noise")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("[OK] Raised Attention: att0003", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000024")
+
+        res = self.run_cmd("attention")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("( 3 open)", res.stdout)
+        self.assertIn("[due 2026-10-01]", res.stdout)
+        self.assertIn("[no due date]", res.stdout)
+        self.assertIn("[due unknown]", res.stdout)
+
+        # 47. Resolve and drop through the generation authority
+        res = self.run_cmd("attention", "resolve", "att0001", "2026-09-20")
+        self.assertEqual(res.returncode, 0, f"resolve failed: {res.stderr}")
+        self.assertIn("[OK] Closed Attention: att0001", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000025")
+        res = self.run_cmd("attention", "drop", "att0002")
+        self.assertEqual(res.returncode, 0, f"drop failed: {res.stderr}")
+        self.assertEqual(self.current_snapshot(), "g00000026")
+
+        res = self.run_cmd("attention")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("( 1 open)", res.stdout)
+        self.assertIn("att0003", res.stdout)
+        self.assertNotIn("att0001", res.stdout)
+
+        # 48. Second close and absent close fail closed
+        res = self.run_cmd("attention", "resolve", "att0001")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("already closed", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000026")
+        res = self.run_cmd("attention", "drop", "att0009")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("not retained", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000026")
+
+        # 49. Home reports open attention
+        res = self.run_cmd("home", "--cli")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("1 open", res.stdout)
+
 if __name__ == "__main__":
     unittest.main()
