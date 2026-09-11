@@ -27,6 +27,7 @@ with HRA_N.UI.Balance_CLI;
 with HRA_N.UI.Capacity_CLI;
 with HRA_N.UI.Reconciliation_CLI;
 with HRA_N.UI.Relation_CLI;
+with HRA_N.UI.Split_CLI;
 with HRA_N.UI.Policy_CLI;
 with HRA_N.UI.Interactive_Movement;
 
@@ -440,6 +441,15 @@ begin
       --  Branch: Relations
       if Command = "relation" or else Command = "relations" then
          HRA_N.UI.Relation_CLI.Dispatch (Paths, Command_Idx, Rem_Args, Success);
+         if not Success then
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         end if;
+         return;
+      end if;
+
+      --  Branch: Split movement (multi-effect, signed changes)
+      if Command = "split" then
+         HRA_N.UI.Split_CLI.Dispatch (Paths, Command_Idx, Rem_Args, Success);
          if not Success then
             Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
          end if;

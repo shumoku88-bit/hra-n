@@ -10,6 +10,8 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 with HRA_N.Application.Movement_Command; use HRA_N.Application.Movement_Command;
+with HRA_N.UI.Capacity_CLI;
+with HRA_N.UI.Line_Edit; use HRA_N.UI.Line_Edit;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with Terminal_Interface.Curses;
@@ -629,5 +631,179 @@ package body HRA_N.UI.Record_TUI is
          New_Event_Id  => New_Event_Id,
          Committed     => Committed);
    end Run_Correction;
+
+   function Split_Change_Text (Change : Split_Change) return String is
+      Loc : constant String :=
+        Change.Locus.Token.Value (1 .. Change.Locus.Token.Length);
+      Mea : constant String :=
+        Change.Measure.Token.Value (1 .. Change.Measure.Token.Length);
+      Amt : constant String :=
+        Trim (Long_Long_Integer (Change.Amount)'Image, Ada.Strings.Both);
+   begin
+      return Loc & "  " & Amt & " " & Mea;
+   end Split_Change_Text;
+
+   procedure Run_Split
+     (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
+      Selected_Day : HRA_N.Core.Validity.Date_Type;
+      Committed    : out Boolean)
+   is
+      Prompt_Row : constant Natural := (if Rows > 2 then Rows - 1 else 0);
+      Intent     : Record_Split_Intent;
+
+      --  Collect one side of the movement. Negative = FROM, positive = TO.
+      --  A blank locus finishes the side; the first blank aborts outright.
+      procedure Collect_Side
+        (Title    : String;
+         Sign     : Integer;
+         Finished : out Boolean)
+      is
+         Side_Start : constant Natural := Natural (Intent.Count);
+      begin
+         Finished := False;
+         while Natural (Intent.Count) < Max_Split_Changes loop
+            declare
+               Locus_Text : constant String :=
+                 Prompt_For
+                   (Prompt_Row, Title & " locus (blank finishes): ",
+                    "", True);
+            begin
+               if Locus_Text'Length = 0 then
+                  Finished := Natural (Intent.Count) > Side_Start;
+                  exit;
+               end if;
+               declare
+                  Amt_Text : constant String :=
+                    Prompt_For
+                      (Prompt_Row,
+                       "Amount for " & Locus_Text & " (positive): ");
+                  Mea_Text : constant String :=
+                    (if Amt_Text'Length = 0 then ""
+                     else Prompt_For
+                       (Prompt_Row, "Measure (blank for jpy): ", "", True));
+                  Locus   : Token_Text;
+                  Measure : Token_Text := Make_Token ("jpy");
+                  Amount  : Quanta_Type;
+               begin
+                  if Amt_Text'Length = 0
+                    or else Mea_Text'Length > Max_Token_Length
+                  then
+                     Wait_Key (Prompt_Row, "Invalid split change.");
+                     Finished := False;
+                     return;
+                  elsif Mea_Text'Length > 0 then
+                     Measure := Make_Token (Mea_Text);
+                  end if;
+                  if Locus_Text'Length = 0
+                    or else Locus_Text'Length > Max_Token_Length
+                  then
+                     Wait_Key (Prompt_Row, "Invalid split locus.");
+                     Finished := False;
+                     return;
+                  elsif not HRA_N.UI.Capacity_CLI.Parse_Amount (Amt_Text, Amount)
+                    or else Amount <= 0
+                  then
+                     Wait_Key (Prompt_Row, "Amount must be a positive integer.");
+                     Finished := False;
+                     return;
+                  end if;
+                  Locus := Make_Token (Locus_Text);
+                  Intent.Count := Intent.Count + 1;
+                  Intent.Changes (Positive (Intent.Count)) :=
+                    (Locus   => (Token => Locus),
+                     Measure => (Token => Measure),
+                     Amount  =>
+                       (if Sign < 0 then -Amount else Amount));
+               end;
+            end;
+         end loop;
+      end Collect_Side;
+   begin
+      Committed := False;
+      Intent.Count := 0;
+      Intent.Valid_On := Selected_Day;
+      Intent.Description := Make_Token ("");
+      declare
+         From_Done : Boolean := False;
+         To_Done   : Boolean := False;
+      begin
+         Collect_Side ("From", -1, From_Done);
+         if not From_Done then
+            return;
+         end if;
+         Collect_Side ("To", 1, To_Done);
+         if not To_Done then
+            Wait_Key (Prompt_Row, "A split needs at least one TO locus.");
+            return;
+         end if;
+      end;
+
+      declare
+         Desc_Text : constant String :=
+           Prompt_For (Prompt_Row, "Description (blank for none): ", "", True);
+         Date_Text : constant String :=
+           Prompt_For
+             (Prompt_Row, "Date (YYYY-MM-DD, blank for "
+              & Format_Iso_Date (Selected_Day) & "): ",
+              "", True);
+         Date_Val : Date_Type := Selected_Day;
+      begin
+         if Desc_Text'Length > Max_Token_Length then
+            Wait_Key (Prompt_Row, "Description is too long.");
+            return;
+         end if;
+         Intent.Description := Make_Token (Desc_Text);
+         if Date_Text'Length > 0 then
+            declare
+               Parsed : Date_Type;
+            begin
+               if not Parse_Iso_Date (Date_Text, Parsed) then
+                  Wait_Key (Prompt_Row, "Date must be YYYY-MM-DD.");
+                  return;
+               end if;
+               Date_Val := Parsed;
+            end;
+         end if;
+         Intent.Valid_On := Date_Val;
+      end;
+
+      declare
+         Prop_Res : constant Proposal_Result :=
+           Propose_Split (Paths, Intent);
+      begin
+         if not Prop_Res.Success then
+            Wait_Key
+              (Prompt_Row,
+               "Split rejected: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
+            return;
+         end if;
+         Curses.Erase;
+         Put_Clipped (0, "SPLIT PREVIEW  " & Proposed_Event_Id (Prop_Res.Proposal));
+         Put_Clipped (1, "============================================================");
+         for I in 1 .. Natural (Intent.Count) loop
+            Put_Clipped
+              (2 + I,
+               "  " & Split_Change_Text (Intent.Changes (I)));
+         end loop;
+         Put_Clipped
+           (3 + Natural (Intent.Count),
+            "Date       " & Format_Iso_Date (Intent.Valid_On));
+         if not Confirm (Prompt_Row, "Commit this split movement?") then
+            return;
+         end if;
+         declare
+            Receipt : constant Movement_Receipt := Commit (Prop_Res.Proposal);
+         begin
+            if Receipt.Success then
+               Committed := True;
+            else
+               Wait_Key
+                 (Prompt_Row,
+                  "Split commit rejected: "
+                  & Receipt.Error (1 .. Receipt.Error_Len));
+            end if;
+         end;
+      end;
+   end Run_Split;
 
 end HRA_N.UI.Record_TUI;

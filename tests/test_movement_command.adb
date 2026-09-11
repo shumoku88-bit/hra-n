@@ -276,6 +276,111 @@ package body Test_Movement_Command is
          end;
       end;
 
+      --  Split movements carry signed changes at explicit coordinates
+      --  with a measure column defaulting to jpy at the entrances.
+      declare
+         Paths : constant Path_Config := Resolve_Paths (Test_Dir);
+         Split : Record_Split_Intent;
+      begin
+         Split.Count := 3;
+         Split.Valid_On := Make_Date (2026, 9, 17);
+         Split.Description := Make_Token ("Party");
+         Split.Changes (1) :=
+           (Locus   => (Token => Make_Token ("cash")),
+            Measure => (Token => Make_Token ("jpy")),
+            Amount  => -1_500);
+         Split.Changes (2) :=
+           (Locus   => (Token => Make_Token ("food")),
+            Measure => (Token => Make_Token ("jpy")),
+            Amount  => 1_000);
+         Split.Changes (3) :=
+           (Locus   => (Token => Make_Token ("misc")),
+            Measure => (Token => Make_Token ("jpy")),
+            Amount  => 500);
+         declare
+            Prop : constant Proposal_Result := Propose_Split (Paths, Split);
+         begin
+            Assert (Prop.Success, "Split intent produces proposal");
+            Assert (Proposed_Event_Id (Prop.Proposal) = "e0006",
+                    "Split proposal allocates next event id");
+            declare
+               Receipt : constant Movement_Receipt := Commit (Prop.Proposal);
+               Retried : constant Movement_Receipt := Commit (Prop.Proposal);
+            begin
+               Assert (Receipt.Success, "Split proposal commits");
+               Assert (Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len) = "g00000007",
+                       "Split receipt identifies activated snapshot");
+               Assert (Retried.Success, "Split proposal retry is idempotent");
+            end;
+         end;
+         declare
+            Journal : constant Journal_Result :=
+              Read_Journal_File (Journal_Path_Str (Resolve_Paths (Test_Dir)));
+            Found_E5 : Boolean := False;
+         begin
+            Assert (Journal.Success, "Split authority snapshot stays admitted");
+            for Item of Journal.Events loop
+               if Equal_Token (Id (Item).Token, Make_Token ("e0006")) then
+                  Found_E5 := True;
+                  Assert (Effect_Count (Item) = 3,
+                          "Split retains all three effects");
+               end if;
+            end loop;
+            Assert (Found_E5, "Split event is retained");
+         end;
+      end;
+
+      --  Split guards fail closed, including the explicit jpy-only gate
+      --  that multi-currency support will open.
+      declare
+         Paths : constant Path_Config := Resolve_Paths (Test_Dir);
+         Base  : Record_Split_Intent;
+      begin
+         Base.Count := 3;
+         Base.Valid_On := Make_Date (2026, 9, 17);
+         Base.Description := Make_Token ("Party");
+         Base.Changes (1) :=
+           (Locus   => (Token => Make_Token ("cash")),
+            Measure => (Token => Make_Token ("jpy")),
+            Amount  => -1_500);
+         Base.Changes (2) :=
+           (Locus   => (Token => Make_Token ("food")),
+            Measure => (Token => Make_Token ("jpy")),
+            Amount  => 1_000);
+         Base.Changes (3) :=
+           (Locus   => (Token => Make_Token ("misc")),
+            Measure => (Token => Make_Token ("jpy")),
+            Amount  => 500);
+         declare
+            Unbalanced : Record_Split_Intent := Base;
+            Duplicate  : Record_Split_Intent := Base;
+            Foreign    : Record_Split_Intent := Base;
+            Single     : Record_Split_Intent := Base;
+         begin
+            Unbalanced.Changes (3) :=
+              (Locus   => (Token => Make_Token ("misc")),
+               Measure => (Token => Make_Token ("jpy")),
+               Amount  => 600);
+            Assert (not Propose_Split (Paths, Unbalanced).Success,
+                    "Unbalanced split fails closed");
+            Duplicate.Changes (3) :=
+              (Locus   => (Token => Make_Token ("food")),
+               Measure => (Token => Make_Token ("jpy")),
+               Amount  => 500);
+            Assert (not Propose_Split (Paths, Duplicate).Success,
+                    "Split repeating a coordinate fails closed");
+            Foreign.Changes (3) :=
+              (Locus   => (Token => Make_Token ("misc")),
+               Measure => (Token => Make_Token ("usd")),
+               Amount  => 500);
+            Assert (not Propose_Split (Paths, Foreign).Success,
+                    "Non-jpy split fails closed with an explicit gate");
+            Single.Count := 1;
+            Assert (not Propose_Split (Paths, Single).Success,
+                    "Single-change split fails closed");
+         end;
+      end;
+
       Ada.Directories.Delete_Tree (Test_Dir);
    end Run;
 end Test_Movement_Command;

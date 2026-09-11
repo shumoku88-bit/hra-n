@@ -620,6 +620,16 @@ pred RelationScenario {
         and r.amount > (sum d : DischargesAt[s] | d.target = r => d.amount else 0)
 }
 
+--  A split movement: one transaction, several postings, each measure
+--  conserved independently. The current jpy-only entrances are a policy
+--  choice, not a model restriction.
+pred SplitScenario {
+    some s : Snapshot, t : TxAt[s], m : Measure |
+        Admitted[s]
+        and #(t.postings) >= 3
+        and (sum p : t.postings | p.coord.measure = m => p.delta else 0) = 0
+}
+
 pred RejectedDuplicateDischarge {
     some s : Snapshot, disj x, y : DischargesAt[s] |
         x.settlement = y.settlement and x.target = y.target
@@ -642,6 +652,7 @@ run AttentionScenario for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedDanglingClosure for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedDoubleClosure for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RelationScenario for 12 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run SplitScenario for 12 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedDuplicateDischarge for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedOverDischarge for 12 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 

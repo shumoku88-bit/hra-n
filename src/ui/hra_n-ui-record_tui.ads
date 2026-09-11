@@ -42,4 +42,13 @@ package HRA_N.UI.Record_TUI is
       New_Event_Id : out HRA_N.Core.Types.Token_Text;
       Committed    : out Boolean);
 
+   --  Run the keyboard-first split editor: FROM loci/amounts, then TO
+   --  loci/amounts, each change with an explicit measure defaulting to
+   --  jpy. Totals must balance per measure before the shared proposal
+   --  preview and commit. Seeded with Selected_Day like Run.
+   procedure Run_Split
+     (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
+      Selected_Day : HRA_N.Core.Validity.Date_Type;
+      Committed    : out Boolean);
+
 end HRA_N.UI.Record_TUI;

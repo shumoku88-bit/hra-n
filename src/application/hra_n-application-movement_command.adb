@@ -381,6 +381,145 @@ package body HRA_N.Application.Movement_Command is
            ("unexpected reversal proposal failure: " & Ada.Exceptions.Exception_Message (E));
    end Propose_Reversal;
 
+   function Propose_Split
+     (Paths  : Path_Config;
+      Intent : Record_Split_Intent) return Proposal_Result
+   is
+      Result  : Proposal_Result;
+      Journal : Journal_Result;
+      Policy  : Policy_Result;
+      J_Bytes : HRA_N.Storage.Exact_File.Read_Result;
+      P_Bytes : HRA_N.Storage.Exact_File.Read_Result;
+      S_Bytes : HRA_N.Storage.Exact_File.Read_Result;
+
+      function Fail (Message : String) return Proposal_Result is
+      begin
+         return HRA_N.Application.Proposal.Failed (Result, Message);
+      end Fail;
+
+      function Measure_Total (Measure : Measure_Id) return Long_Long_Integer is
+         Total : Long_Long_Integer := 0;
+      begin
+         for I in 1 .. Intent.Count loop
+            pragma Loop_Invariant
+              (Total >= Long_Long_Integer (I - 1) * Long_Long_Integer (Quanta_Type'First)
+               and then Total <= Long_Long_Integer (I - 1) * Long_Long_Integer (Quanta_Type'Last));
+            if Equal_Token
+              (Intent.Changes (I).Measure.Token, Measure.Token)
+            then
+               Total := Total + Long_Long_Integer (Intent.Changes (I).Amount);
+            end if;
+         end loop;
+         return Total;
+      end Measure_Total;
+   begin
+      if not Paths.Resolution_Ok or else not Paths.Is_Versioned then
+         return Fail ("split proposal requires a selected versioned authority");
+      elsif Intent.Count < 2 then
+         return Fail ("split movement needs two to eight changes");
+      elsif not Description_Is_Encodable (Intent.Description) then
+         return Fail ("split description is not canonically encodable");
+      elsif not Is_Valid_Date
+        (Intent.Valid_On.Year, Intent.Valid_On.Month, Intent.Valid_On.Day)
+      then
+         return Fail ("split occurrence date is invalid");
+      end if;
+
+      for I in 1 .. Intent.Count loop
+         if not Coordinate_Is_Encodable (Intent.Changes (I).Locus.Token)
+           or else not Coordinate_Is_Encodable (Intent.Changes (I).Measure.Token)
+         then
+            return Fail ("split coordinates are not canonically encodable");
+         elsif Intent.Changes (I).Amount = 0 then
+            return Fail ("split changes must have non-zero quantities");
+         elsif not Equal_Token
+           (Intent.Changes (I).Measure.Token, Make_Token ("jpy"))
+         then
+            return Fail
+              ("split entrance admits jpy only;"
+               & " multi-measure movements arrive with multi-currency support");
+         end if;
+         for Seen in 1 .. I - 1 loop
+            if Equal_Token
+                 (Intent.Changes (Seen).Locus.Token,
+                  Intent.Changes (I).Locus.Token)
+              and then Equal_Token
+                 (Intent.Changes (Seen).Measure.Token,
+                  Intent.Changes (I).Measure.Token)
+            then
+               return Fail ("split changes must not repeat a coordinate");
+            end if;
+         end loop;
+         if Measure_Total (Intent.Changes (I).Measure) /= 0 then
+            return Fail ("split changes must balance to zero per measure");
+         end if;
+      end loop;
+
+      Journal := Read_Journal_File (Journal_Path_Str (Paths));
+      Policy := Read_Policy_File (Policy_Path_Str (Paths));
+      if not Journal.Success or else not Policy.Success then
+         return Fail ("cannot propose from an unadmitted authority snapshot");
+      end if;
+
+      J_Bytes := HRA_N.Storage.Exact_File.Read_All (Journal_Path_Str (Paths));
+      P_Bytes := HRA_N.Storage.Exact_File.Read_All (Policy_Path_Str (Paths));
+      S_Bytes := HRA_N.Storage.Exact_File.Read_All (Scheduled_Path_Str (Paths));
+      if not J_Bytes.Success or else not P_Bytes.Success or else not S_Bytes.Success then
+         return Fail ("cannot read exact authority bytes for proposal");
+      end if;
+
+      declare
+         Event_Id : constant String :=
+           Format_Event_Id (Natural (Journal.Events.Length) + 1);
+         Effects  : Effect_List;
+         Description : constant String :=
+           Intent.Description.Value (1 .. Intent.Description.Length);
+      begin
+         Effects.Count := Intent.Count;
+         for I in 1 .. Intent.Count loop
+            declare
+               Key_Img : constant String :=
+                 Trim (I'Image, Ada.Strings.Both);
+            begin
+               Effects.Values (I) :=
+                 (Key     => (Token => Make_Token (Key_Img)),
+                  Locus   => Intent.Changes (I).Locus,
+                  Measure => Intent.Changes (I).Measure,
+                  Amount  => (Quanta => Intent.Changes (I).Amount));
+            end;
+         end loop;
+         --  No purpose is attached: with several destinations no single
+         --  route owns the movement, so none is guessed.
+         declare
+            Line : constant String := Encode_Transaction
+              (Tx_Id       => Event_Id,
+               Valid_On    => Intent.Valid_On,
+               Effects     => Effects,
+               Description => Description);
+            Existing : constant String := To_String (J_Bytes.Content);
+         begin
+            if not HRA_N.Application.Proposal.Ends_With_Newline (J_Bytes.Content) then
+               return Fail ("journal must end with a newline before proposal append");
+            end if;
+            Result.Proposal :=
+              HRA_N.Application.Proposal.Seal
+                (Paths        => Paths,
+                 Primary_Id   => Event_Id,
+                 Secondary_Id => "",
+                 Journal      =>
+                   To_Unbounded_String (Existing & Line & ASCII.LF),
+                 Policy       => P_Bytes.Content,
+                 Scheduled    => S_Bytes.Content);
+         end;
+      end;
+      Result.Success := True;
+      return Result;
+   exception
+      when E : others =>
+         return Fail
+           ("unexpected split proposal failure: " & Ada.Exceptions.Exception_Message (E));
+   end Propose_Split;
+
 
 
 end HRA_N.Application.Movement_Command;

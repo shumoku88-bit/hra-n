@@ -79,7 +79,7 @@ package body HRA_N.UI.Actual_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "j/k: select   Enter: detail   n: record   s: scheduled   f: day/all   o: order   b/Esc: home");
+            "j/k: select   Enter: detail   n: record   m: split   s: scheduled   f: day/all   o: order   b/Esc: home");
       end if;
       Curses.Refresh;
    end Draw;
@@ -136,6 +136,19 @@ package body HRA_N.UI.Actual_TUI is
                   Committed : Boolean := False;
                begin
                   HRA_N.UI.Record_TUI.Run
+                    (Current_Paths,
+                     Selected_Day,
+                     Committed);
+                  if Committed then
+                     Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+                     Cursor := 1;
+                  end if;
+               end;
+            elsif Key = Character'Pos ('m') or else Key = Character'Pos ('M') then
+               declare
+                  Committed : Boolean := False;
+               begin
+                  HRA_N.UI.Record_TUI.Run_Split
                     (Current_Paths,
                      Selected_Day,
                      Committed);

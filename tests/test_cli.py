@@ -570,5 +570,27 @@ class TestHraNCli(unittest.TestCase):
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("relation-referenced", res.stdout)
 
+        # 54. Split movement through the generation authority
+        res = self.run_cmd("split", "2026-09-12", "cash:-1500", "food:1000", "misc:500", "--desc", "Party")
+        self.assertEqual(res.returncode, 0, f"split failed: {res.stderr}")
+        self.assertIn("[OK] Committed Split: e0013", res.stdout)
+        self.assertIn("SNAPSHOT: g00000033", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000033")
+        with open(
+            os.path.join(self.test_dir, ".hra", "generations", "g00000033", "journal.hra"),
+            "r", encoding="utf-8",
+        ) as f:
+            journal = f.read()
+        self.assertIn("cash:-1500", journal)
+        self.assertIn("misc:500", journal)
+
+        # 55. Unbalanced and foreign-measure splits fail closed
+        res = self.run_cmd("split", "2026-09-12", "cash:-1500", "food:1000")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("balance to zero", res.stdout)
+        res = self.run_cmd("split", "2026-09-12", "wallet:-100:usd", "cash:100")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("jpy only", res.stdout)
+
 if __name__ == "__main__":
     unittest.main()
