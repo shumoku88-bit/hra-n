@@ -85,6 +85,11 @@ is
      (Ev      : Event;
       Measure : Measure_Id) return Boolean;
 
+   --  Every represented measure closes independently and every effect is
+   --  non-zero. Unlike Is_Balanced_Single_Measure, mixed-measure events are
+   --  admitted when each measure balances by itself.
+   function Is_Balanced_Per_Measure (Ev : Event) return Boolean;
+
 private
 
    type Event is record

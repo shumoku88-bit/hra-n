@@ -17,6 +17,7 @@ with Test_Atomic_Writer;
 with Test_HRA_Storage;
 with Test_Home_Query;
 with Test_Actual_Query;
+with Test_Generation_Transaction;
 
 procedure Test_Runner is
 begin
@@ -56,6 +57,9 @@ begin
 
    Put_Line ("--> Running Test_Actual_Query...");
    Test_Actual_Query.Run;
+
+   Put_Line ("--> Running Test_Generation_Transaction...");
+   Test_Generation_Transaction.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");

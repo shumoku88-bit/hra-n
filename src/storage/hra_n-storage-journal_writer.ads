@@ -16,6 +16,16 @@ package HRA_N.Storage.Journal_Writer is
       Error_Len    : Natural := 0;
    end record;
 
+   function Encode_Transaction
+     (Tx_Id         : String;
+      Valid_On      : Date_Type;
+      Effects       : Effect_List;
+      Purpose       : String := "";
+      Description   : String := "";
+      Replaces_Id   : String := "";
+      Relation_Str  : String := "";
+      Discharge_Str : String := "") return String;
+
    function Append_Transaction
      (Journal_Path : String;
       Tx_Id        : String;

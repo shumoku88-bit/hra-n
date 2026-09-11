@@ -55,4 +55,39 @@ is
       return Sum = 0;
    end Is_Balanced_Single_Measure;
 
+   function Is_Balanced_Per_Measure (Ev : Event) return Boolean is
+   begin
+      if Ev.Effects.Count < 2 then
+         return False;
+      end if;
+
+      for I in 1 .. Ev.Effects.Count loop
+         if Ev.Effects.Values (I).Amount.Quanta = 0 then
+            return False;
+         end if;
+
+         declare
+            Sum : Long_Long_Integer := 0;
+         begin
+            for J in 1 .. Ev.Effects.Count loop
+               if Equal_Token
+                 (Ev.Effects.Values (J).Measure.Token,
+                  Ev.Effects.Values (I).Measure.Token)
+               then
+                  Sum := Sum +
+                    Long_Long_Integer (Ev.Effects.Values (J).Amount.Quanta);
+               end if;
+               pragma Loop_Invariant
+                 (Sum in
+                    -(Long_Long_Integer (J) * Max_Quanta_Value) ..
+                    Long_Long_Integer (J) * Max_Quanta_Value);
+            end loop;
+            if Sum /= 0 then
+               return False;
+            end if;
+         end;
+      end loop;
+      return True;
+   end Is_Balanced_Per_Measure;
+
 end HRA_N.Core.Event;

@@ -21,7 +21,7 @@ named command.
 | Capability | Domain/admission | Storage | Shared Application API | CLI | TUI | Evidence | Status |
 |---|---|---|---|---|---|---|---|
 | Versioned three-stream read | selected complete generation; invalid selection rejects | immutable generation + atomic `CURRENT` | snapshot reference propagated | Home/doctor consume resolver | snapshot shown | path, initializer, Home tests | **V2** |
-| Generation transaction write | candidate must be fully admitted | lock, re-read, stage, fsync, activate, verify | Proposal/Receipt | not connected | writes disabled | TLA+/SPIN design model only | **Missing — P0** |
+| Generation transaction write | three-stream candidate receives parser/domain admission | process/task lock, authoritative re-read, stale rejection, post-lock allocation, fsync, atomic activation, post-verify | typed Proposal/Receipt not connected | not connected | writes disabled | stale, invalid-candidate, concurrent-writer, and activation-boundary fault tests + TLA+/SPIN model | **Blocked — Application API pending** |
 | Actual list by day/all | occurrence date and stable source order | journal reader | `Actual_Query` | legacy review is separate | Home, Selected Day, Actual | unit + PTY | **V2 read slice** |
 | Actual detail | identity revalidated against current read | journal reader | `Actual_Detail_Query` | no structured detail command | selected-row detail | unit + PTY | **V2 read slice** |
 | Record movement | positive exact amount; balanced effects | legacy append mutates live file | legacy publisher | works only on unversioned roots | disabled | legacy tests | **Blocked by P0** |
@@ -47,11 +47,10 @@ named command.
 
 ### P0 — safe authority and lossless facts
 
-1. Implement the generation transaction refined by the TLA+/SPIN model.
-2. Add lock ownership, authoritative re-read, stale rejection, complete candidate
-   admission, durable receipt, and deterministic fault tests.
-3. Stop discarding purpose, supersession, relation, and discharge metadata.
-4. Define append-only Scheduled and versioned Policy records.
+1. Add typed Intent, Proposal, and durable Receipt Application APIs over the
+   generation transaction, including retry/idempotency semantics.
+2. Stop discarding purpose, supersession, relation, and discharge metadata.
+3. Define append-only Scheduled and versioned Policy records.
 
 No new TUI write action is enabled before this gate.
 

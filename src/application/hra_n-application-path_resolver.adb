@@ -6,7 +6,7 @@
 with Ada.Command_Line;
 with Ada.Directories;
 with Ada.Environment_Variables;
-with Ada.Text_IO;
+with HRA_N.Storage.Generation; use HRA_N.Storage.Generation;
 
 package body HRA_N.Application.Path_Resolver is
 
@@ -104,7 +104,7 @@ package body HRA_N.Application.Path_Resolver is
 
       declare
          Base         : constant String := Dir (1 .. Len);
-         Selector     : constant String := Base & "/.hra/CURRENT";
+         Selection    : constant Selection_Result := Read_Selection (Base);
          Selected_Dir : String (1 .. Max_Path_Length) := [others => ' '];
          Selected_Len : Natural := 0;
 
@@ -117,22 +117,6 @@ package body HRA_N.Application.Path_Resolver is
             Config.Error_Reason (1 .. Msg_Len) :=
               Message (Message'First .. Message'First + Msg_Len - 1);
          end Set_Error;
-
-         function Valid_Snapshot_Id (Value : String) return Boolean is
-         begin
-            if Value'Length = 0 or else Value'Length > Max_Snapshot_Id_Length then
-               return False;
-            end if;
-            for Ch of Value loop
-               if Ch not in 'a' .. 'z'
-                 and then Ch not in '0' .. '9'
-                 and then Ch /= '-'
-               then
-                  return False;
-               end if;
-            end loop;
-            return True;
-         end Valid_Snapshot_Id;
 
          procedure Assign_Paths (Root : String) is
             J_Str : constant String := Root & "/journal.hra";
@@ -156,44 +140,27 @@ package body HRA_N.Application.Path_Resolver is
          end Assign_Paths;
 
       begin
-         if Ada.Directories.Exists (Selector) then
+         if not Selection.Success then
+            Set_Error (Selection.Error (1 .. Selection.Error_Len));
+         elsif Selection.Found then
             declare
-               File : Ada.Text_IO.File_Type;
+               Selected : constant String := Identity_String (Selection);
             begin
-               Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Selector);
+               Config.Is_Versioned := True;
+               Config.Snapshot_Len := Selected'Length;
+               Config.Snapshot_Id (1 .. Config.Snapshot_Len) := Selected;
                declare
-                  Selected  : constant String := Ada.Text_IO.Get_Line (File);
-                  Extra_Row : constant Boolean := not Ada.Text_IO.End_Of_File (File);
+                  Gen : constant String :=
+                    Base & "/.hra/generations/" & Selected;
                begin
-                  Ada.Text_IO.Close (File);
-                  if Extra_Row then
-                     Set_Error (".hra/CURRENT must contain exactly one identity row");
-                  elsif not Valid_Snapshot_Id (Selected) then
-                     Set_Error ("invalid snapshot identity in .hra/CURRENT");
+                  if Gen'Length > Selected_Dir'Length then
+                     Set_Error ("selected generation path exceeds capacity");
                   else
-                     Config.Is_Versioned := True;
-                     Config.Snapshot_Len := Selected'Length;
-                     Config.Snapshot_Id (1 .. Config.Snapshot_Len) := Selected;
-                     declare
-                        Gen : constant String :=
-                          Base & "/.hra/generations/" & Selected;
-                     begin
-                        if Gen'Length > Selected_Dir'Length then
-                           Set_Error ("selected generation path exceeds capacity");
-                        else
-                           Selected_Len := Gen'Length;
-                           Selected_Dir (1 .. Selected_Len) := Gen;
-                           Assign_Paths (Selected_Dir (1 .. Selected_Len));
-                        end if;
-                     end;
+                     Selected_Len := Gen'Length;
+                     Selected_Dir (1 .. Selected_Len) := Gen;
+                     Assign_Paths (Selected_Dir (1 .. Selected_Len));
                   end if;
                end;
-            exception
-               when others =>
-                  if Ada.Text_IO.Is_Open (File) then
-                     Ada.Text_IO.Close (File);
-                  end if;
-                  Set_Error ("cannot read .hra/CURRENT");
             end;
          else
             Assign_Paths (Base);
