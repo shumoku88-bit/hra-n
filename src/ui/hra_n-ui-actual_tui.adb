@@ -126,6 +126,7 @@ package body HRA_N.UI.Actual_TUI is
                   then
                      HRA_N.UI.Actual_Detail_TUI.Run
                        (Current_Paths, Current.Rows (Cursor).Event_Id);
+                     Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
                   end if;
                end;
             elsif Key = Character'Pos ('n') or else Key = Character'Pos ('N') then

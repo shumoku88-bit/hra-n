@@ -91,11 +91,59 @@ def main() -> None:
             os.write(fd, b"a")
             read_until(fd, output, b"ACTUAL  ALL CURRENT")
             os.write(fd, b"\n")
-            read_until(fd, output, b"DETAIL  e0002")
+            read_until(fd, output, b"c: correct")
+            assert b"DETAIL  e0002" in output
+            assert b"Status" in output and b"ACTIVE" in output
+
+            # Test cancelling correction editor
+            os.write(fd, b"c")
+            read_until(fd, output, b"CORRECT MOVEMENT e0002")
+            os.write(fd, b"\x1b")
+            read_until(fd, output, b"c: correct")
+
+            # Open correction editor and modify amount
+            os.write(fd, b"c")
+            read_until(fd, output, b"CORRECT MOVEMENT e0002")
+            time.sleep(0.05)
+            os.write(fd, b"\t")  # to From
+            time.sleep(0.05)
+            os.write(fd, b"\t")  # to To
+            time.sleep(0.05)
+            os.write(fd, b"\t")  # to Amount
+            time.sleep(0.05)
+            os.write(fd, b"\x7f\x7f\x7f")  # delete "250"
+            time.sleep(0.05)
+            os.write(fd, b"350\n")
+
+            # Preview admission and commit replacement
+            read_until(fd, output, b"Replaces:     e0002")
+            assert b"ADMISSION PREVIEW" in output
+            os.write(fd, b"\n")
+
+            # Detail must immediately reload to show newly committed e0003 replacing e0002
+            read_until(fd, output, b"c: correct")
+            assert b"DETAIL  e0003" in output
+            assert b"Replaces" in output and b"e0002" in output
+            assert b"Status" in output and b"ACTIVE" in output
+
+            # Return to Actual list and inspect superseded e0002
+            os.write(fd, b"b")
+            read_until(fd, output, b"Order:")
+            assert b"e0003" in output
+            time.sleep(0.05)
+            os.write(fd, b"j")
+            time.sleep(0.05)
+            os.write(fd, b"\n")
+            read_until(fd, output, b"SUPERSEDED by e0003")
+            last_detail = output[output.rfind(b"DETAIL  e0002"):]
+            assert b"Status" in last_detail
+            assert b"c: correct" not in last_detail
+
             os.write(fd, b"b")
             read_until(fd, output, b"Order:")
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
+            assert b"3 selected / 3 total" in output
         except Exception:
             os.kill(pid, signal.SIGKILL)
             os.waitpid(pid, 0)

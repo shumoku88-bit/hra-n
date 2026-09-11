@@ -3,6 +3,8 @@
 --  Package body: HRA_N.UI.Record_TUI
 -------------------------------------------------------------------------------
 
+with Ada.Strings; use Ada.Strings;
+with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
@@ -34,16 +36,21 @@ package body HRA_N.UI.Record_TUI is
    end record;
    type Locus_Array is array (1 .. Max_Loci) of Locus_Entry;
 
-   procedure Run
-     (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
-      Selected_Day : HRA_N.Core.Validity.Date_Type;
-      Committed    : out Boolean)
+   procedure Run_Internal
+     (Paths         : HRA_N.Application.Path_Resolver.Path_Config;
+      Is_Correction : Boolean;
+      Init          : Movement_Initial_Values;
+      New_Event_Id  : out Token_Text;
+      Committed     : out Boolean)
    is
       Running : Boolean := True;
       Mode    : Editor_Mode := Mode_Editing;
       Focus   : Field_Kind := Field_Date;
 
-      Init_Date : constant Iso_Date_String := Format_Iso_Date (Selected_Day);
+      Target_Str : constant String :=
+        Init.Target_Id.Value (1 .. Init.Target_Id.Length);
+
+      Init_Date : constant Iso_Date_String := Format_Iso_Date (Init.Date);
       Date_Str  : String (1 .. 10) := Init_Date;
       Date_Len  : Natural := 10;
 
@@ -191,7 +198,6 @@ package body HRA_N.UI.Record_TUI is
       procedure Try_Propose is
          Parsed_Date : Date_Type;
          Amount_Val  : Quanta_Type := 0;
-         Intent      : Movement_Intent;
          Res         : Proposal_Result;
       begin
          Notice_Len := 0;
@@ -241,15 +247,33 @@ package body HRA_N.UI.Record_TUI is
                return;
          end;
 
-         Intent :=
-           (From_Locus   => (Token => Make_Token (From_Str (1 .. From_Len))),
-            To_Locus     => (Token => Make_Token (To_Str (1 .. To_Len))),
-            Measure      => (Token => Make_Token ("jpy")),
-            Amount       => Amount_Val,
-            Valid_On     => Parsed_Date,
-            Description  => Make_Token (Desc_Str (1 .. Desc_Len)));
+         if Is_Correction then
+            declare
+               Intent : constant Correction_Intent :=
+                 (Target_Id   => Init.Target_Id,
+                  From_Locus  => (Token => Make_Token (From_Str (1 .. From_Len))),
+                  To_Locus    => (Token => Make_Token (To_Str (1 .. To_Len))),
+                  Measure     => (Token => Make_Token ("jpy")),
+                  Amount      => Amount_Val,
+                  Valid_On    => Parsed_Date,
+                  Description => Make_Token (Desc_Str (1 .. Desc_Len)));
+            begin
+               Res := Propose_Correction (Paths, Intent);
+            end;
+         else
+            declare
+               Intent : constant Movement_Intent :=
+                 (From_Locus  => (Token => Make_Token (From_Str (1 .. From_Len))),
+                  To_Locus    => (Token => Make_Token (To_Str (1 .. To_Len))),
+                  Measure     => (Token => Make_Token ("jpy")),
+                  Amount      => Amount_Val,
+                  Valid_On    => Parsed_Date,
+                  Description => Make_Token (Desc_Str (1 .. Desc_Len)));
+            begin
+               Res := Propose (Paths, Intent);
+            end;
+         end if;
 
-         Res := Propose (Paths, Intent);
          if Res.Success then
             Proposal := Res.Proposal;
             Mode := Mode_Preview;
@@ -263,7 +287,9 @@ package body HRA_N.UI.Record_TUI is
          Curses.Erase;
          Put_Clipped
            (0,
-            "HRA-N RECORD MOVEMENT  " &
+            (if Is_Correction
+             then "HRA-N CORRECT MOVEMENT " & Target_Str & "  "
+             else "HRA-N RECORD MOVEMENT  ") &
             (if Paths.Is_Versioned
              then Snapshot_Id_Str (Paths)
              else "(unversioned)"));
@@ -359,32 +385,57 @@ package body HRA_N.UI.Record_TUI is
       procedure Draw_Preview is
       begin
          Curses.Erase;
-         Put_Clipped (0, "HRA-N RECORD MOVEMENT - ADMISSION PREVIEW");
+         Put_Clipped
+           (0,
+            (if Is_Correction
+             then "HRA-N CORRECT MOVEMENT - ADMISSION PREVIEW"
+             else "HRA-N RECORD MOVEMENT - ADMISSION PREVIEW"));
          Put_Clipped (1, "============================================================");
 
          Put_Clipped (3, "Proposed ID:  " & Proposed_Event_Id (Proposal));
-         Put_Clipped (4, "Date:         " & Date_Str (1 .. Date_Len));
-         Put_Clipped
-           (5,
-            "Flow:         " & From_Str (1 .. From_Len) &
-            " (-" & Amt_Str (1 .. Amt_Len) & " jpy) -> " &
-            To_Str (1 .. To_Len) &
-            " (+" & Amt_Str (1 .. Amt_Len) & " jpy)");
-         if Desc_Len > 0 then
-            Put_Clipped (6, "Description:  " & Desc_Str (1 .. Desc_Len));
+         if Is_Correction then
+            Put_Clipped (4, "Replaces:     " & Replaced_Target_Id (Proposal) & " (will be superseded)");
+            Put_Clipped (5, "Date:         " & Date_Str (1 .. Date_Len));
+            Put_Clipped
+              (6,
+               "Flow:         " & From_Str (1 .. From_Len) &
+               " (-" & Amt_Str (1 .. Amt_Len) & " jpy) -> " &
+               To_Str (1 .. To_Len) &
+               " (+" & Amt_Str (1 .. Amt_Len) & " jpy)");
+            if Desc_Len > 0 then
+               Put_Clipped (7, "Description:  " & Desc_Str (1 .. Desc_Len));
+            else
+               Put_Clipped (7, "Description:  (none)");
+            end if;
+            Put_Clipped
+              (8,
+               "Snapshot:     " & Expected_Snapshot (Proposal) &
+               " -> next immutable generation");
+            Put_Clipped (10, "------------------------------------------------------------");
+            Put_Clipped (11, "Ready to commit correction to authority.");
          else
-            Put_Clipped (6, "Description:  (none)");
+            Put_Clipped (4, "Date:         " & Date_Str (1 .. Date_Len));
+            Put_Clipped
+              (5,
+               "Flow:         " & From_Str (1 .. From_Len) &
+               " (-" & Amt_Str (1 .. Amt_Len) & " jpy) -> " &
+               To_Str (1 .. To_Len) &
+               " (+" & Amt_Str (1 .. Amt_Len) & " jpy)");
+            if Desc_Len > 0 then
+               Put_Clipped (6, "Description:  " & Desc_Str (1 .. Desc_Len));
+            else
+               Put_Clipped (6, "Description:  (none)");
+            end if;
+            Put_Clipped
+              (7,
+               "Snapshot:     " & Expected_Snapshot (Proposal) &
+               " -> next immutable generation");
+            Put_Clipped (9, "------------------------------------------------------------");
+            Put_Clipped (10, "Ready to commit to authority.");
          end if;
-         Put_Clipped
-           (7,
-            "Snapshot:     " & Expected_Snapshot (Proposal) &
-            " -> next immutable generation");
-
-         Put_Clipped (9, "------------------------------------------------------------");
-         Put_Clipped (10, "Ready to commit to authority.");
 
          if Notice_Len > 0 then
-            Put_Clipped (12, "Notice: " & Notice (1 .. Notice_Len));
+            Put_Clipped (13, "Notice: " & Notice (1 .. Notice_Len));
          end if;
 
          if Rows > 2 then
@@ -397,6 +448,30 @@ package body HRA_N.UI.Record_TUI is
 
    begin
       Committed := False;
+      New_Event_Id := (Length => 0, Value => [others => ' ']);
+
+      if Is_Correction then
+         if Init.From_Locus.Length > 0 then
+            From_Len := Init.From_Locus.Length;
+            From_Str (1 .. From_Len) := Init.From_Locus.Value (1 .. From_Len);
+         end if;
+         if Init.To_Locus.Length > 0 then
+            To_Len := Init.To_Locus.Length;
+            To_Str (1 .. To_Len) := Init.To_Locus.Value (1 .. To_Len);
+         end if;
+         if Init.Amount > 0 then
+            declare
+               Img : constant String := Trim (Init.Amount'Image, Both);
+            begin
+               Amt_Len := Img'Length;
+               Amt_Str (1 .. Amt_Len) := Img;
+            end;
+         end if;
+         if Init.Description.Length > 0 then
+            Desc_Len := Init.Description.Length;
+            Desc_Str (1 .. Desc_Len) := Init.Description.Value (1 .. Desc_Len);
+         end if;
+      end if;
 
       --  Load candidate loci from Policy
       if Policy.Success then
@@ -409,6 +484,18 @@ package body HRA_N.UI.Record_TUI is
                   Loci (Loci_Count) :=
                     (Token => Assign.Locus.Token,
                      Role  => Assign.Role);
+                  if From_Len > 0
+                    and then Assign.Locus.Token.Length = From_Len
+                    and then Assign.Locus.Token.Value (1 .. From_Len) = From_Str (1 .. From_Len)
+                  then
+                     From_Idx := Loci_Count;
+                  end if;
+                  if To_Len > 0
+                    and then Assign.Locus.Token.Length = To_Len
+                    and then Assign.Locus.Token.Value (1 .. To_Len) = To_Str (1 .. To_Len)
+                  then
+                     To_Idx := Loci_Count;
+                  end if;
                end;
             end if;
          end loop;
@@ -481,6 +568,8 @@ package body HRA_N.UI.Record_TUI is
                   begin
                      if Receipt.Success then
                         Committed := True;
+                        New_Event_Id :=
+                          Make_Token (Receipt.Event_Id (1 .. Receipt.Event_Id_Len));
                         Running := False;
                      else
                         Set_Notice
@@ -502,6 +591,43 @@ package body HRA_N.UI.Record_TUI is
             end if;
          end;
       end loop;
+   end Run_Internal;
+
+   procedure Run
+     (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
+      Selected_Day : HRA_N.Core.Validity.Date_Type;
+      Committed    : out Boolean)
+   is
+      Dummy_Id : Token_Text;
+      Init     : constant Movement_Initial_Values :=
+        (Target_Id   => (Length => 0, Value => [others => ' ']),
+         Date        => Selected_Day,
+         From_Locus  => (Length => 0, Value => [others => ' ']),
+         To_Locus    => (Length => 0, Value => [others => ' ']),
+         Amount      => 0,
+         Description => (Length => 0, Value => [others => ' ']));
+   begin
+      Run_Internal
+        (Paths         => Paths,
+         Is_Correction => False,
+         Init          => Init,
+         New_Event_Id  => Dummy_Id,
+         Committed     => Committed);
    end Run;
+
+   procedure Run_Correction
+     (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
+      Init         : Movement_Initial_Values;
+      New_Event_Id : out HRA_N.Core.Types.Token_Text;
+      Committed    : out Boolean)
+   is
+   begin
+      Run_Internal
+        (Paths         => Paths,
+         Is_Correction => True,
+         Init          => Init,
+         New_Event_Id  => New_Event_Id,
+         Committed     => Committed);
+   end Run_Correction;
 
 end HRA_N.UI.Record_TUI;

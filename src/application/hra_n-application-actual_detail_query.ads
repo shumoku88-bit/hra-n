@@ -33,6 +33,8 @@ package HRA_N.Application.Actual_Detail_Query is
       Purpose        : Token_Text;
       Has_Replaces   : Boolean := False;
       Replaces       : Token_Text;
+      Is_Superseded  : Boolean := False;
+      Superseded_By  : Token_Text := (Length => 0, Value => [others => ' ']);
       Has_Relation   : Boolean := False;
       Relation       : Token_Text;
       Has_Discharge  : Boolean := False;

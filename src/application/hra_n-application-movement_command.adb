@@ -3,6 +3,7 @@ with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with HRA_N.Core.Actual_Routing; use HRA_N.Core.Actual_Routing;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
+with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.Generation_Transaction;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
@@ -16,6 +17,11 @@ package body HRA_N.Application.Movement_Command is
 
    function Expected_Snapshot (Proposal : Movement_Proposal) return String is
      (Proposal.Expected_Id (1 .. Proposal.Expected_Len));
+
+   function Replaced_Target_Id (Proposal : Movement_Proposal) return String is
+     (if Proposal.Target_Len > 0
+      then Proposal.Target_Id (1 .. Proposal.Target_Len)
+      else "");
 
    function Format_Event_Id (Number : Positive) return String is
       Image_Text : constant String := Trim (Number'Image, Both);
@@ -48,9 +54,11 @@ package body HRA_N.Application.Movement_Command is
       return True;
    end Description_Is_Encodable;
 
-   function Propose
-     (Paths  : Path_Config;
-      Intent : Movement_Intent) return Proposal_Result
+   function Propose_Internal
+     (Paths         : Path_Config;
+      Intent        : Movement_Intent;
+      Target_Token  : Token_Text;
+      Is_Correction : Boolean) return Proposal_Result
    is
       Result  : Proposal_Result;
       Journal : Journal_Result;
@@ -72,7 +80,14 @@ package body HRA_N.Application.Movement_Command is
       end Fail;
    begin
       if not Paths.Resolution_Ok or else not Paths.Is_Versioned then
-         return Fail ("movement proposal requires a selected versioned authority");
+         return Fail
+           ((if Is_Correction
+             then "correction proposal requires a selected versioned authority"
+             else "movement proposal requires a selected versioned authority"));
+      elsif Is_Correction and then Target_Token.Length = 0 then
+         return Fail ("correction target identity cannot be empty");
+      elsif Is_Correction and then not Coordinate_Is_Encodable (Target_Token) then
+         return Fail ("correction target identity is not canonically encodable");
       elsif Intent.Amount <= 0 then
          return Fail ("movement amount must be positive");
       elsif not Coordinate_Is_Encodable (Intent.From_Locus.Token)
@@ -94,6 +109,36 @@ package body HRA_N.Application.Movement_Command is
       Policy := Read_Policy_File (Policy_Path_Str (Paths));
       if not Journal.Success or else not Policy.Success then
          return Fail ("cannot propose from an unadmitted authority snapshot");
+      end if;
+
+      if Is_Correction then
+         declare
+            Found_Target : Boolean := False;
+         begin
+            for Item of Journal.Events loop
+               if Equal_Token (Id (Item).Token, Target_Token) then
+                  Found_Target := True;
+                  exit;
+               end if;
+            end loop;
+            if not Found_Target then
+               return Fail ("correction target event does not exist in journal");
+            end if;
+         end;
+
+         declare
+            Successor  : Event_Id;
+            Succ_Found : Boolean;
+         begin
+            Find_Successor
+              (Memory    => Journal.Metadata,
+               Target    => (Token => Target_Token),
+               Successor => Successor,
+               Found     => Succ_Found);
+            if Succ_Found then
+               return Fail ("correction target event is already superseded");
+            end if;
+         end;
       end if;
 
       J_Bytes := HRA_N.Storage.Exact_File.Read_All (Journal_Path_Str (Paths));
@@ -123,13 +168,16 @@ package body HRA_N.Application.Movement_Command is
            Intent.Description.Value (1 .. Intent.Description.Length);
          Purpose_Text : constant String :=
            (if Has_Purpose then Purpose.Value (1 .. Purpose.Length) else "");
+         Target_Str : constant String :=
+           (if Is_Correction then Target_Token.Value (1 .. Target_Token.Length) else "");
          Line : constant String :=
            Encode_Transaction
              (Tx_Id       => Event_Id,
               Valid_On    => Intent.Valid_On,
               Effects     => Effects,
               Purpose     => Purpose_Text,
-              Description => Description);
+              Description => Description,
+              Replaces_Id => Target_Str);
          Existing : constant String := To_String (J_Bytes.Content);
       begin
          if Existing'Length > 0 and then Existing (Existing'Last) /= ASCII.LF then
@@ -142,6 +190,10 @@ package body HRA_N.Application.Movement_Command is
          Result.Proposal.Expected_Id (1 .. Paths.Snapshot_Len) := Snapshot_Id_Str (Paths);
          Result.Proposal.Event_Len := Event_Id'Length;
          Result.Proposal.Event_Id (1 .. Event_Id'Length) := Event_Id;
+         if Is_Correction then
+            Result.Proposal.Target_Len := Target_Str'Length;
+            Result.Proposal.Target_Id (1 .. Target_Str'Length) := Target_Str;
+         end if;
          Result.Proposal.Journal := To_Unbounded_String (Existing & Line & ASCII.LF);
          Result.Proposal.Policy := P_Bytes.Content;
          Result.Proposal.Scheduled := S_Bytes.Content;
@@ -150,8 +202,41 @@ package body HRA_N.Application.Movement_Command is
       return Result;
    exception
       when others =>
-         return Fail ("unexpected movement proposal failure");
+         return Fail
+           ((if Is_Correction
+             then "unexpected correction proposal failure"
+             else "unexpected movement proposal failure"));
+   end Propose_Internal;
+
+   function Propose
+     (Paths  : Path_Config;
+      Intent : Movement_Intent) return Proposal_Result is
+   begin
+      return Propose_Internal
+        (Paths         => Paths,
+         Intent        => Intent,
+         Target_Token  => (Length => 0, Value => [others => ' ']),
+         Is_Correction => False);
    end Propose;
+
+   function Propose_Correction
+     (Paths  : Path_Config;
+      Intent : Correction_Intent) return Proposal_Result
+   is
+      Mov_Intent : constant Movement_Intent :=
+        (From_Locus  => Intent.From_Locus,
+         To_Locus    => Intent.To_Locus,
+         Measure     => Intent.Measure,
+         Amount      => Intent.Amount,
+         Valid_On    => Intent.Valid_On,
+         Description => Intent.Description);
+   begin
+      return Propose_Internal
+        (Paths         => Paths,
+         Intent        => Mov_Intent,
+         Target_Token  => Intent.Target_Id,
+         Is_Correction => True);
+   end Propose_Correction;
 
    function Commit (Proposal : Movement_Proposal) return Movement_Receipt is
       Receipt : Movement_Receipt;

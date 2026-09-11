@@ -81,6 +81,21 @@ package body HRA_N.Application.Actual_Detail_Query is
                end if;
             end;
 
+            declare
+               Successor  : HRA_N.Core.Types.Event_Id;
+               Succ_Found : Boolean;
+            begin
+               Find_Successor
+                 (Journal.Metadata,
+                  Id (Item),
+                  Successor,
+                  Succ_Found);
+               Result.Is_Superseded := Succ_Found;
+               if Succ_Found then
+                  Result.Superseded_By := Successor.Token;
+               end if;
+            end;
+
             Result.Effect_Count := Effect_Count (Item);
             for Index in 1 .. Effect_Count (Item) loop
                declare

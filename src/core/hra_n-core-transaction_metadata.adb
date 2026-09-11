@@ -109,4 +109,25 @@ package body HRA_N.Core.Transaction_Metadata is
       end loop;
    end Find_Metadata;
 
+   procedure Find_Successor
+     (Memory    : in Metadata_Memory;
+      Target    : in Event_Id;
+      Successor : out Event_Id;
+      Found     : out Boolean)
+   is
+   begin
+      Successor := (Token => (Length => 0, Value => [others => ' ']));
+      Found := False;
+      for I in 1 .. Memory.Entries.Count loop
+         if Memory.Entries.Values (I).Replaces.Present
+           and then Equal_Token
+             (Memory.Entries.Values (I).Replaces.Value.Token, Target.Token)
+         then
+            Successor := Memory.Entries.Values (I).Event;
+            Found := True;
+            return;
+         end if;
+      end loop;
+   end Find_Successor;
+
 end HRA_N.Core.Transaction_Metadata;

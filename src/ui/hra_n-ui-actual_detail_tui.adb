@@ -1,8 +1,11 @@
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Core.Description; use HRA_N.Core.Description;
+with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Actual_Detail_Query; use HRA_N.Application.Actual_Detail_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
+with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
+with HRA_N.UI.Record_TUI; use HRA_N.UI.Record_TUI;
 with HRA_N.UI.Snapshot_Label;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with Terminal_Interface.Curses;
@@ -21,14 +24,17 @@ package body HRA_N.UI.Actual_Detail_TUI is
      (Paths    : HRA_N.Application.Path_Resolver.Path_Config;
       Event_Id : HRA_N.Core.Types.Token_Text)
    is
-      Running : Boolean := True;
+      Current_Paths    : Path_Config := Paths;
+      Current_Event_Id : HRA_N.Core.Types.Token_Text := Event_Id;
+      Running          : Boolean := True;
    begin
       while Running loop
          declare
-            View : constant Actual_Detail_View := Execute (Paths, Event_Id);
+            View : constant Actual_Detail_View :=
+              Execute (Current_Paths, Current_Event_Id);
          begin
             Curses.Erase;
-            Put_Clipped (0, "HRA-N ACTUAL DETAIL  " & Token_String (Event_Id));
+            Put_Clipped (0, "HRA-N ACTUAL DETAIL  " & Token_String (Current_Event_Id));
             Put_Clipped (1, "============================================================");
 
             if View.Status = Query_Rejected then
@@ -37,58 +43,111 @@ package body HRA_N.UI.Actual_Detail_TUI is
             else
                Put_Clipped
                  (3,
+                  "Status       " &
+                  (if View.Is_Superseded
+                   then "SUPERSEDED by " & Token_String (View.Superseded_By)
+                   else "ACTIVE"));
+               Put_Clipped
+                 (4,
                   "Date         " &
                   (if View.Has_Date
                    then Format_Iso_Date (View.Valid_On)
                    else "UNKNOWN"));
                Put_Clipped
-                 (4,
+                 (5,
                   "Description  " &
                   (if View.Description.Length = 0
                    then "(none)"
                    else To_String (View.Description)));
                Put_Clipped
-                 (6, "Purpose      " &
+                 (7, "Purpose      " &
                     (if View.Has_Purpose then Token_String (View.Purpose) else "(none)"));
                Put_Clipped
-                 (7, "Replaces     " &
+                 (8, "Replaces     " &
                     (if View.Has_Replaces then Token_String (View.Replaces) else "(none)"));
                Put_Clipped
-                 (8, "Relation     " &
+                 (9, "Relation     " &
                     (if View.Has_Relation then Token_String (View.Relation) else "(none)"));
                Put_Clipped
-                 (9, "Discharge    " &
+                 (10, "Discharge    " &
                     (if View.Has_Discharge then Token_String (View.Discharge) else "(none)"));
-               Put_Clipped (11, "Effects");
+               Put_Clipped (12, "Effects");
                for Index in 1 .. View.Effect_Count loop
                   Put_Clipped
-                    (11 + Index,
+                    (12 + Index,
                      "  " & Token_String (View.Effects (Index).Locus) & "  " &
                      Amount_Image (View.Effects (Index).Amount) & " " &
                      Token_String (View.Effects (Index).Measure));
                end loop;
                Put_Clipped
-                 (13 + Natural (View.Effect_Count),
-                  "Snapshot: " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot) &
-                  "; write actions disabled");
+                 (14 + Natural (View.Effect_Count),
+                  "Snapshot: " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
             end if;
 
             if Rows > 2 then
-               Put_Clipped (Rows - 2, "r: reload   b/Esc: Actual");
+               if not View.Is_Superseded and then View.Status /= Query_Rejected then
+                  Put_Clipped (Rows - 2, "c: correct   r: reload   b/Esc: Actual");
+               else
+                  Put_Clipped (Rows - 2, "r: reload   b/Esc: Actual");
+               end if;
             end if;
             Curses.Refresh;
-         end;
 
-         declare
-            Key : constant Integer := Integer (Curses.Get_Keystroke);
-         begin
-            if Key = Character'Pos ('b') or else Key = Character'Pos ('B')
-              or else Key = 27
-            then
-               Running := False;
-            else
-               null;
-            end if;
+            declare
+               Key : constant Integer := Integer (Curses.Get_Keystroke);
+            begin
+               if Key = Character'Pos ('b') or else Key = Character'Pos ('B')
+                 or else Key = 27
+               then
+                  Running := False;
+               elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R') then
+                  Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+               elsif (Key = Character'Pos ('c') or else Key = Character'Pos ('C'))
+                 and then not View.Is_Superseded
+                 and then View.Status /= Query_Rejected
+               then
+                  declare
+                     From_Tok  : HRA_N.Core.Types.Token_Text :=
+                       (Length => 0, Value => [others => ' ']);
+                     To_Tok    : HRA_N.Core.Types.Token_Text :=
+                       (Length => 0, Value => [others => ' ']);
+                     Amt       : HRA_N.Core.Types.Quanta_Type := 0;
+                     Init      : Movement_Initial_Values;
+                     New_Id    : HRA_N.Core.Types.Token_Text;
+                     Committed : Boolean := False;
+                  begin
+                     for Index in 1 .. View.Effect_Count loop
+                        if View.Effects (Index).Amount < 0 then
+                           From_Tok := View.Effects (Index).Locus;
+                        elsif View.Effects (Index).Amount > 0 then
+                           To_Tok := View.Effects (Index).Locus;
+                           Amt := View.Effects (Index).Amount;
+                        end if;
+                     end loop;
+                     Init :=
+                       (Target_Id   => Current_Event_Id,
+                        Date        => View.Valid_On,
+                        From_Locus  => From_Tok,
+                        To_Locus    => To_Tok,
+                        Amount      => Amt,
+                        Description =>
+                          (if View.Description.Length > 0
+                           then Make_Token (To_String (View.Description))
+                           else (Length => 0, Value => [others => ' '])));
+                     Run_Correction
+                       (Paths        => Current_Paths,
+                        Init         => Init,
+                        New_Event_Id => New_Id,
+                        Committed    => Committed);
+                     if Committed then
+                        Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+                        Current_Event_Id := New_Id;
+                     end if;
+                  end;
+               else
+                  null;
+               end if;
+            end;
          end;
       end loop;
    end Run;

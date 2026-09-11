@@ -88,6 +88,37 @@ package body Test_Actual_Query is
          Assert (Detail.Has_Relation
                  and then Equal_Token (Detail.Relation, Make_Token ("r3")),
                  "Actual detail exposes relation metadata");
+         Assert (not Detail.Is_Superseded,
+                 "Unsuperseded transaction reports Is_Superseded = False");
+      end;
+
+      Assert
+        (Write_File_Atomically
+           (Journal_Path_Str (Paths),
+            "TX e0001 2026-09-11 cash:-100 food:100 ""Breakfast""" & ASCII.LF &
+            "TX e0002 2026-09-12 cash:-200 food:200 ""Dinner""" & ASCII.LF &
+            "TX e0003 2026-09-11 cash:-300 food:300 @meal ""Lunch"" relation:r3" & ASCII.LF &
+            "TX e0004 2026-09-11 cash:-150 food:150 ""Corrected Breakfast"" replaces:e0001" & ASCII.LF,
+            Error,
+            Error_Len),
+         "Actual query replacement journal publishes");
+
+      declare
+         Old_Detail : constant HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+           HRA_N.Application.Actual_Detail_Query.Execute
+             (Paths, Make_Token ("e0001"));
+         New_Detail : constant HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+           HRA_N.Application.Actual_Detail_Query.Execute
+             (Paths, Make_Token ("e0004"));
+      begin
+         Assert (Old_Detail.Is_Superseded
+                 and then Equal_Token (Old_Detail.Superseded_By, Make_Token ("e0004")),
+                 "Superseded transaction reports Is_Superseded = True with successor id");
+         Assert (not New_Detail.Is_Superseded,
+                 "Replacement transaction reports Is_Superseded = False");
+         Assert (New_Detail.Has_Replaces
+                 and then Equal_Token (New_Detail.Replaces, Make_Token ("e0001")),
+                 "Replacement transaction reports replaced target identity");
       end;
 
       declare

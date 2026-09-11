@@ -46,6 +46,19 @@ package body Test_Transaction_Metadata is
                  and then Second.Discharge.Value.Value
                    (1 .. Second.Discharge.Value.Length) = "r1",
                  "Discharge metadata survives parsing");
+         declare
+            Succ      : Event_Id;
+            Has_Succ  : Boolean;
+         begin
+            Find_Successor
+              (Journal.Metadata, (Token => Make_Token ("e1")), Succ, Has_Succ);
+            Assert (Has_Succ and then Equal_Token (Succ.Token, Make_Token ("e2")),
+                    "Find_Successor finds superseding successor event");
+            Find_Successor
+              (Journal.Metadata, (Token => Make_Token ("e2")), Succ, Has_Succ);
+            Assert (not Has_Succ,
+                    "Find_Successor returns false for active unsuperseded event");
+         end;
       end;
 
       Write_Journal

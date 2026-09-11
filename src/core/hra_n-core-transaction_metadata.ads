@@ -59,6 +59,12 @@ is
       Item   : out Transaction_Metadata_Entry;
       Found  : out Boolean);
 
+   procedure Find_Successor
+     (Memory    : in Metadata_Memory;
+      Target    : in Event_Id;
+      Successor : out Event_Id;
+      Found     : out Boolean);
+
 private
    type Metadata_Memory is record
       Entries : Metadata_List;

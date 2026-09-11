@@ -75,6 +75,46 @@ package body Test_Movement_Command is
          end;
       end;
 
+      declare
+         Paths       : constant Path_Config := Resolve_Paths (Test_Dir);
+         Corr_Intent : constant Correction_Intent :=
+           (Target_Id   => Make_Token ("e0001"),
+            From_Locus  => (Token => Make_Token ("cash")),
+            To_Locus    => (Token => Make_Token ("food")),
+            Measure     => (Token => Make_Token ("jpy")),
+            Amount      => 1_500,
+            Valid_On    => Make_Date (2026, 9, 15),
+            Description => Make_Token ("Corrected Lunch"));
+         Corr_Prop   : constant Proposal_Result :=
+           Propose_Correction (Paths, Corr_Intent);
+      begin
+         Assert (Corr_Prop.Success, "Correction intent produces proposal");
+         Assert (Replaced_Target_Id (Corr_Prop.Proposal) = "e0001",
+                 "Proposal records target to replace");
+         Assert (Proposed_Event_Id (Corr_Prop.Proposal) = "e0003",
+                 "Proposal allocates next event id");
+         declare
+            Corr_Receipt : constant Movement_Receipt := Commit (Corr_Prop.Proposal);
+         begin
+            Assert (Corr_Receipt.Success, "Correction proposal commits");
+            Assert (Corr_Receipt.Snapshot_Id (1 .. Corr_Receipt.Snapshot_Len) = "g00000004",
+                    "Receipt identifies new generation");
+         end;
+
+         declare
+            New_Paths   : constant Path_Config := Resolve_Paths (Test_Dir);
+            Branch_Prop : constant Proposal_Result :=
+              Propose_Correction (New_Paths, Corr_Intent);
+            Missing_Intent : Correction_Intent := Corr_Intent;
+         begin
+            Assert (not Branch_Prop.Success,
+                    "Proposing correction on already superseded target fails closed");
+            Missing_Intent.Target_Id := Make_Token ("absent");
+            Assert (not Propose_Correction (New_Paths, Missing_Intent).Success,
+                    "Proposing correction on absent target fails closed");
+         end;
+      end;
+
       Ada.Directories.Delete_Tree (Test_Dir);
    end Run;
 end Test_Movement_Command;

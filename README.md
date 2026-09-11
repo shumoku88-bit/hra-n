@@ -96,10 +96,12 @@ today, reload, resize/redraw, and clean quit. Detail exposes date, description,
 purpose, provenance, and exact `(Locus, Measure, Amount)` effects. Selected Day
 provides quick movement recording (`n`) seeded with the selected day, featuring
 policy locus candidate cycling, admission preview, generation transaction commit,
-and immediate reload from the activated snapshot. Correction and reversal actions
-remain pending generation transaction wiring; direct mutation of a selected
-generation is rejected. Scheduled, balances, budget, and report workspaces are
-added through the same shared query boundary.
+and immediate reload from the activated snapshot. Actual detail provides
+movement correction and date correction (`c`) seeded with the target transaction,
+preventing branching or cyclic replacement, committing via generation
+transaction, and immediately reloading the active successor record. Direct
+mutation of a selected generation is rejected. Scheduled, balances, budget,
+and report workspaces are added through the same shared query boundary.
 
 The combined repository gate is:
 
