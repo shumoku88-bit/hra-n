@@ -2,9 +2,9 @@
 --  HRA-N: Verified Household Engine
 --  Package: HRA_N.Application.Policy_Command
 --
---  Proposal-first admission boundary for Accounting Role and Window policies.
---  Appends policy facts to canonical policy.hra under strict snapshot-bound
---  generation transactions.
+--  Proposal-first admission boundary for Accounting Role, Window, and Actual
+--  Routing policy facts. Appends to canonical policy.hra under strict
+--  snapshot-bound generation transactions.
 -------------------------------------------------------------------------------
 
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;

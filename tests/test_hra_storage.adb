@@ -266,7 +266,46 @@ package body Test_HRA_Storage is
                     "Currency is retained exactly, never silently defaulted");
          end;
 
-         --  7. Test attention wire admission (ATTENTION, ATTENTION-CLOSE)
+         --  7. Test historical Actual routing wire admission.
+         Write_Policy
+           ("ROUTE food INITIAL MANAGED groceries" & ASCII.LF
+            & "ROUTE food FROM 2026-10-01 UNMANAGED" & ASCII.LF);
+         declare
+            R : constant Policy_Result := Read_Policy_File (Tmp_Policy);
+         begin
+            Assert (R.Success, "Historical routing wire stays admitted");
+            Assert_Equal_Int
+              (2, Long_Long_Integer (R.Routing.Count),
+               "Both routing assertions are retained");
+            Assert (R.Routing.Entries (1).Managed,
+                    "Managed target remains explicit");
+            Assert (not R.Routing.Entries (2).Managed,
+                    "Unmanaged target remains explicit");
+         end;
+
+         Write_Policy
+           ("ROUTE food INITIAL MANAGED groceries" & ASCII.LF
+            & "ROUTE food INITIAL UNMANAGED" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Duplicate routing effective coordinate fails closed");
+
+         Write_Policy ("ROUTE food FROM 2026-02-31 MANAGED groceries" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Invalid routing effective date fails closed");
+
+         Write_Policy ("ROUTE food INITIAL MANAGED" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Managed routing without purpose fails closed");
+
+         Write_Policy ("ROUTE food INITIAL UNMANAGED groceries" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Unmanaged routing carrying purpose fails closed");
+
+         Write_Policy ("ROUTE food INITIAL UNKNOWN" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Unknown routing state fails closed");
+
+         --  8. Test attention wire admission (ATTENTION, ATTENTION-CLOSE)
          Write_Policy
            ("ATTENTION att0001 ""Renew insurance"" due:2026-10-01" & ASCII.LF
             & "ATTENTION att0002 ""Deep clean"" nodue" & ASCII.LF
@@ -313,7 +352,7 @@ package body Test_HRA_Storage is
          Assert (not Read_Policy_File (Tmp_Policy).Success,
                  "Attention with an unknown due word fails closed");
 
-         --  8. Test relation wire admission (RELATION, DISCHARGE)
+         --  9. Test relation wire admission (RELATION, DISCHARGE)
          declare
             Tmp_Rel_Journal : constant String := "/tmp/test_relation_wire.hra";
 

@@ -170,13 +170,17 @@ package body HRA_N.UI.Routing_TUI is
                end;
             end loop;
          end if;
-         Put_Clipped
-           (Rows - 3,
-            "Snapshot: " & View.Snapshot (1 .. View.Snapshot_Len));
+         if Rows > 3 then
+            Put_Clipped
+              (Rows - 3,
+               "Snapshot: " & View.Snapshot (1 .. View.Snapshot_Len));
+         end if;
       end if;
-      Put_Clipped
-        (Rows - 2,
-         "j/k: select  n: managed  u: unmanaged  h: history  R: reload  b/Esc/q: home");
+      if Rows > 2 then
+         Put_Clipped
+           (Rows - 2,
+            "j/k: select  n: managed  u: unmanaged  h: history  R: reload  b/Esc/q: home");
+      end if;
       Curses.Refresh;
    end Draw;
 

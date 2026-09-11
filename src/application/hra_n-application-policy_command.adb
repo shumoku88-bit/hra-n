@@ -113,15 +113,66 @@ package body HRA_N.Application.Policy_Command is
       return True;
    end Token_Is_Encodable;
 
+   type Authority_Bytes is record
+      Success   : Boolean := False;
+      Journal   : Unbounded_String;
+      Policy    : Unbounded_String;
+      Scheduled : Unbounded_String;
+   end record;
+
+   function Load_Authority (Paths : Path_Config) return Authority_Bytes is
+      Result : Authority_Bytes;
+      Read   : HRA_N.Storage.Exact_File.Read_Result;
+   begin
+      Read := HRA_N.Storage.Exact_File.Read_All (Journal_Path_Str (Paths));
+      if not Read.Success then
+         return Result;
+      end if;
+      Result.Journal := Read.Content;
+
+      Read := HRA_N.Storage.Exact_File.Read_All (Policy_Path_Str (Paths));
+      if not Read.Success then
+         return Result;
+      end if;
+      Result.Policy := Read.Content;
+
+      Read := HRA_N.Storage.Exact_File.Read_All (Scheduled_Path_Str (Paths));
+      if not Read.Success then
+         return Result;
+      end if;
+      Result.Scheduled := Read.Content;
+      Result.Success := True;
+      return Result;
+   end Load_Authority;
+
+   function Seal_Policy_Proposal
+     (Paths        : Path_Config;
+      Authority    : Authority_Bytes;
+      Primary_Id   : String;
+      Secondary_Id : String;
+      New_Policy   : Unbounded_String) return Proposal_Result
+   is
+      Result : Proposal_Result;
+   begin
+      Result.Success := True;
+      Result.Proposal :=
+        HRA_N.Application.Proposal.Seal
+          (Paths        => Paths,
+           Primary_Id   => Primary_Id,
+           Secondary_Id => Secondary_Id,
+           Journal      => Authority.Journal,
+           Policy       => New_Policy,
+           Scheduled    => Authority.Scheduled);
+      return Result;
+   end Seal_Policy_Proposal;
+
    function Propose_Role
      (Paths  : Path_Config;
       Intent : Role_Intent) return Proposal_Result
    is
-      Result  : Proposal_Result;
-      Policy  : Policy_Result;
-      J_Bytes : HRA_N.Storage.Exact_File.Read_Result;
-      P_Bytes : HRA_N.Storage.Exact_File.Read_Result;
-      S_Bytes : HRA_N.Storage.Exact_File.Read_Result;
+      Result    : Proposal_Result;
+      Policy    : Policy_Result;
+      Authority : Authority_Bytes;
 
       function Fail (Message : String) return Proposal_Result is
       begin
@@ -135,19 +186,9 @@ package body HRA_N.Application.Policy_Command is
          return Fail ("locus identity is empty or unencodable");
       end if;
 
-      P_Bytes := HRA_N.Storage.Exact_File.Read_All (Policy_Path_Str (Paths));
-      if not P_Bytes.Success then
-         return Fail ("cannot read policy authority for proposal");
-      end if;
-
-      J_Bytes := HRA_N.Storage.Exact_File.Read_All (Journal_Path_Str (Paths));
-      if not J_Bytes.Success then
-         return Fail ("cannot read journal authority for proposal");
-      end if;
-
-      S_Bytes := HRA_N.Storage.Exact_File.Read_All (Scheduled_Path_Str (Paths));
-      if not S_Bytes.Success then
-         return Fail ("cannot read scheduled authority for proposal");
+      Authority := Load_Authority (Paths);
+      if not Authority.Success then
+         return Fail ("cannot read exact authority bytes for proposal");
       end if;
 
       Policy := Read_Policy_File (Policy_Path_Str (Paths));
@@ -194,20 +235,12 @@ package body HRA_N.Application.Policy_Command is
               Locus          => Locus_Str,
               Role           => Intent.Role,
               Replaces_Id    => Rep_Str);
-         New_Policy : Unbounded_String := P_Bytes.Content;
+         New_Policy : Unbounded_String := Authority.Policy;
       begin
          Append (New_Policy, Line);
 
-         Result.Success := True;
-         Result.Proposal :=
-           HRA_N.Application.Proposal.Seal
-             (Paths        => Paths,
-              Primary_Id   => Alloc_Id,
-              Secondary_Id => "",
-              Journal      => J_Bytes.Content,
-              Policy       => New_Policy,
-              Scheduled    => S_Bytes.Content);
-         return Result;
+         return Seal_Policy_Proposal
+           (Paths, Authority, Alloc_Id, "", New_Policy);
       end;
    end Propose_Role;
 
@@ -215,11 +248,9 @@ package body HRA_N.Application.Policy_Command is
      (Paths  : Path_Config;
       Intent : Routing_Intent) return Proposal_Result
    is
-      Result  : Proposal_Result;
-      Policy  : Policy_Result;
-      J_Bytes : HRA_N.Storage.Exact_File.Read_Result;
-      P_Bytes : HRA_N.Storage.Exact_File.Read_Result;
-      S_Bytes : HRA_N.Storage.Exact_File.Read_Result;
+      Result    : Proposal_Result;
+      Policy    : Policy_Result;
+      Authority : Authority_Bytes;
 
       function Fail (Message : String) return Proposal_Result is
       begin
@@ -266,10 +297,8 @@ package body HRA_N.Application.Policy_Command is
          end;
       end loop;
 
-      P_Bytes := HRA_N.Storage.Exact_File.Read_All (Policy_Path_Str (Paths));
-      J_Bytes := HRA_N.Storage.Exact_File.Read_All (Journal_Path_Str (Paths));
-      S_Bytes := HRA_N.Storage.Exact_File.Read_All (Scheduled_Path_Str (Paths));
-      if not P_Bytes.Success or else not J_Bytes.Success or else not S_Bytes.Success then
+      Authority := Load_Authority (Paths);
+      if not Authority.Success then
          return Fail ("cannot read exact authority bytes for proposal");
       end if;
 
@@ -282,7 +311,7 @@ package body HRA_N.Application.Policy_Command is
          Effective_Str : constant String :=
            (if Intent.Effective_Kind = Routing_Initial then "initial"
             else Format_Iso_Date (Intent.Effective_On));
-         New_Policy : Unbounded_String := P_Bytes.Content;
+         New_Policy : Unbounded_String := Authority.Policy;
       begin
          Append
            (New_Policy,
@@ -292,16 +321,8 @@ package body HRA_N.Application.Policy_Command is
                Effective_On   => Intent.Effective_On,
                Managed        => Intent.Managed,
                Purpose        => Purpose_Str));
-         Result.Success := True;
-         Result.Proposal :=
-           HRA_N.Application.Proposal.Seal
-             (Paths        => Paths,
-              Primary_Id   => Locus_Str,
-              Secondary_Id => Effective_Str,
-              Journal      => J_Bytes.Content,
-              Policy       => New_Policy,
-              Scheduled    => S_Bytes.Content);
-         return Result;
+         return Seal_Policy_Proposal
+           (Paths, Authority, Locus_Str, Effective_Str, New_Policy);
       end;
    end Propose_Routing;
 
@@ -309,11 +330,9 @@ package body HRA_N.Application.Policy_Command is
      (Paths  : Path_Config;
       Intent : Window_Intent) return Proposal_Result
    is
-      Result  : Proposal_Result;
-      Policy  : Policy_Result;
-      J_Bytes : HRA_N.Storage.Exact_File.Read_Result;
-      P_Bytes : HRA_N.Storage.Exact_File.Read_Result;
-      S_Bytes : HRA_N.Storage.Exact_File.Read_Result;
+      Result    : Proposal_Result;
+      Policy    : Policy_Result;
+      Authority : Authority_Bytes;
 
       function Fail (Message : String) return Proposal_Result is
       begin
@@ -327,19 +346,9 @@ package body HRA_N.Application.Policy_Command is
          return Fail ("window start date must be strictly before end date");
       end if;
 
-      P_Bytes := HRA_N.Storage.Exact_File.Read_All (Policy_Path_Str (Paths));
-      if not P_Bytes.Success then
-         return Fail ("cannot read policy authority for proposal");
-      end if;
-
-      J_Bytes := HRA_N.Storage.Exact_File.Read_All (Journal_Path_Str (Paths));
-      if not J_Bytes.Success then
-         return Fail ("cannot read journal authority for proposal");
-      end if;
-
-      S_Bytes := HRA_N.Storage.Exact_File.Read_All (Scheduled_Path_Str (Paths));
-      if not S_Bytes.Success then
-         return Fail ("cannot read scheduled authority for proposal");
+      Authority := Load_Authority (Paths);
+      if not Authority.Success then
+         return Fail ("cannot read exact authority bytes for proposal");
       end if;
 
       Policy := Read_Policy_File (Policy_Path_Str (Paths));
@@ -362,7 +371,7 @@ package body HRA_N.Application.Policy_Command is
               Start_Date => Intent.Start_Date,
               End_Date   => Intent.End_Date,
               Name       => Name_Str);
-         New_Policy : Unbounded_String := P_Bytes.Content;
+         New_Policy : Unbounded_String := Authority.Policy;
       begin
          --  Check ID collision
          for I in 1 .. Policy.Windows.Count loop
@@ -373,16 +382,8 @@ package body HRA_N.Application.Policy_Command is
 
          Append (New_Policy, Line);
 
-         Result.Success := True;
-         Result.Proposal :=
-           HRA_N.Application.Proposal.Seal
-             (Paths        => Paths,
-              Primary_Id   => Alloc_Id,
-              Secondary_Id => "",
-              Journal      => J_Bytes.Content,
-              Policy       => New_Policy,
-              Scheduled    => S_Bytes.Content);
-         return Result;
+         return Seal_Policy_Proposal
+           (Paths, Authority, Alloc_Id, "", New_Policy);
       end;
    end Propose_Window;
 

@@ -51,22 +51,7 @@ is
       Locus   : Locus_Id;
       As_Of   : Date_Type;
       Purpose : out Token_Text;
-      Found   : out Boolean);
-
-   --  Compatibility projection selecting the latest retained assertion.
-   procedure Find_Purpose
-     (Map     : Routing_Map;
-      Locus   : Locus_Id;
-      Purpose : out Token_Text;
-      Found   : out Boolean);
-
-   function Is_Managed
-     (Map   : Routing_Map;
-      Locus : Locus_Id) return Boolean;
-
-   function Purpose_Matches
-     (Map     : Routing_Map;
-      Locus   : Locus_Id;
-      Purpose : Token_Text) return Boolean;
+      Found   : out Boolean)
+   with Pre => Coordinates_Are_Unique (Map);
 
 end HRA_N.Core.Actual_Routing;

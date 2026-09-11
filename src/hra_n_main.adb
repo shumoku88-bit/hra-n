@@ -29,6 +29,7 @@ with HRA_N.UI.Reconciliation_CLI;
 with HRA_N.UI.Relation_CLI;
 with HRA_N.UI.Split_CLI;
 with HRA_N.UI.Policy_CLI;
+with HRA_N.UI.Routing_CLI;
 with HRA_N.UI.Interactive_Movement;
 
 procedure HRA_N_Main is
@@ -475,7 +476,7 @@ begin
       if Command = "route" or else Command = "routes"
         or else Command = "routing"
       then
-         HRA_N.UI.Policy_CLI.Handle_Routing_Command (Paths, Command_Idx + 1);
+         HRA_N.UI.Routing_CLI.Handle_Routing_Command (Paths, Command_Idx + 1);
          return;
       end if;
 

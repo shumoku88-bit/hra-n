@@ -503,12 +503,28 @@ def main() -> None:
             read_until(fd, output, b"AS OF")
             os.write(fd, b"h")
             read_until(fd, output, b"RETAINED HISTORY")
+            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 2, 20, 0, 0))
+            os.kill(pid, signal.SIGWINCH)
+            os.write(fd, b"\x0c")
+            time.sleep(0.1)
+            assert os.waitpid(pid, os.WNOHANG)[0] == 0
+            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
+            os.kill(pid, signal.SIGWINCH)
+            os.write(fd, b"\x0c")
+            read_until(fd, output, b"RETAINED HISTORY")
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
         except Exception:
             os.kill(pid, signal.SIGKILL)
             os.waitpid(pid, 0)
             raise
+
+        # Extremely small resize must not underflow footer row arithmetic.
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 2, 20, 0, 0))
+        os.kill(pid, signal.SIGWINCH)
+        os.write(fd, b"\x0c")
+        time.sleep(0.1)
+        assert os.waitpid(pid, os.WNOHANG)[0] == 0
 
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 35, 120, 0, 0))
         os.kill(pid, signal.SIGWINCH)
