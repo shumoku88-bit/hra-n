@@ -25,4 +25,8 @@ project HRA_N is
    package Builder is
       for Executable ("hra_n_main.adb") use "hra-n";
    end Builder;
+
+   package Linker is
+      for Default_Switches ("Ada") use ("-Wl,-stack_size,0x1000000");
+   end Linker;
 end HRA_N;

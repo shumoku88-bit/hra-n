@@ -10,9 +10,10 @@ with Ada.Strings.Fixed;              use Ada.Strings.Fixed;
 with HRA_N.Core.Types;               use HRA_N.Core.Types;
 with HRA_N.Core.Validity;            use HRA_N.Core.Validity;
 with HRA_N.Core.Accounting_Role;     use HRA_N.Core.Accounting_Role;
+with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Storage.Policy_Reader;    use HRA_N.Storage.Policy_Reader;
 with HRA_N.Application.Review;       use HRA_N.Application.Review;
-with HRA_N.Application.Publisher;    use HRA_N.Application.Publisher;
+with HRA_N.Application.Movement_Command; use HRA_N.Application.Movement_Command;
 with HRA_N.UI.Output;                use HRA_N.UI.Output;
 
 package body HRA_N.UI.Interactive_Movement is
@@ -43,8 +44,8 @@ package body HRA_N.UI.Interactive_Movement is
             and then Authority_Dir (Authority_Dir'Last - 18 .. Authority_Dir'Last) = "/movement-authority"
          then Authority_Dir (Authority_Dir'First .. Authority_Dir'Last - 19)
          else Authority_Dir);
-      J_Path     : constant String := Base_Dir & "/journal.hra";
-      P_Path     : constant String := Base_Dir & "/policy.hra";
+      Paths      : constant Path_Config := Resolve_Paths (Base_Dir);
+      P_Path     : constant String := Policy_Path_Str (Paths);
 
       Sys_Date   : constant Date_Type := Get_System_Date;
       Sys_Str    : constant String    := Format_Iso_Date (Sys_Date);
@@ -172,7 +173,21 @@ package body HRA_N.UI.Interactive_Movement is
       --  Preview and Confirmation
       declare
          Amt_Str : constant String := Trim (Quanta_Type'Image (Amount), Ada.Strings.Both);
+         Intent  : constant Movement_Intent :=
+           (From_Locus  => (Token => Make_Token (From_Locus (1 .. From_Len))),
+            To_Locus    => (Token => Make_Token (To_Locus (1 .. To_Len))),
+            Measure     => (Token => Make_Token ("jpy")),
+            Amount      => Amount,
+            Valid_On    => Valid_On,
+            Description => Make_Token (Description (1 .. Desc_Len)));
+         Prop_Res : constant Proposal_Result := Propose (Paths, Intent);
       begin
+         if not Prop_Res.Success then
+            Put_Error_Line ("Proposal rejected: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
+            Success := False;
+            return;
+         end if;
+
          Put_Line ("------------------------------------------------------------");
          Put_Line ("Admission Preview:");
          Put_Line ("  FROM : " & From_Locus (1 .. From_Len) & " (-" & Amt_Str & " jpy)");
@@ -182,38 +197,33 @@ package body HRA_N.UI.Interactive_Movement is
             Put_Line ("  DESC : " & Description (1 .. Desc_Len));
          end if;
          Put_Line ("------------------------------------------------------------");
-      end;
 
-      declare
-         Confirm : constant String := Prompt_Line ("Publish to authority? [y/N]: ");
-      begin
-         if Confirm = "y" or else Confirm = "Y" then
-            declare
-               Pub_Res : constant Publish_Result := Publish_Movement
-                 (Journal_Path => J_Path,
-                  Policy_Path  => P_Path,
-                  From_Locus   => From_Locus (1 .. From_Len),
-                  To_Locus     => To_Locus (1 .. To_Len),
-                  Amount       => Amount,
-                  Valid_On     => Valid_On,
-                  Description  => Description (1 .. Desc_Len));
-            begin
-               if Pub_Res.Success then
-                  Put_Line ("============================================================");
-                  Put_Line (" [OK] Admitted and published Movement receipt: " &
-                            Pub_Res.Event_Id_Str (1 .. Pub_Res.Event_Id_Len));
-                  Put_Line ("============================================================");
-                  Success := True;
-               else
-                  Put_Line ("[ERROR] Publication rejected: " &
-                            Pub_Res.Error_Reason (1 .. Pub_Res.Error_Len));
-                  Success := False;
-               end if;
-            end;
-         else
-            Put_Line ("[CANCELLED] Movement discarded.");
-            Success := False;
-         end if;
+         declare
+            Confirm : constant String := Prompt_Line ("Commit to authority? [y/N]: ");
+         begin
+            if Confirm = "y" or else Confirm = "Y" then
+               declare
+                  Receipt : constant Movement_Receipt := Commit (Prop_Res.Proposal);
+               begin
+                  if Receipt.Success then
+                     Put_Line ("============================================================");
+                     Put_Line (" [OK] Committed Movement: " &
+                               Receipt.Event_Id (1 .. Receipt.Event_Id_Len));
+                     Put_Line ("      SNAPSHOT: " &
+                               Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                     Put_Line ("============================================================");
+                     Success := True;
+                  else
+                     Put_Error_Line ("Commit rejected: " &
+                               Receipt.Error (1 .. Receipt.Error_Len));
+                     Success := False;
+                  end if;
+               end;
+            else
+               Put_Line ("[CANCELLED] Movement discarded.");
+               Success := False;
+            end if;
+         end;
       end;
    end Run_Interactive;
 

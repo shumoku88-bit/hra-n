@@ -1,3 +1,4 @@
+with Ada.Exceptions;
 with Ada.Strings; use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
@@ -201,11 +202,11 @@ package body HRA_N.Application.Movement_Command is
       Result.Success := True;
       return Result;
    exception
-      when others =>
+      when E : others =>
          return Fail
            ((if Is_Correction
-             then "unexpected correction proposal failure"
-             else "unexpected movement proposal failure"));
+             then "unexpected correction proposal failure: " & Ada.Exceptions.Exception_Message (E)
+             else "unexpected movement proposal failure: " & Ada.Exceptions.Exception_Message (E)));
    end Propose_Internal;
 
    function Propose
