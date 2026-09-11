@@ -21,10 +21,10 @@ named command.
 | Capability | Domain/admission | Storage | Shared Application API | CLI | TUI | Evidence | Status |
 |---|---|---|---|---|---|---|---|
 | Versioned three-stream read | selected complete generation; invalid selection rejects | immutable generation + atomic `CURRENT` | snapshot reference propagated | Home/doctor consume resolver | snapshot shown | path, initializer, Home tests | **V2** |
-| Generation transaction write | three-stream candidate receives parser/domain admission | process/task lock, authoritative re-read, stale rejection, post-lock allocation, fsync, atomic activation, post-verify; exact selected-candidate comparison recovers lost receipts | typed Proposal/Receipt not connected | not connected | writes disabled | stale, invalid-candidate, concurrent-writer, activation-boundary fault, and idempotent retry tests + TLA+/SPIN model | **Blocked — Application API pending** |
+| Generation transaction write | three-stream candidate receives parser/domain admission | process/task lock, authoritative re-read, stale rejection, post-lock allocation, fsync, atomic activation, post-verify; exact selected-candidate comparison recovers lost receipts | typed Movement Intent/opaque Proposal/durable Receipt connected | not connected | writes disabled | stale, invalid-candidate, concurrent-writer, activation-boundary fault, idempotent retry, and Movement contract tests + TLA+/SPIN model | **V2 foundation** |
 | Actual list by day/all | occurrence date and stable source order | journal reader | `Actual_Query` | legacy review is separate | Home, Selected Day, Actual | unit + PTY | **V2 read slice** |
 | Actual detail | identity revalidated against current read | journal reader | `Actual_Detail_Query` | no structured detail command | selected-row detail | unit + PTY | **V2 read slice** |
-| Record movement | positive exact amount; balanced effects | legacy append mutates live file | legacy publisher | works only on unversioned roots | disabled | legacy tests | **Blocked by P0** |
+| Record movement | typed coordinates, positive exact amount, balanced per-measure effects, canonical encoding | admitted immutable generation transaction | `Movement_Command` Intent -> opaque snapshot-bound Proposal -> Receipt | legacy path not connected | disabled pending metadata gate | validation, stale-proposal, retry, and receipt tests | **V2 Application slice** |
 | Correct movement | explicit acyclic supersession; no branch | metadata currently discarded | legacy reversal-plus-new flow is not atomic correction | legacy command | disabled | insufficient | **Missing** |
 | Correct occurrence date | versioned validity fact | no V2 representation | none | none | none | none | **Missing** |
 | Reverse movement | immutable inverse linked to target | link currently not retained | legacy publisher lacks qualified generation transaction | legacy command | disabled | insufficient | **Blocked** |
@@ -47,19 +47,16 @@ named command.
 
 ### P0 — safe authority and lossless facts
 
-1. Add typed Intent, Proposal, and durable Receipt Application APIs over the
-   generation transaction, including retry/idempotency semantics.
-2. Stop discarding purpose, supersession, relation, and discharge metadata.
-3. Define append-only Scheduled and versioned Policy records.
+1. Stop discarding purpose, supersession, relation, and discharge metadata.
+2. Define append-only Scheduled and versioned Policy records.
 
 No new TUI write action is enabled before this gate.
 
 ### P1 — Actual vertical slice
 
-1. Movement Intent -> Proposal -> Commit.
-2. TUI record editor using the selected day.
-3. Actual correction, date correction, and reversal from selected detail.
-4. Equivalent scriptable CLI operations through the same Application boundary.
+1. TUI record editor using the selected day.
+2. Actual correction, date correction, and reversal from selected detail.
+3. Equivalent scriptable CLI operations through the same Application boundary.
 
 ### P2 — Scheduled vertical slice
 
