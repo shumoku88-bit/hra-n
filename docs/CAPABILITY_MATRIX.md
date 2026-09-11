@@ -35,7 +35,7 @@ named command.
 | Reconciliation | assertion evidence (`ASSERT` facts), exact diff calculation, mismatch diagnostics, no invented adjustment | append-only `ASSERT` facts in `journal.hra` admitted via generation transaction | `Assertion_Command` (Propose, Commit) & `Reconciliation_Query` | `hra-n assert`, `hra-n reconcile` | Balance workspace badges `CONFLICT` on mismatched assertions; Home Attention shows status | unit, E2E CLI, and PTY tests | **V2** |
 | Accounting roles | versioned role facts with effective dates; acyclic one-to-one replacement; active locus uniqueness; evaluation windows with half-open intervals | append-only `ROLE`/`WINDOW` facts in `policy.hra` admitted via generation transaction; legacy `ROLE locus: ROLE_NAME` rows remain read-only input | `Policy_Query` (`Execute_Role_Query` with `--as-of`, `Execute_Window_Query`) & `Policy_Command` (`Propose_Role`/`Propose_Window`, `Commit`) | `hra-n role [assign/--as-of]`, `hra-n window [add]` | Home count only | role-law (ID uniqueness, replacement existence/locus/branch/cycle, active uniqueness), window-law (date order, ID uniqueness), proposal/commit, as-of query, E2E CLI tests | **V2** |
 | Capacity/Budget | separate capacity plane, per-movement effective evidence, non-negative purpose guard, effective-only consumption; window stays a query coordinate | append-only TRANSFER/REBALANCE/EFFECTIVE facts via generation transaction | `Capacity_Command` transfer/rebalance Intents, `Capacity_Query` readout, and `Budget_Query` current-window answer over one snapshot | `hra-n capacity` / `transfer` / `rebalance` and `hra-n budget` | Capacity workspace (`e`, shared transfer/rebalance editors with preview and reload) and Budget surface (`c`, grant/rebalance delegation, display-only badges) | transfer/rebalance-law, stale-proposal, retry, wire-admission, E2E CLI, and PTY tests + Alloy capacity shape model + SPARK green | **V2** |
-| Relations/discharges | directional claim and bounded discharge not yet encoded | opaque relation/discharge identities retained without semantic interpretation | none | none | detail shows opaque identity only | retention tests + Alloy shape model | **Missing** |
+| Relations/discharges | directional claim anchored to a source event with household-side guard; one discharge row per (settlement, claim); aggregate never above face; open requires effective source and settlement | append-only RELATION/DISCHARGE facts in `journal.hra` admitted via generation transaction | `Relation_Command` raise/discharge Intents -> snapshot-bound Proposal -> Receipt; `Relation_Query` open answer plus per-event links | `hra-n relation` / `raise` / `discharge` | Actual detail renders linked claims/discharges with `l` raise and `d` discharge-via-picker actions (no separate lifecycle screen by design); reversal of referenced events refused | raise/discharge-law, stale-proposal, retry, wire-admission, reversal-guard, E2E CLI, and PTY tests + Alloy shape model | **V2** |
 | Attention | retained matters with explicit due (dated/none/undetermined) and one closure each; provenance never closes | append-only ATTENTION/ATTENTION-CLOSE facts in `policy.hra` admitted via generation transaction | `Attention_Command` raise/close Intents -> snapshot-bound Proposal -> Receipt; `Attention_Query` open answer in retained order | `hra-n attention` / `raise` / `resolve` / `drop` | Attention workspace (`i`, shared raise/resolve/drop editors with preview and reload); Home shows open count | raise/close-law, stale-proposal, retry, wire-admission, E2E CLI, and PTY tests + Alloy shape model | **V2** |
 | Reports | explicit snapshot and effective interval; no implicit conversion | legacy readers | legacy statement/budget | legacy commands | missing | legacy tests | **Legacy** |
 | Policy administration | versioned facts with effective dates; fail-closed admission via Alloy laws | append-only policy.hra via generation transaction with Content_Extends | `Policy_Command` (Propose_Role, Propose_Window, Commit) | `hra-n role assign`, `hra-n window add` | none | unit, proposal/commit, E2E CLI tests | **V2** |
@@ -69,11 +69,11 @@ named command.
 2. Capacity query and transfer/rebalance intents.
 3. Current-cycle Budget decision surface without presentation-owned arithmetic.
 
-### P5 — reports and relations
+### P5 — reports
 
-Add explicit report queries and the relation/discharge lifecycle without
-introducing generic issue or universal-event frameworks. Current-open
-attention is complete (see the matrix).
+Add explicit report queries without introducing generic issue or
+universal-event frameworks. Relation/discharge lifecycle and current-open
+attention are complete (see the matrix).
 
 ### P6 — external adapters
 

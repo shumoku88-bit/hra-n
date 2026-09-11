@@ -130,4 +130,36 @@ package body HRA_N.Storage.Journal_Writer is
              Coord_Str & " " & Amt_Str & Desc_Part;
    end Encode_Assertion;
 
+   function Encode_Endpoint (Endpoint : Relation_Endpoint) return String is
+   begin
+      if Endpoint.Kind = Endpoint_Household then
+         return "household";
+      end if;
+      return "ext:" & Endpoint.Name.Value (1 .. Endpoint.Name.Length);
+   end Encode_Endpoint;
+
+   function Encode_Relation
+     (Claim_Id   : String;
+      Source_Tx  : String;
+      Debtor     : String;
+      Creditor   : String;
+      Measure    : String;
+      Amount     : Quanta_Type) return String
+   is
+      Amt_Str : constant String := Trim (Amount'Image, Ada.Strings.Both);
+   begin
+      return "RELATION " & Claim_Id & " " & Source_Tx & " "
+        & Debtor & " " & Creditor & " " & Measure & " " & Amt_Str;
+   end Encode_Relation;
+
+   function Encode_Discharge
+     (Settlement_Tx : String;
+      Claim_Id      : String;
+      Amount        : Quanta_Type) return String
+   is
+      Amt_Str : constant String := Trim (Amount'Image, Ada.Strings.Both);
+   begin
+      return "DISCHARGE " & Settlement_Tx & " " & Claim_Id & " " & Amt_Str;
+   end Encode_Discharge;
+
 end HRA_N.Storage.Journal_Writer;

@@ -4,6 +4,7 @@ with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with HRA_N.Core.Actual_Routing; use HRA_N.Core.Actual_Routing;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
+with HRA_N.Core.Relation; use HRA_N.Core.Relation;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
@@ -322,6 +323,10 @@ package body HRA_N.Application.Movement_Command is
             return Fail ("reversal chains are not admitted");
          end if;
       end;
+
+      if Involves_Event (Journal.Relations, (Token => Intent.Target_Id)) then
+         return Fail ("reversal of a relation-referenced event is not admitted");
+      end if;
 
       J_Bytes := HRA_N.Storage.Exact_File.Read_All (Journal_Path_Str (Paths));
       P_Bytes := HRA_N.Storage.Exact_File.Read_All (Policy_Path_Str (Paths));

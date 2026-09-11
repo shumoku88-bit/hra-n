@@ -7,6 +7,7 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Command_Line;
 with Test_Support;
 with Test_Quantity;
+with Test_Relation_Command;
 with Test_Movement;
 with Test_Event;
 with Test_Validity;
@@ -37,6 +38,9 @@ begin
 
    Put_Line ("--> Running Test_Quantity...");
    Test_Quantity.Run;
+
+   Put_Line ("--> Running Test_Relation_Command...");
+   Test_Relation_Command.Run;
 
    Put_Line ("--> Running Test_Movement...");
    Test_Movement.Run;

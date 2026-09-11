@@ -3,12 +3,14 @@
 --  Package: HRA_N.Storage.Journal_Reader
 --
 --  Unified parser for canonical journal.hra files.
---  Constructs Event collections, Occurrence Validity facts, and Event
---  Descriptions in a single fail-closed traversal.
+--  Constructs Event collections, Occurrence Validity facts, Event
+--  Descriptions, relation claims and discharges in a single fail-closed
+--  traversal.
 -------------------------------------------------------------------------------
 
 with Ada.Containers.Vectors;
 with HRA_N.Core.Event;       use HRA_N.Core.Event;
+with HRA_N.Core.Relation;    use HRA_N.Core.Relation;
 with HRA_N.Core.Validity;    use HRA_N.Core.Validity;
 with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
@@ -28,6 +30,7 @@ package HRA_N.Storage.Journal_Reader is
       Descriptions : Description_Memory;
       Metadata     : Metadata_Memory;
       Assertions   : Assertion_Memory;
+      Relations    : Relation_Memory;
       Error_Line   : Natural := 0;
       Error_Reason : String (1 .. 128) := [others => ' '];
       Error_Len    : Natural := 0;

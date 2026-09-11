@@ -8,6 +8,7 @@
 with HRA_N.Core.Types;    use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Event;    use HRA_N.Core.Event;
+with HRA_N.Core.Relation; use HRA_N.Core.Relation;
 
 package HRA_N.Storage.Journal_Writer is
 
@@ -47,5 +48,22 @@ package HRA_N.Storage.Journal_Writer is
       Measure     : String;
       Amount      : Quanta_Type;
       Description : String := "") return String;
+
+   --  Canonical relation encodings. Endpoint rendering (household versus
+   --  ext:<name>) lives here so every writer emits one byte shape.
+   function Encode_Endpoint (Endpoint : Relation_Endpoint) return String;
+
+   function Encode_Relation
+     (Claim_Id   : String;
+      Source_Tx  : String;
+      Debtor     : String;
+      Creditor   : String;
+      Measure    : String;
+      Amount     : Quanta_Type) return String;
+
+   function Encode_Discharge
+     (Settlement_Tx : String;
+      Claim_Id      : String;
+      Amount        : Quanta_Type) return String;
 
 end HRA_N.Storage.Journal_Writer;

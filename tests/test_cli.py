@@ -524,5 +524,51 @@ class TestHraNCli(unittest.TestCase):
         self.assertEqual(res.returncode, 0)
         self.assertIn("1 open", res.stdout)
 
+        # 50. Relation readout on authority without claims
+        res = self.run_cmd("relation")
+        self.assertEqual(res.returncode, 0, f"relation failed: {res.stderr}")
+        self.assertIn("( 0 open)", res.stdout)
+
+        # 51. Raise a claim through the generation authority
+        res = self.run_cmd("movement", "cash", "depot", "3000", "2026-09-10", "Bike")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("[OK] Committed Movement: e0010", res.stdout)
+        res = self.run_cmd("movement", "bank", "cash", "5000", "2026-09-10", "Pay")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("[OK] Committed Movement: e0011", res.stdout)
+        res = self.run_cmd("relation", "raise", "e0010", "household", "depot", "jpy", "3000")
+        self.assertEqual(res.returncode, 0, f"raise failed: {res.stderr}")
+        self.assertIn("[OK] Raised Relation Claim: rel0001", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000029")
+
+        res = self.run_cmd("relation")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("( 1 open)", res.stdout)
+        self.assertIn("rel0001", res.stdout)
+        self.assertIn("3,000 / 3,000", res.stdout)
+
+        # 52. Discharge partially, then in full through another settlement
+        res = self.run_cmd("relation", "discharge", "rel0001", "e0011", "1000")
+        self.assertEqual(res.returncode, 0, f"discharge failed: {res.stderr}")
+        res = self.run_cmd("relation")
+        self.assertIn("2,000 / 3,000", res.stdout)
+        res = self.run_cmd("relation", "discharge", "rel0001", "e0011", "500")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("Duplicate", res.stdout + res.stderr)
+        res = self.run_cmd("movement", "bank", "cash", "9000", "2026-09-11", "Bonus")
+        self.assertEqual(res.returncode, 0)
+        res = self.run_cmd("relation", "discharge", "rel0001", "e0012", "2500")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("exceeds the remaining", res.stdout)
+        res = self.run_cmd("relation", "discharge", "rel0001", "e0012", "2000")
+        self.assertEqual(res.returncode, 0)
+        res = self.run_cmd("relation")
+        self.assertIn("( 0 open)", res.stdout)
+
+        # 53. Reversal of a referenced event fails closed
+        res = self.run_cmd("revert", "e0010")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("relation-referenced", res.stdout)
+
 if __name__ == "__main__":
     unittest.main()

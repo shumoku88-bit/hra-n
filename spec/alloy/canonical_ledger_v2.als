@@ -359,6 +359,10 @@ pred RelationsAreSound[s : Snapshot] {
     all d : DischargesAt[s] | d.amount > 0
     all r : ClaimsAt[s] |
         (sum d : DischargesAt[s] | d.target = r => d.amount else 0) <= r.amount
+    --  One normalized row per (settlement, claim) pair: fulfillment
+    --  provenance without a separate discharge identity.
+    all disj x, y : DischargesAt[s] |
+        x.settlement != y.settlement or x.target != y.target
 }
 
 pred PolicyIsSound[s : Snapshot] {
@@ -610,6 +614,18 @@ pred RejectedDoubleClosure {
     all s : Snapshot | some s.retained implies not Admitted[s]
 }
 
+pred RelationScenario {
+    some s : Snapshot, r : ClaimsAt[s] |
+        Admitted[s]
+        and r.amount > (sum d : DischargesAt[s] | d.target = r => d.amount else 0)
+}
+
+pred RejectedDuplicateDischarge {
+    some s : Snapshot, disj x, y : DischargesAt[s] |
+        x.settlement = y.settlement and x.target = y.target
+    all s : Snapshot | some s.retained implies not Admitted[s]
+}
+
 run ValidScenario for 18 but exactly 3 Snapshot, 4 Day, 2 Measure, 5 Int
 run RejectedUnbalancedTransaction for 8 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedScheduledConflict for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
@@ -625,6 +641,8 @@ run RejectedNonfunctionalRouting for 10 but exactly 2 Snapshot, 3 Day, 2 Measure
 run AttentionScenario for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedDanglingClosure for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedDoubleClosure for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run RelationScenario for 12 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run RejectedDuplicateDischarge for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedOverDischarge for 12 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 
 check EffectiveTransactionsHaveNoRetainedSuccessor for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int

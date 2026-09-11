@@ -376,6 +376,59 @@ def main() -> None:
             # Return to Home
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
+
+            # Open Actual workspace and raise a claim from e0003 detail
+            os.write(fd, b"a")
+            read_until(fd, output, b"ACTUAL  ALL CURRENT")
+            time.sleep(0.05)
+            os.write(fd, b"j")
+            time.sleep(0.05)
+            os.write(fd, b"j")
+            time.sleep(0.05)
+            os.write(fd, b"\n")
+            read_until(fd, output, b"DETAIL  e0003")
+            assert b"l: relate" in output
+            os.write(fd, b"l")
+            read_until(fd, output, b"Debtor (household or name)")
+            time.sleep(0.05)
+            os.write(fd, b"\n")
+            read_until(fd, output, b"Creditor (household or name)")
+            time.sleep(0.05)
+            os.write(fd, b"friend\n")
+            read_until(fd, output, b"Measure:")
+            time.sleep(0.05)
+            os.write(fd, b"jpy\n")
+            read_until(fd, output, b"Face amount")
+            time.sleep(0.05)
+            os.write(fd, b"500\n")
+            read_until(fd, output, b"RELATION RAISE PREVIEW")
+            os.write(fd, b"y")
+            read_until(fd, output, b"claim rel0001")
+
+            # Discharge from e0004 detail through the claim picker
+            os.write(fd, b"b")
+            read_until(fd, output, b"Order:")
+            time.sleep(0.05)
+            os.write(fd, b"k")
+            time.sleep(0.05)
+            os.write(fd, b"\n")
+            read_until(fd, output, b"DETAIL  e0004")
+            os.write(fd, b"d")
+            read_until(fd, output, b"PICK CLAIM TO DISCHARGE")
+            time.sleep(0.05)
+            os.write(fd, b"\n")
+            read_until(fd, output, b"Discharge amount")
+            time.sleep(0.05)
+            os.write(fd, b"200\n")
+            read_until(fd, output, b"DISCHARGE PREVIEW")
+            os.write(fd, b"y")
+            read_until(fd, output, b"settles rel0001")
+
+            # Return to Home
+            os.write(fd, b"b")
+            read_until(fd, output, b"Order:")
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
         except Exception:
             os.kill(pid, signal.SIGKILL)
             os.waitpid(pid, 0)
@@ -411,7 +464,7 @@ def main() -> None:
         if not os.WIFEXITED(exit_status) or os.WEXITSTATUS(exit_status) != 0:
             raise AssertionError(f"Home TUI exited unsuccessfully: {exit_status}")
 
-        print("TUI PTY: Home, Selected Day, Movement record editor, Actual detail, Scheduled TUI/detail, Balances TUI, Capacity TUI/editors, Budget surface/grant, Attention workspace/editors, resize, redraw, and quit passed")
+        print("TUI PTY: Home, Selected Day, Movement record editor, Actual detail+relations, Scheduled TUI/detail, Balances TUI, Capacity TUI/editors, Budget surface/grant, Attention workspace/editors, resize, redraw, and quit passed")
     finally:
         shutil.rmtree(household, ignore_errors=True)
 

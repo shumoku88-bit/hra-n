@@ -7,6 +7,7 @@ with Test_Support;                            use Test_Support;
 with Ada.Text_IO;
 with HRA_N.Core.Attention;                   use HRA_N.Core.Attention;
 with HRA_N.Core.Capacity;                      use HRA_N.Core.Capacity;
+with HRA_N.Core.Relation;                      use HRA_N.Core.Relation;
 with HRA_N.Core.Types;                         use HRA_N.Core.Types;
 with HRA_N.Core.Event;                         use HRA_N.Core.Event;
 with HRA_N.Core.Validity;                      use HRA_N.Core.Validity;
@@ -311,6 +312,104 @@ package body Test_HRA_Storage is
            ("ATTENTION att0001 ""Bad kind"" someday" & ASCII.LF);
          Assert (not Read_Policy_File (Tmp_Policy).Success,
                  "Attention with an unknown due word fails closed");
+
+         --  8. Test relation wire admission (RELATION, DISCHARGE)
+         declare
+            Tmp_Rel_Journal : constant String := "/tmp/test_relation_wire.hra";
+
+            procedure Write_Rel_Journal (Content : String) is
+               Rel_File : Ada.Text_IO.File_Type;
+            begin
+               Ada.Text_IO.Create (Rel_File, Ada.Text_IO.Out_File, Tmp_Rel_Journal);
+               Ada.Text_IO.Put (Rel_File, Content);
+               Ada.Text_IO.Close (Rel_File);
+            end Write_Rel_Journal;
+
+            Base : constant String :=
+              "TX e0001 2026-09-01 cash:-3000 shop:3000 ""Bike""" & ASCII.LF
+              & "TX e0002 2026-09-02 bank:-5000 cash:5000 ""Pay""" & ASCII.LF;
+         begin
+            Write_Rel_Journal
+              (Base
+               & "RELATION rel0001 e0001 household ext:shop jpy 3000" & ASCII.LF
+               & "DISCHARGE e0002 rel0001 1000" & ASCII.LF);
+            declare
+               R : constant Journal_Result := Read_Journal_File (Tmp_Rel_Journal);
+            begin
+               Assert (R.Success, "Relation wire stays admitted");
+               Assert_Equal_Int (1, Long_Long_Integer (R.Relations.Claim_Count),
+                                 "One claim retained");
+               Assert_Equal_Int (2_000, Remaining_For (R.Relations, Make_Token ("rel0001")),
+                                 "Partial discharge leaves the exact remainder");
+               Assert (Involves_Event (R.Relations, (Token => Make_Token ("e0001"))),
+                       "Claim source counts as involved");
+               Assert (Involves_Event (R.Relations, (Token => Make_Token ("e0002"))),
+                       "Discharge settlement counts as involved");
+               Assert (not Involves_Event (R.Relations, (Token => Make_Token ("e0009"))),
+                       "Unrelated event counts as uninvolved");
+            end;
+
+            Write_Rel_Journal
+              (Base
+               & "RELATION rel0001 e0001 household ext:shop jpy 3000" & ASCII.LF
+               & "RELATION rel0001 e0002 household ext:shop jpy 100" & ASCII.LF);
+            Assert (not Read_Journal_File (Tmp_Rel_Journal).Success,
+                    "Duplicate claim identity fails closed");
+
+            Write_Rel_Journal
+              (Base
+               & "RELATION rel0001 e0009 household ext:shop jpy 3000" & ASCII.LF);
+            Assert (not Read_Journal_File (Tmp_Rel_Journal).Success,
+                    "Claim on an absent source fails closed");
+
+            Write_Rel_Journal
+              (Base
+               & "RELATION rel0001 e0001 household ext:shop jpy 3000" & ASCII.LF
+               & "DISCHARGE e0009 rel0001 100" & ASCII.LF);
+            Assert (not Read_Journal_File (Tmp_Rel_Journal).Success,
+                    "Discharge from an absent settlement fails closed");
+
+            Write_Rel_Journal
+              (Base
+               & "RELATION rel0001 e0001 household ext:shop jpy 3000" & ASCII.LF
+               & "DISCHARGE e0002 rel0009 100" & ASCII.LF);
+            Assert (not Read_Journal_File (Tmp_Rel_Journal).Success,
+                    "Discharge of an absent claim fails closed");
+
+            Write_Rel_Journal
+              (Base
+               & "RELATION rel0001 e0001 household ext:shop jpy 3000" & ASCII.LF
+               & "DISCHARGE e0002 rel0001 2000" & ASCII.LF
+               & "DISCHARGE e0001 rel0001 2000" & ASCII.LF);
+            Assert (not Read_Journal_File (Tmp_Rel_Journal).Success,
+                    "Discharges above the face fail closed");
+
+            Write_Rel_Journal
+              (Base
+               & "RELATION rel0001 e0001 household ext:shop jpy 3000" & ASCII.LF
+               & "DISCHARGE e0002 rel0001 1000" & ASCII.LF
+               & "DISCHARGE e0002 rel0001 500" & ASCII.LF);
+            Assert (not Read_Journal_File (Tmp_Rel_Journal).Success,
+                    "Duplicate discharge pair fails closed");
+
+            Write_Rel_Journal
+              (Base
+               & "RELATION rel0001 e0001 ext:a ext:b jpy 3000" & ASCII.LF);
+            Assert (not Read_Journal_File (Tmp_Rel_Journal).Success,
+                    "Claim without the household fails closed");
+
+            Write_Rel_Journal
+              (Base
+               & "RELATION rel0001 e0001 household household jpy 3000" & ASCII.LF);
+            Assert (not Read_Journal_File (Tmp_Rel_Journal).Success,
+                    "Claim with identical endpoints fails closed");
+
+            Write_Rel_Journal
+              (Base
+               & "RELATION rel0001 e0001 household ext:shop jpy 0" & ASCII.LF);
+            Assert (not Read_Journal_File (Tmp_Rel_Journal).Success,
+                    "Claim with zero face fails closed");
+         end;
       end;
 
    end Run;

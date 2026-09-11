@@ -84,6 +84,28 @@ package body HRA_N.Storage.Journal_Reader is
       end if;
    end Parse_Flow;
 
+   procedure Parse_Endpoint
+     (Tok      : String;
+      Endpoint : out Relation_Endpoint;
+      Valid    : out Boolean)
+   is
+   begin
+      Endpoint := Empty_Endpoint;
+      Valid := False;
+      if Tok = "household" then
+         Endpoint := Household_Endpoint;
+         Valid := True;
+      elsif Tok'Length > 4
+        and then Tok (Tok'First .. Tok'First + 3) = "ext:"
+        and then Tok'Length - 4 in 1 .. Max_Token_Length
+      then
+         Endpoint :=
+           External_Endpoint
+             (Make_Token (Tok (Tok'First + 4 .. Tok'Last)));
+         Valid := True;
+      end if;
+   end Parse_Endpoint;
+
    function Read_Journal_File (Path : String) return Journal_Result is
       File      : Ada.Text_IO.File_Type;
       Result    : Journal_Result;
@@ -92,6 +114,7 @@ package body HRA_N.Storage.Journal_Reader is
       Val_List  : Validity_Entry_List;
       Desc_List : Description_Entry_List;
       Meta_List : Metadata_List;
+      Rel_Mem   : Relation_Memory;
 
       procedure Set_Error (Msg : String) is
          L : constant Natural := Natural'Min (Msg'Length, Result.Error_Reason'Length);
@@ -400,8 +423,123 @@ package body HRA_N.Storage.Journal_Reader is
                            return Result;
                         end if;
                      end;
+                  elsif Tag = "RELATION" then
+                     --  Directional claim: RELATION <id> <source-tx>
+                     --  <debtor> <creditor> <measure> <amount>. Endpoints are
+                     --  `household` or `ext:<name>`; one side must be the
+                     --  household and the two sides must differ.
+                     if Count /= 7 then
+                        Set_Error ("Malformed RELATION record");
+                        Ada.Text_IO.Close (File);
+                        return Result;
+                     end if;
+
+                     declare
+                        Id_Str    : constant String := Slice (Line, Tokens (2));
+                        Src_Str   : constant String := Slice (Line, Tokens (3));
+                        Debt_Str  : constant String := Slice (Line, Tokens (4));
+                        Cred_Str  : constant String := Slice (Line, Tokens (5));
+                        Mea_Str   : constant String := Slice (Line, Tokens (6));
+                        Amt_Str   : constant String := Slice (Line, Tokens (7));
+                        Amt_Val   : Long_Long_Integer;
+                        Debtor, Creditor : Relation_Endpoint;
+                        Debt_Ok, Cred_Ok : Boolean;
+                     begin
+                        Parse_Endpoint (Debt_Str, Debtor, Debt_Ok);
+                        Parse_Endpoint (Cred_Str, Creditor, Cred_Ok);
+                        if Id_Str'Length = 0
+                          or else Id_Str'Length > Max_Token_Length
+                          or else Src_Str'Length = 0
+                          or else Src_Str'Length > Max_Token_Length
+                        then
+                           Set_Error ("Invalid RELATION identity");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        elsif not Debt_Ok or else not Cred_Ok then
+                           Set_Error ("Invalid RELATION endpoint");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        elsif Equal_Endpoint (Debtor, Creditor) then
+                           Set_Error ("RELATION endpoints must differ");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        elsif Debtor.Kind /= Endpoint_Household
+                          and then Creditor.Kind /= Endpoint_Household
+                        then
+                           Set_Error ("RELATION must involve the household");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        elsif Mea_Str'Length = 0
+                          or else Mea_Str'Length > Max_Token_Length
+                        then
+                           Set_Error ("Invalid RELATION measure");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        elsif not Parse_Integer (Amt_Str, Amt_Val)
+                          or else Amt_Val <= 0
+                          or else Amt_Val > Long_Long_Integer (Quanta_Type'Last)
+                        then
+                           Set_Error ("Invalid RELATION amount");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        elsif Rel_Mem.Claim_Count = Max_Relations then
+                           Set_Error ("Exceeded maximum relation claims");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        end if;
+                        Rel_Mem.Claim_Count := Rel_Mem.Claim_Count + 1;
+                        Rel_Mem.Claims (Rel_Mem.Claim_Count) :=
+                          (Id       => Make_Token (Id_Str),
+                           Source   => (Token => Make_Token (Src_Str)),
+                           Debtor   => Debtor,
+                           Creditor => Creditor,
+                           Measure  => Make_Token (Mea_Str),
+                           Face     => Quanta_Type (Amt_Val));
+                     end;
+                  elsif Tag = "DISCHARGE" then
+                     --  Fulfillment provenance: DISCHARGE <settlement-tx>
+                     --  <claim-id> <amount>. One row per pair, positive
+                     --  amounts; the aggregate bound is checked at admission.
+                     if Count /= 4 then
+                        Set_Error ("Malformed DISCHARGE record");
+                        Ada.Text_IO.Close (File);
+                        return Result;
+                     end if;
+
+                     declare
+                        Stl_Str : constant String := Slice (Line, Tokens (2));
+                        Clm_Str : constant String := Slice (Line, Tokens (3));
+                        Amt_Str : constant String := Slice (Line, Tokens (4));
+                        Amt_Val : Long_Long_Integer;
+                     begin
+                        if Stl_Str'Length = 0
+                          or else Stl_Str'Length > Max_Token_Length
+                          or else Clm_Str'Length = 0
+                          or else Clm_Str'Length > Max_Token_Length
+                        then
+                           Set_Error ("Invalid DISCHARGE identity");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        elsif not Parse_Integer (Amt_Str, Amt_Val)
+                          or else Amt_Val <= 0
+                          or else Amt_Val > Long_Long_Integer (Quanta_Type'Last)
+                        then
+                           Set_Error ("Invalid DISCHARGE amount");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        elsif Rel_Mem.Discharge_Count = Max_Discharges then
+                           Set_Error ("Exceeded maximum discharges");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        end if;
+                        Rel_Mem.Discharge_Count := Rel_Mem.Discharge_Count + 1;
+                        Rel_Mem.Discharges (Rel_Mem.Discharge_Count) :=
+                          (Settlement => (Token => Make_Token (Stl_Str)),
+                           Target     => Make_Token (Clm_Str),
+                           Amount     => Quanta_Type (Amt_Val));
+                     end;
                   else
-                     Set_Error ("Expected 'TX' or 'ASSERT' record header, found: " & Tag);
+                     Set_Error ("Expected 'TX', 'ASSERT', 'RELATION', or 'DISCHARGE' record header, found: " & Tag);
                      Ada.Text_IO.Close (File);
                      return Result;
                   end if;
@@ -451,8 +589,81 @@ package body HRA_N.Storage.Journal_Reader is
       elsif not Reversals_Respect_Replacement (Meta_List) then
          Set_Error ("Reversal and replacement histories conflict");
          return Result;
+      elsif not Claim_Ids_Are_Unique (Rel_Mem) then
+         Set_Error ("Duplicate relation claim identity");
+         return Result;
+      elsif not Discharge_Pairs_Are_Unique (Rel_Mem) then
+         Set_Error ("Duplicate discharge row");
+         return Result;
       end if;
       Result.Metadata := Make_Metadata_Memory (Meta_List);
+
+      --  Relation references resolve against retained events; aggregate
+      --  discharges never exceed the claimed face. Both endpoints were
+      --  checked pairwise at parse time.
+      for I in 1 .. Rel_Mem.Claim_Count loop
+         declare
+            Found_Source : Boolean := False;
+            Total : Long_Long_Integer := 0;
+         begin
+            for Item of Result.Events loop
+               if Equal_Token
+                 (Id (Item).Token, Rel_Mem.Claims (I).Source.Token)
+               then
+                  Found_Source := True;
+                  exit;
+               end if;
+            end loop;
+            if not Found_Source then
+               Set_Error ("Relation claim references unknown event");
+               return Result;
+            end if;
+            for D in 1 .. Rel_Mem.Discharge_Count loop
+               if Equal_Token
+                 (Rel_Mem.Discharges (D).Target, Rel_Mem.Claims (I).Id)
+               then
+                  Total := Total
+                    + Long_Long_Integer (Rel_Mem.Discharges (D).Amount);
+                  if Total > Long_Long_Integer (Rel_Mem.Claims (I).Face) then
+                     Set_Error ("Discharges exceed the claimed face amount");
+                     return Result;
+                  end if;
+               end if;
+            end loop;
+         end;
+      end loop;
+      for D in 1 .. Rel_Mem.Discharge_Count loop
+         declare
+            Found_Stl : Boolean := False;
+            Found_Clm : Boolean := False;
+         begin
+            for Item of Result.Events loop
+               if Equal_Token
+                 (Id (Item).Token,
+                  Rel_Mem.Discharges (D).Settlement.Token)
+               then
+                  Found_Stl := True;
+                  exit;
+               end if;
+            end loop;
+            for I in 1 .. Rel_Mem.Claim_Count loop
+               if Equal_Token
+                 (Rel_Mem.Claims (I).Id, Rel_Mem.Discharges (D).Target)
+               then
+                  Found_Clm := True;
+                  exit;
+               end if;
+            end loop;
+            if not Found_Stl then
+               Set_Error ("Discharge references unknown settlement event");
+               return Result;
+            elsif not Found_Clm then
+               Set_Error ("Discharge references unknown claim");
+               return Result;
+            end if;
+         end;
+      end loop;
+      Result.Relations := Rel_Mem;
 
       Result.Success := True;
       return Result;

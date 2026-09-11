@@ -4,6 +4,7 @@ with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;
+with HRA_N.Application.Relation_Query;
 
 package HRA_N.Application.Actual_Detail_Query is
 
@@ -43,6 +44,7 @@ package HRA_N.Application.Actual_Detail_Query is
       Relation       : Token_Text;
       Has_Discharge  : Boolean := False;
       Discharge      : Token_Text;
+      Links          : HRA_N.Application.Relation_Query.Event_Links;
       Effect_Count   : Effect_Count_Type := 0;
       Effects        : Effect_View_Array := [others => Empty_Effect_View];
       Diagnostic     : Frontend_Types.Diagnostic_Text := [others => ' '];

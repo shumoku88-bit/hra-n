@@ -113,6 +113,9 @@ package body HRA_N.Application.Actual_Detail_Query is
                end if;
             end;
 
+            Result.Links :=
+              HRA_N.Application.Relation_Query.Links_For_Event
+                (Paths, Id (Item).Token);
             Result.Effect_Count := Effect_Count (Item);
             for Index in 1 .. Effect_Count (Item) loop
                declare
