@@ -24,7 +24,12 @@ package body HRA_N.UI.Report_TUI is
 
    package Curses renames Terminal_Interface.Curses;
 
-   type Report_Tab is (Tab_Statement, Tab_Budget, Tab_Balances);
+   type Report_Tab is
+     (Tab_Statement,
+      Tab_Budget,
+      Tab_Balances,
+      Tab_Pacing,
+      Tab_MoM);
 
    Ctrl_L : constant Integer := 12;
 
@@ -171,11 +176,13 @@ package body HRA_N.UI.Report_TUI is
 
       --  Row 2: Tab bar
       declare
-         T1 : constant String := (if Tab = Tab_Statement then "[1] Statement (B/S & P/L)*" else "[1] Statement (B/S & P/L)");
-         T2 : constant String := (if Tab = Tab_Budget    then "[2] Budget Envelopes*"     else "[2] Budget Envelopes");
-         T3 : constant String := (if Tab = Tab_Balances  then "[3] Account Balances*"    else "[3] Account Balances");
+         T1 : constant String := (if Tab = Tab_Statement then "[1] Statement*"    else "[1] Statement");
+         T2 : constant String := (if Tab = Tab_Budget    then "[2] Budget*"       else "[2] Budget");
+         T3 : constant String := (if Tab = Tab_Balances  then "[3] Balances*"     else "[3] Balances");
+         T4 : constant String := (if Tab = Tab_Pacing    then "[4] Spending Pace*" else "[4] Spending Pace");
+         T5 : constant String := (if Tab = Tab_MoM       then "[5] MoM Compare*"  else "[5] MoM Compare");
       begin
-         Put_Clipped (2, " " & T1 & "   " & T2 & "   " & T3);
+         Put_Clipped (2, " " & T1 & "  " & T2 & "  " & T3 & "  " & T4 & "  " & T5);
       end;
       Put_Clipped (3, Repeat ('-', Natural'Min (Columns, 80)));
 
@@ -428,6 +435,32 @@ package body HRA_N.UI.Report_TUI is
                      if not B_Rep.Effective_Complete then
                         Emit ("  ! Partial entitlements: retained capacity movements lack effective evidence");
                      end if;
+
+                     --  SOLVENCY & ENVELOPE BACKING (Liquid Assets vs Envelopes)
+                     declare
+                        Stmt_Rep : constant Statement_Report :=
+                          Execute_Statement_Query (Paths, As_Of, Has_As_Of => True);
+                        Funding_Assets  : constant Long_Long_Integer := Stmt_Rep.Summary.Total_Assets;
+                        Backing_Req     : constant Long_Long_Integer :=
+                          Long_Long_Integer (B_Rep.Total_Remaining);
+                        Backing_Surplus : constant Long_Long_Integer :=
+                          Funding_Assets - Backing_Req;
+                     begin
+                        Emit ("");
+                        Emit ("--- SOLVENCY & ENVELOPE BACKING (Liquid Assets vs Envelopes) ---");
+                        Emit ("  Liquid Assets (Funding)       : " &
+                              Pad_Left (Format_Quanta (Funding_Assets), 14) & " JPY");
+                        Emit ("  Backing Required (Envelopes)  : " &
+                              Pad_Left (Format_Quanta (Backing_Req), 14) & " JPY");
+                        Emit ("  " & Repeat ('-', 56));
+                        if Backing_Surplus >= 0 then
+                           Emit ("  Backing Surplus (Buffer)      : " &
+                                 Pad_Left (Format_Quanta (Backing_Surplus), 14) & " JPY  [SOLVENT - 100% Backed]");
+                        else
+                           Emit ("  Backing Shortfall (Deficit!)   : " &
+                                 Pad_Left (Format_Quanta (Backing_Surplus), 14) & " JPY  [OVERALLOCATED - Illiquid]");
+                        end if;
+                     end;
                   end;
                end if;
             end;
@@ -479,18 +512,319 @@ package body HRA_N.UI.Report_TUI is
                   Emit ("  Total Coordinates : " & Trim (Natural'Image (View.Row_Count), Both));
                end if;
             end;
+
+         when Tab_Pacing =>
+            declare
+               Journal : constant Journal_Result := Read_Journal_File (Journal_Path_Str (Paths));
+               Policy  : constant Policy_Result  := Read_Policy_File (Policy_Path_Str (Paths));
+               Sys_D   : constant Date_Type      := HRA_N.Application.Review.Get_System_Date;
+               Is_Current_Month : constant Boolean :=
+                 (Year = Sys_D.Year and then Month = Sys_D.Month);
+               Days_Total : constant Natural := Natural (End_D);
+               Current_Day : constant Natural :=
+                 (if Is_Current_Month
+                  then Natural'Min (Days_Total, Natural'Max (1, Sys_D.Day))
+                  elsif Year < Sys_D.Year or else (Year = Sys_D.Year and then Month < Sys_D.Month)
+                  then Days_Total
+                  else 1);
+               Elapsed_Days : constant Natural :=
+                 (if Is_Current_Month then Current_Day
+                  elsif Year < Sys_D.Year or else (Year = Sys_D.Year and then Month < Sys_D.Month)
+                  then Days_Total
+                  else 0);
+               Remaining_Days : constant Natural :=
+                 (if Is_Current_Month then Days_Total - Current_Day + 1
+                  elsif Year < Sys_D.Year or else (Year = Sys_D.Year and then Month < Sys_D.Month)
+                  then 0
+                  else Days_Total);
+            begin
+               if not Journal.Success then
+                  Emit (" [ERROR] Failed to read journal: " & Journal.Error_Reason (1 .. Journal.Error_Len));
+               elsif not Policy.Success then
+                  Emit (" [ERROR] Failed to read policy: " & Policy.Error_Reason (1 .. Policy.Error_Len));
+               else
+                  declare
+                     B_Rep : HRA_N.Application.Budget_Window.Budget_Window_Report;
+                  begin
+                     HRA_N.Application.Budget_Window.Project_Budget_Window
+                       (Capacity_Mem => Policy.Capacities,
+                        Events       => Journal.Events,
+                        Validities   => Journal.Validities,
+                        Metadata     => Journal.Metadata,
+                        Routing      => Policy.Routing,
+                        Start_Y      => Year,
+                        Start_M      => Month,
+                        Start_D      => 1,
+                        End_Y        => Year,
+                        End_M        => Month,
+                        End_D        => End_D,
+                        Report       => B_Rep);
+
+                     Emit ("--- DAILY SPENDING PACE & TARGET (" & Period_Str & ") ---");
+                     Emit ("");
+                     Emit ("[CALENDAR HORIZON]");
+                     Emit ("  Month Length       : " & Trim (Natural'Image (Days_Total), Both) & " days");
+                     Emit ("  Days Elapsed       : " & Trim (Natural'Image (Elapsed_Days), Both) & " days");
+                     Emit ("  Days Remaining     : " & Trim (Natural'Image (Remaining_Days), Both) &
+                           (if Is_Current_Month then " days (including today)" else " days"));
+
+                     declare
+                        Pct : constant Natural :=
+                          (if Days_Total > 0 then (Elapsed_Days * 100) / Days_Total else 0);
+                        Bar_Len : constant Natural := 20;
+                        Filled  : constant Natural := (Pct * Bar_Len) / 100;
+                        Bar_Str : String (1 .. Bar_Len) := [others => '-'];
+                     begin
+                        if Filled > 0 then
+                           Bar_Str (1 .. Natural'Min (Bar_Len, Filled)) := [others => '='];
+                        end if;
+                        Emit ("  Month Progress     : [" & Bar_Str & "] " &
+                              Trim (Natural'Image (Pct), Both) & " %");
+                     end;
+                     Emit ("");
+
+                     Emit ("[BUDGET & CONSUMPTION]");
+                     Emit ("  Total Budget (Cap) : " &
+                           Pad_Left (Format_Quanta (Long_Long_Integer (B_Rep.Total_Entitlement)), 14) & " JPY");
+                     Emit ("  Spent So Far       : " &
+                           Pad_Left (Format_Quanta (Long_Long_Integer (B_Rep.Total_Consumption)), 14) & " JPY");
+                     Emit ("  Remaining Budget   : " &
+                           Pad_Left (Format_Quanta (Long_Long_Integer (B_Rep.Total_Remaining)), 14) & " JPY");
+                     Emit ("");
+
+                     declare
+                        Tot_Ent  : constant Long_Long_Integer := Long_Long_Integer (B_Rep.Total_Entitlement);
+                        Tot_Con  : constant Long_Long_Integer := Long_Long_Integer (B_Rep.Total_Consumption);
+                        Tot_Rem  : constant Long_Long_Integer := Long_Long_Integer (B_Rep.Total_Remaining);
+                        Base_Day : constant Long_Long_Integer :=
+                          (if Days_Total > 0 then Tot_Ent / Long_Long_Integer (Days_Total) else 0);
+                        Act_Day  : constant Long_Long_Integer :=
+                          (if Elapsed_Days > 0 then Tot_Con / Long_Long_Integer (Elapsed_Days) else 0);
+                        Safe_Day : constant Long_Long_Integer :=
+                          (if Remaining_Days > 0 then Tot_Rem / Long_Long_Integer (Remaining_Days) else 0);
+                        Headroom : constant Long_Long_Integer := Safe_Day - Act_Day;
+                     begin
+                        Emit ("[DAILY TARGET / SAFE-TO-SPEND]");
+                        Emit ("  Base Daily Allowance : " &
+                              Pad_Left (Format_Quanta (Base_Day), 12) & " JPY / day  (Budget / " &
+                              Trim (Natural'Image (Days_Total), Both) & " d)");
+                        Emit ("  Actual Daily Average : " &
+                              Pad_Left (Format_Quanta (Act_Day), 12) & " JPY / day  (Spent / " &
+                              Trim (Natural'Image (Elapsed_Days), Both) & " d)");
+                        Emit ("  SAFE DAILY TARGET    : " &
+                              Pad_Left (Format_Quanta (Safe_Day), 12) & " JPY / day  (Remaining / " &
+                              Trim (Natural'Image (Remaining_Days), Both) & " d)");
+
+                        if Remaining_Days = 0 then
+                           Emit ("  Pacing Status        : [COMPLETED] Month finalized");
+                        elsif Safe_Day < 0 then
+                           Emit ("  Pacing Status        : [DEFICIT] Budget exhausted! Over by " &
+                                 Format_Quanta (abs Tot_Rem) & " JPY");
+                        elsif Headroom >= 0 then
+                           Emit ("  Pacing Status        : [ON TRACK] +" &
+                                 Format_Quanta (Headroom) & " JPY/day headroom buffer");
+                        else
+                           Emit ("  Pacing Status        : [OVER PACING] -" &
+                                 Format_Quanta (abs Headroom) & " JPY/day faster than allowance");
+                        end if;
+                     end;
+                     Emit ("");
+
+                     Emit ("[PURPOSE PACING BREAKDOWN]");
+                     Emit ("  " & Pad_Right ("Purpose", 20) & " " &
+                           Pad_Left ("Remaining", 12) & " " &
+                           Pad_Left ("Safe Target", 14) & "   Status");
+                     Emit ("  " & Repeat ('-', 54));
+
+                     if B_Rep.Row_Count = 0 then
+                        Emit ("  (No Purpose envelopes defined)");
+                     else
+                        for I in 1 .. B_Rep.Row_Count loop
+                           declare
+                              Row      : HRA_N.Application.Budget_Window.Envelope_Row renames B_Rep.Rows (I);
+                              Purp     : constant String := Row.Purpose.Value (1 .. Row.Purpose.Length);
+                              Rem_Amt  : constant Long_Long_Integer := Long_Long_Integer (Row.Remaining);
+                              Purp_Day : constant Long_Long_Integer :=
+                                (if Remaining_Days > 0 then Rem_Amt / Long_Long_Integer (Remaining_Days) else 0);
+                              P_Status : constant String :=
+                                (if Rem_Amt < 0 then "[DEFICIT]"
+                                 elsif Rem_Amt = 0 then "[EXHAUSTED]"
+                                 elsif Remaining_Days > 0 and then Purp_Day < 500 then "[TIGHT]"
+                                 else "[OK]");
+                           begin
+                              Emit ("  " & Pad_Right (Purp, 20) & " " &
+                                    Pad_Left (Format_Quanta (Rem_Amt), 12) & " " &
+                                    Pad_Left (Format_Quanta (Purp_Day) & " /d", 14) & "   " & P_Status);
+                           end;
+                        end loop;
+                     end if;
+                  end;
+               end if;
+            end;
+
+         when Tab_MoM =>
+            declare
+               Prev_Year  : constant Year_Type := (if Month = 1 then Year - 1 else Year);
+               Prev_Month : constant Month_Type := (if Month = 1 then 12 else Month - 1);
+               Prev_End_D : constant Day_Type := Days_In_Month (Prev_Year, Prev_Month);
+               Prev_As_Of : constant Date_Type := (Year => Prev_Year, Month => Prev_Month, Day => Prev_End_D);
+
+               Cur_Rep  : constant Statement_Report := Execute_Statement_Query (Paths, As_Of, Has_As_Of => True);
+               Prev_Rep : constant Statement_Report := Execute_Statement_Query (Paths, Prev_As_Of, Has_As_Of => True);
+
+               Cur_S  : Financial_Summary renames Cur_Rep.Summary;
+               Prev_S : Financial_Summary renames Prev_Rep.Summary;
+
+               P_M_Str : constant String := Trim (Natural'Image (Prev_Month), Both);
+               Pad_PM  : constant String := (if P_M_Str'Length = 1 then "0" & P_M_Str else P_M_Str);
+               Comp_Title : constant String := Y_Str & "-" & Pad_M & " vs " &
+                 Trim (Natural'Image (Prev_Year), Both) & "-" & Pad_PM;
+            begin
+               if Cur_Rep.Status = Query_Rejected or else Prev_Rep.Status = Query_Rejected then
+                  Emit (" [ERROR] Statement query rejected during comparison");
+               else
+                  Emit ("--- MONTH-OVER-MONTH COMPARISON (" & Comp_Title & ") ---");
+                  Emit ("");
+                  Emit ("  " & Pad_Right ("Category / Role", 26) & " " &
+                        Pad_Left ("Current", 14) & " " &
+                        Pad_Left ("Prior", 14) & " " &
+                        Pad_Left ("Difference", 14));
+                  Emit ("  " & Repeat ('-', 72));
+
+                  --  EXPENSES
+                  Emit ("  [EXPENSES]");
+                  for I in 1 .. Cur_Rep.Account_Count loop
+                     declare
+                        Acc : Account_Balance renames Cur_Rep.Accounts (I);
+                     begin
+                        if Acc.Has_Role and then Acc.Role = Role_Expense then
+                           declare
+                              Tok : constant String := Acc.Locus.Token.Value (1 .. Acc.Locus.Token.Length);
+                              Prev_Amt : Long_Long_Integer := 0;
+                           begin
+                              for J in 1 .. Prev_Rep.Account_Count loop
+                                 if Prev_Rep.Accounts (J).Has_Role
+                                   and then Prev_Rep.Accounts (J).Locus.Token.Length = Acc.Locus.Token.Length
+                                   and then Prev_Rep.Accounts (J).Locus.Token.Value (1 .. Acc.Locus.Token.Length) = Tok
+                                 then
+                                    Prev_Amt := Prev_Rep.Accounts (J).Natural_Amt;
+                                    exit;
+                                 end if;
+                              end loop;
+
+                              declare
+                                 Diff : constant Long_Long_Integer := Acc.Natural_Amt - Prev_Amt;
+                                 Diff_Prefix : constant String := (if Diff > 0 then "+" else "");
+                              begin
+                                 Emit ("    " & Pad_Right (Tok, 24) & " " &
+                                       Pad_Left (Format_Quanta (Acc.Natural_Amt), 14) & " " &
+                                       Pad_Left (Format_Quanta (Prev_Amt), 14) & " " &
+                                       Pad_Left (Diff_Prefix & Format_Quanta (Diff), 14));
+                              end;
+                           end;
+                        end if;
+                     end;
+                  end loop;
+
+                  declare
+                     Diff_Exp : constant Long_Long_Integer := Cur_S.Total_Expense - Prev_S.Total_Expense;
+                     Prefix   : constant String := (if Diff_Exp > 0 then "+" else "");
+                  begin
+                     Emit ("    " & Repeat ('-', 68));
+                     Emit ("    " & Pad_Right ("Total Expense", 24) & " " &
+                           Pad_Left (Format_Quanta (Cur_S.Total_Expense), 14) & " " &
+                           Pad_Left (Format_Quanta (Prev_S.Total_Expense), 14) & " " &
+                           Pad_Left (Prefix & Format_Quanta (Diff_Exp), 14));
+                  end;
+                  Emit ("");
+
+                  --  INCOME
+                  Emit ("  [INCOME]");
+                  for I in 1 .. Cur_Rep.Account_Count loop
+                     declare
+                        Acc : Account_Balance renames Cur_Rep.Accounts (I);
+                     begin
+                        if Acc.Has_Role and then Acc.Role = Role_Income then
+                           declare
+                              Tok : constant String := Acc.Locus.Token.Value (1 .. Acc.Locus.Token.Length);
+                              Prev_Amt : Long_Long_Integer := 0;
+                           begin
+                              for J in 1 .. Prev_Rep.Account_Count loop
+                                 if Prev_Rep.Accounts (J).Has_Role
+                                   and then Prev_Rep.Accounts (J).Locus.Token.Length = Acc.Locus.Token.Length
+                                   and then Prev_Rep.Accounts (J).Locus.Token.Value (1 .. Acc.Locus.Token.Length) = Tok
+                                 then
+                                    Prev_Amt := Prev_Rep.Accounts (J).Natural_Amt;
+                                    exit;
+                                 end if;
+                              end loop;
+
+                              declare
+                                 Diff : constant Long_Long_Integer := Acc.Natural_Amt - Prev_Amt;
+                                 Diff_Prefix : constant String := (if Diff > 0 then "+" else "");
+                              begin
+                                 Emit ("    " & Pad_Right (Tok, 24) & " " &
+                                       Pad_Left (Format_Quanta (Acc.Natural_Amt), 14) & " " &
+                                       Pad_Left (Format_Quanta (Prev_Amt), 14) & " " &
+                                       Pad_Left (Diff_Prefix & Format_Quanta (Diff), 14));
+                              end;
+                           end;
+                        end if;
+                     end;
+                  end loop;
+
+                  declare
+                     Diff_Inc : constant Long_Long_Integer := Cur_S.Total_Income - Prev_S.Total_Income;
+                     Prefix   : constant String := (if Diff_Inc > 0 then "+" else "");
+                  begin
+                     Emit ("    " & Repeat ('-', 68));
+                     Emit ("    " & Pad_Right ("Total Income", 24) & " " &
+                           Pad_Left (Format_Quanta (Cur_S.Total_Income), 14) & " " &
+                           Pad_Left (Format_Quanta (Prev_S.Total_Income), 14) & " " &
+                           Pad_Left (Prefix & Format_Quanta (Diff_Inc), 14));
+                  end;
+                  Emit ("");
+
+                  --  SUMMARY TOTALS
+                  Emit ("  " & Repeat ('=', 72));
+                  declare
+                     Cur_Sav  : constant Long_Long_Integer := Net_Savings (Cur_S);
+                     Prev_Sav : constant Long_Long_Integer := Net_Savings (Prev_S);
+                     Diff_Sav : constant Long_Long_Integer := Cur_Sav - Prev_Sav;
+                     Prefix   : constant String := (if Diff_Sav > 0 then "+" else "");
+                  begin
+                     Emit ("  " & Pad_Right ("NET SAVINGS", 26) & " " &
+                           Pad_Left (Format_Quanta (Cur_Sav), 14) & " " &
+                           Pad_Left (Format_Quanta (Prev_Sav), 14) & " " &
+                           Pad_Left (Prefix & Format_Quanta (Diff_Sav), 14));
+                  end;
+
+                  declare
+                     Cur_NW  : constant Long_Long_Integer := Net_Worth (Cur_S);
+                     Prev_NW : constant Long_Long_Integer := Net_Worth (Prev_S);
+                     Diff_NW : constant Long_Long_Integer := Cur_NW - Prev_NW;
+                     Prefix  : constant String := (if Diff_NW > 0 then "+" else "");
+                  begin
+                     Emit ("  " & Pad_Right ("NET WORTH (Assets - Liab)", 26) & " " &
+                           Pad_Left (Format_Quanta (Cur_NW), 14) & " " &
+                           Pad_Left (Format_Quanta (Prev_NW), 14) & " " &
+                           Pad_Left (Prefix & Format_Quanta (Diff_NW), 14));
+                  end;
+                  Emit ("  " & Repeat ('=', 72));
+               end if;
+            end;
       end case;
 
       Total_Lines := Line_Num;
 
       --  Footer (Key guide)
-      if Rows > 3 and then Columns < 100 then
-         Put_Clipped (Rows - 3, "1/2/3/Tab: tab   [/]: prev/next month   t: today");
+      if Rows > 3 and then Columns < 110 then
+         Put_Clipped (Rows - 3, "1..5/Tab: tabs   [/]: prev/next month   t: today");
          Put_Clipped (Rows - 2, "j/k: scroll   g/G: top/end   R: reload   Esc/q: back");
       elsif Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "1/2/3/Tab: tab   [/]: prev/next month   t: today   j/k: scroll   g/G: top/end   R: reload   Esc/q: back");
+            "1..5/Tab: tabs   [/]: prev/next month   t: today   j/k: scroll   g/G: top/end   R: reload   Esc/q: back");
       end if;
 
       Curses.Refresh;
@@ -536,11 +870,19 @@ package body HRA_N.UI.Report_TUI is
                elsif Key = Character'Pos ('3') then
                   Current_Tab := Tab_Balances;
                   Scroll_Offset := 0;
+               elsif Key = Character'Pos ('4') then
+                  Current_Tab := Tab_Pacing;
+                  Scroll_Offset := 0;
+               elsif Key = Character'Pos ('5') then
+                  Current_Tab := Tab_MoM;
+                  Scroll_Offset := 0;
                elsif Key = 9 then  --  Tab key
                   case Current_Tab is
                      when Tab_Statement => Current_Tab := Tab_Budget;
                      when Tab_Budget    => Current_Tab := Tab_Balances;
-                     when Tab_Balances  => Current_Tab := Tab_Statement;
+                     when Tab_Balances  => Current_Tab := Tab_Pacing;
+                     when Tab_Pacing    => Current_Tab := Tab_MoM;
+                     when Tab_MoM       => Current_Tab := Tab_Statement;
                   end case;
                   Scroll_Offset := 0;
 

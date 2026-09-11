@@ -532,14 +532,21 @@ def main() -> None:
             # Open Reports workspace with 'p'
             os.write(fd, b"p")
             read_until(fd, output, b"HRA-N FINANCIAL REPORT WORKSPACE")
-            assert b"Statement (B/S & P/L)" in output
-            # Switch to Tab 2: Budget Envelopes
+            assert b"Statement" in output
+            # Switch to Tab 2: Budget Envelopes (verifying Backing Solvency)
             os.write(fd, b"2")
             read_until(fd, output, b"BUDGET & ENVELOPE PROJECTION")
+            assert b"SOLVENCY & ENVELOPE BACKING" in output
             # Switch to Tab 3: Balances
             os.write(fd, b"3")
             read_until(fd, output, b"COORDINATE BALANCES")
-            # Test tab key cycling
+            # Switch to Tab 4: Spending Pace
+            os.write(fd, b"4")
+            read_until(fd, output, b"DAILY SPENDING PACE & TARGET")
+            # Switch to Tab 5: MoM Comparison
+            os.write(fd, b"5")
+            read_until(fd, output, b"MONTH-OVER-MONTH COMPARISON")
+            # Test tab key cycling (5 -> 1)
             os.write(fd, b"\t")
             read_until(fd, output, b"BALANCE SHEET (B/S)")
             # Test prev month '[' and next month ']'
