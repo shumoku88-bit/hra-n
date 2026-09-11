@@ -13,6 +13,15 @@ package body Test_Generation_Transaction is
         "ROLE food: EXPENSE" & ASCII.LF &
         "ZERO-ORIGIN cash:jpy" & ASCII.LF;
       Scheduled : constant String := "# empty" & ASCII.LF;
+      Initial_Journal : constant String :=
+        "# HRA-N Canonical Journal" & ASCII.LF &
+        "# Format: TX <id> <date> <flows...> [tags...] [""description""]" & ASCII.LF;
+      First_Journal : constant String :=
+        Initial_Journal &
+        "TX e0001 2026-09-11 cash:-100 food:100 ""Lunch""" & ASCII.LF;
+      Second_Journal : constant String :=
+        First_Journal &
+        "TX e0002 2026-09-12 cash:-50 food:50" & ASCII.LF;
    begin
       if Ada.Directories.Exists (Test_Dir) then
          Ada.Directories.Delete_Tree (Test_Dir);
@@ -26,8 +35,7 @@ package body Test_Generation_Transaction is
            Commit
              (Base_Dir          => Test_Dir,
               Expected_Snapshot => "g00000001",
-              Journal_Content   =>
-                "TX e0001 2026-09-11 cash:-100 food:100 ""Lunch""" & ASCII.LF,
+              Journal_Content   => First_Journal,
               Policy_Content    => Policy,
               Scheduled_Content => Scheduled);
       begin
@@ -64,7 +72,7 @@ package body Test_Generation_Transaction is
            Commit
              (Base_Dir          => Test_Dir,
               Expected_Snapshot => "g00000002",
-              Journal_Content   =>
+              Journal_Content   => First_Journal &
                 "TX e0002 2026-09-11 cash:-100 food:90" & ASCII.LF,
               Policy_Content    => Policy,
               Scheduled_Content => Scheduled);
@@ -77,13 +85,23 @@ package body Test_Generation_Transaction is
                  "Rejected candidate generation is removed");
       end;
 
+      declare
+         Rewritten : constant Commit_Result :=
+           Commit
+             (Test_Dir, "g00000002", Initial_Journal, Policy, Scheduled);
+      begin
+         Assert (not Rewritten.Success,
+                 "Candidate cannot remove an admitted journal transaction");
+         Assert (Snapshot_Id_Str (Resolve_Paths (Test_Dir)) = "g00000002",
+                 "Append-only rejection preserves selected generation");
+      end;
+
       for Fault in After_Lock .. After_Admission loop
          declare
             Interrupted : constant Commit_Result :=
               Commit
                 (Test_Dir, "g00000002",
-                 "TX e0002 2026-09-12 cash:-50 food:50" & ASCII.LF,
-                 Policy, Scheduled, Fault);
+                 Second_Journal, Policy, Scheduled, Fault);
          begin
             Assert (not Interrupted.Success,
                     "Injected pre-activation failure returns no receipt");
@@ -96,8 +114,7 @@ package body Test_Generation_Transaction is
          Interrupted : constant Commit_Result :=
            Commit
              (Test_Dir, "g00000002",
-              "TX e0002 2026-09-12 cash:-50 food:50" & ASCII.LF,
-              Policy, Scheduled, After_Activation);
+              Second_Journal, Policy, Scheduled, After_Activation);
       begin
          Assert (not Interrupted.Success,
                  "Injected post-activation failure returns no receipt");
@@ -109,8 +126,7 @@ package body Test_Generation_Transaction is
          Recovered : constant Commit_Result :=
            Commit
              (Test_Dir, "g00000002",
-              "TX e0002 2026-09-12 cash:-50 food:50" & ASCII.LF,
-              Policy, Scheduled);
+              Second_Journal, Policy, Scheduled);
       begin
          Assert (Recovered.Success,
                  "Retry recovers receipt from the already selected candidate");
@@ -154,7 +170,8 @@ package body Test_Generation_Transaction is
                accept Start;
                First_Result := Commit
                  (Concurrent_Dir, "g00000001",
-                  "TX e0001 2026-09-11 cash:-100 food:100" & ASCII.LF,
+                  Initial_Journal &
+                    "TX e0001 2026-09-11 cash:-100 food:100" & ASCII.LF,
                   Policy, Scheduled);
                accept Wait;
             end First_Writer;
@@ -163,7 +180,8 @@ package body Test_Generation_Transaction is
                accept Start;
                Second_Result := Commit
                  (Concurrent_Dir, "g00000001",
-                  "TX e0001 2026-09-11 cash:-200 food:200" & ASCII.LF,
+                  Initial_Journal &
+                    "TX e0001 2026-09-11 cash:-200 food:200" & ASCII.LF,
                   Policy, Scheduled);
                accept Wait;
             end Second_Writer;

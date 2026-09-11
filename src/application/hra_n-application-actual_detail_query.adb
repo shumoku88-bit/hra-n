@@ -1,3 +1,4 @@
+with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 
 package body HRA_N.Application.Actual_Detail_Query is
@@ -60,6 +61,23 @@ package body HRA_N.Application.Actual_Detail_Query is
                if not Has_Description then
                   Result.Description :=
                     (Length => 0, Value => [others => ' ']);
+               end if;
+            end;
+
+            declare
+               Metadata : Transaction_Metadata_Entry;
+               Found    : Boolean;
+            begin
+               Find_Metadata (Journal.Metadata, Id (Item), Metadata, Found);
+               if Found then
+                  Result.Has_Purpose := Metadata.Purpose.Present;
+                  Result.Purpose := Metadata.Purpose.Value;
+                  Result.Has_Replaces := Metadata.Replaces.Present;
+                  Result.Replaces := Metadata.Replaces.Value.Token;
+                  Result.Has_Relation := Metadata.Relation.Present;
+                  Result.Relation := Metadata.Relation.Value;
+                  Result.Has_Discharge := Metadata.Discharge.Present;
+                  Result.Discharge := Metadata.Discharge.Value;
                end if;
             end;
 

@@ -67,6 +67,22 @@ package body HRA_N.Storage.Generation_Transaction is
          return Result;
       end Success_For;
 
+      function Journal_Extends (Identity : String) return Boolean is
+         Root : constant String := Meta_Dir & "/generations/" & Identity;
+         J : constant Read_Result := Read_All (Root & "/journal.hra");
+         Existing : constant String := To_String (J.Content);
+      begin
+         if not J.Success or else Journal_Content'Length < Existing'Length then
+            return False;
+         elsif Journal_Content = Existing then
+            return True;
+         elsif Existing'Length > 0 and then Existing (Existing'Last) /= ASCII.LF then
+            return False;
+         end if;
+         return Journal_Content
+           (Journal_Content'First .. Journal_Content'First + Existing'Length - 1) = Existing;
+      end Journal_Extends;
+
       function Generation_Equals (Identity : String) return Boolean is
          Root : constant String := Meta_Dir & "/generations/" & Identity;
          J : constant Read_Result := Read_All (Root & "/journal.hra");
@@ -177,6 +193,8 @@ package body HRA_N.Storage.Generation_Transaction is
                return Success_For (Identity_String (Current));
             end if;
             return Fail ("stale snapshot; authority changed before writer ownership");
+         elsif not Journal_Extends (Identity_String (Current)) then
+            return Fail ("candidate journal would remove or rewrite admitted facts");
          end if;
       end;
 

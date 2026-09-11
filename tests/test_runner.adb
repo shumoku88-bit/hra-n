@@ -19,6 +19,7 @@ with Test_Home_Query;
 with Test_Actual_Query;
 with Test_Generation_Transaction;
 with Test_Movement_Command;
+with Test_Transaction_Metadata;
 
 procedure Test_Runner is
 begin
@@ -64,6 +65,9 @@ begin
 
    Put_Line ("--> Running Test_Movement_Command...");
    Test_Movement_Command.Run;
+
+   Put_Line ("--> Running Test_Transaction_Metadata...");
+   Test_Transaction_Metadata.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");

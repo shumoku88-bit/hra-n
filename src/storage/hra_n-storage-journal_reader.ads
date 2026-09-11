@@ -11,6 +11,7 @@ with Ada.Containers.Vectors;
 with HRA_N.Core.Event;       use HRA_N.Core.Event;
 with HRA_N.Core.Validity;    use HRA_N.Core.Validity;
 with HRA_N.Core.Description; use HRA_N.Core.Description;
+with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 
 package HRA_N.Storage.Journal_Reader is
 
@@ -23,6 +24,7 @@ package HRA_N.Storage.Journal_Reader is
       Events       : Event_Vectors.Vector;
       Validities   : Validity_Memory;
       Descriptions : Description_Memory;
+      Metadata      : Metadata_Memory;
       Error_Line   : Natural := 0;
       Error_Reason : String (1 .. 128) := [others => ' '];
       Error_Len    : Natural := 0;

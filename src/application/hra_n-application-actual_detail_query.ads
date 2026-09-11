@@ -29,6 +29,14 @@ package HRA_N.Application.Actual_Detail_Query is
       Has_Date       : Boolean := False;
       Valid_On       : Date_Type;
       Description    : Description_Text;
+      Has_Purpose    : Boolean := False;
+      Purpose        : Token_Text;
+      Has_Replaces   : Boolean := False;
+      Replaces       : Token_Text;
+      Has_Relation   : Boolean := False;
+      Relation       : Token_Text;
+      Has_Discharge  : Boolean := False;
+      Discharge      : Token_Text;
       Effect_Count   : Effect_Count_Type := 0;
       Effects        : Effect_View_Array := [others => Empty_Effect_View];
       Diagnostic     : Frontend_Types.Diagnostic_Text := [others => ' '];

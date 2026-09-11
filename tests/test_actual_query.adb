@@ -31,7 +31,7 @@ package body Test_Actual_Query is
            (Journal_Path_Str (Paths),
             "TX e0001 2026-09-11 cash:-100 food:100 ""Breakfast""" & ASCII.LF &
             "TX e0002 2026-09-12 cash:-200 food:200 ""Dinner""" & ASCII.LF &
-            "TX e0003 2026-09-11 cash:-300 food:300 ""Lunch""" & ASCII.LF,
+            "TX e0003 2026-09-11 cash:-300 food:300 @meal ""Lunch"" relation:r3" & ASCII.LF,
             Error,
             Error_Len),
          "Actual query fixture journal publishes");
@@ -82,6 +82,12 @@ package body Test_Actual_Query is
                  "Actual detail retains effect locus");
          Assert (Detail.Description.Length = 5,
                  "Actual detail retains description");
+         Assert (Detail.Has_Purpose
+                 and then Equal_Token (Detail.Purpose, Make_Token ("meal")),
+                 "Actual detail exposes purpose metadata");
+         Assert (Detail.Has_Relation
+                 and then Equal_Token (Detail.Relation, Make_Token ("r3")),
+                 "Actual detail exposes relation metadata");
       end;
 
       declare

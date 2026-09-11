@@ -21,21 +21,21 @@ named command.
 | Capability | Domain/admission | Storage | Shared Application API | CLI | TUI | Evidence | Status |
 |---|---|---|---|---|---|---|---|
 | Versioned three-stream read | selected complete generation; invalid selection rejects | immutable generation + atomic `CURRENT` | snapshot reference propagated | Home/doctor consume resolver | snapshot shown | path, initializer, Home tests | **V2** |
-| Generation transaction write | three-stream candidate receives parser/domain admission | process/task lock, authoritative re-read, stale rejection, post-lock allocation, fsync, atomic activation, post-verify; exact selected-candidate comparison recovers lost receipts | typed Movement Intent/opaque Proposal/durable Receipt connected | not connected | writes disabled | stale, invalid-candidate, concurrent-writer, activation-boundary fault, idempotent retry, and Movement contract tests + TLA+/SPIN model | **V2 foundation** |
+| Generation transaction write | three-stream candidate receives parser/domain admission; journal facts are byte-prefix append-only | process/task lock, authoritative re-read, stale rejection, post-lock allocation, fsync, atomic activation, post-verify; exact selected-candidate comparison recovers lost receipts | typed Movement Intent/opaque Proposal/durable Receipt connected | not connected | writes disabled | stale, rewrite, invalid-candidate, concurrent-writer, activation-boundary fault, idempotent retry, and Movement contract tests + TLA+/SPIN model | **V2 foundation; Scheduled/Policy append laws pending** |
 | Actual list by day/all | occurrence date and stable source order | journal reader | `Actual_Query` | legacy review is separate | Home, Selected Day, Actual | unit + PTY | **V2 read slice** |
 | Actual detail | identity revalidated against current read | journal reader | `Actual_Detail_Query` | no structured detail command | selected-row detail | unit + PTY | **V2 read slice** |
-| Record movement | typed coordinates, positive exact amount, balanced per-measure effects, canonical encoding | admitted immutable generation transaction | `Movement_Command` Intent -> opaque snapshot-bound Proposal -> Receipt | legacy path not connected | disabled pending metadata gate | validation, stale-proposal, retry, and receipt tests | **V2 Application slice** |
-| Correct movement | explicit acyclic supersession; no branch | metadata currently discarded | legacy reversal-plus-new flow is not atomic correction | legacy command | disabled | insufficient | **Missing** |
+| Record movement | typed coordinates, positive exact amount, balanced per-measure effects, canonical encoding | admitted immutable generation transaction | `Movement_Command` Intent -> opaque snapshot-bound Proposal -> Receipt | legacy path not connected | disabled pending P0 storage gate | validation, stale-proposal, retry, and receipt tests | **V2 Application slice** |
+| Correct movement | explicit closed, acyclic supersession with no branch | replacement metadata retained | no atomic correction Intent | legacy command is not V2 | disabled | replacement-law tests only | **Missing** |
 | Correct occurrence date | versioned validity fact | no V2 representation | none | none | none | none | **Missing** |
 | Reverse movement | immutable inverse linked to target | link currently not retained | legacy publisher lacks qualified generation transaction | legacy command | disabled | insufficient | **Blocked** |
-| Journal metadata | purpose, supersession, relation, discharge, provenance retained | reader currently discards several fields | partial | partial | detail reports limitation | insufficient | **Missing — P0 after writer** |
+| Journal metadata | purpose plus closed, acyclic, one-to-one replacement history; relation/discharge identities retained opaquely pending P5 semantics | identity-keyed metadata memory; duplicate/empty/oversized fields reject | Actual detail exposes retained fields | partial | Actual detail renders all fields | round-trip, unknown-target, branch, cycle, duplicate-field, and query tests | **V2 retention/replacement slice** |
 | Scheduled inspection | open/terminal projection | legacy status-in-row format | legacy structures | legacy commands | Home count only | legacy tests | **Legacy** |
 | Scheduled create/complete/retire/replace | append-only terminal facts and Actual reference closure | current writer rewrites whole file and is blocked for generations | legacy | blocked | missing | insufficient | **Missing** |
 | Balances | `(Locus, Measure)`, known zero distinct from unknown | policy + journal legacy read | no shared V2 balance query | legacy status | missing | core tests only | **Legacy** |
 | Reconciliation | assertion evidence, no invented adjustment | no canonical record | none | none | none | Alloy shape only | **Missing** |
 | Accounting roles | unambiguous versioned policy by effective day | current policy is mutable current-state text | legacy statement | legacy report | Home count only | core/legacy tests | **Legacy** |
 | Capacity/Budget | separate capacity plane and explicit window | legacy policy encoding | legacy projection | legacy budget | missing | legacy tests | **Legacy** |
-| Relations/discharges | directional claim and bounded discharge | journal metadata discarded | none | none | none | Alloy shape only | **Missing** |
+| Relations/discharges | directional claim and bounded discharge not yet encoded | opaque relation/discharge identities retained without semantic interpretation | none | none | detail shows opaque identity only | retention tests + Alloy shape model | **Missing** |
 | Attention | preserve due/unknown/conflict | no V2 projection | none | none | Home has only unclassified count | none | **Missing** |
 | Reports | explicit snapshot and effective interval; no implicit conversion | legacy readers | legacy statement/budget | legacy commands | missing | legacy tests | **Legacy** |
 | Policy administration | versioned facts with effective dates | no append-only policy history | none | none | none | Alloy shape only | **Missing** |
@@ -47,8 +47,7 @@ named command.
 
 ### P0 — safe authority and lossless facts
 
-1. Stop discarding purpose, supersession, relation, and discharge metadata.
-2. Define append-only Scheduled and versioned Policy records.
+1. Define append-only Scheduled and versioned Policy records.
 
 No new TUI write action is enabled before this gate.
 

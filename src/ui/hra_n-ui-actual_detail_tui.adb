@@ -47,19 +47,28 @@ package body HRA_N.UI.Actual_Detail_TUI is
                   (if View.Description.Length = 0
                    then "(none)"
                    else To_String (View.Description)));
-               Put_Clipped (6, "Effects");
+               Put_Clipped
+                 (6, "Purpose      " &
+                    (if View.Has_Purpose then Token_String (View.Purpose) else "(none)"));
+               Put_Clipped
+                 (7, "Replaces     " &
+                    (if View.Has_Replaces then Token_String (View.Replaces) else "(none)"));
+               Put_Clipped
+                 (8, "Relation     " &
+                    (if View.Has_Relation then Token_String (View.Relation) else "(none)"));
+               Put_Clipped
+                 (9, "Discharge    " &
+                    (if View.Has_Discharge then Token_String (View.Discharge) else "(none)"));
+               Put_Clipped (11, "Effects");
                for Index in 1 .. View.Effect_Count loop
                   Put_Clipped
-                    (6 + Index,
+                    (11 + Index,
                      "  " & Token_String (View.Effects (Index).Locus) & "  " &
                      Amount_Image (View.Effects (Index).Amount) & " " &
                      Token_String (View.Effects (Index).Measure));
                end loop;
                Put_Clipped
-                 (8 + Natural (View.Effect_Count),
-                  "Purpose/revision/relation metadata: not yet admitted");
-               Put_Clipped
-                 (9 + Natural (View.Effect_Count),
+                 (13 + Natural (View.Effect_Count),
                   "Snapshot: " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot) &
                   "; write actions disabled");
             end if;

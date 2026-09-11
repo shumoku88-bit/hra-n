@@ -91,6 +91,7 @@ package body HRA_N.Storage.Journal_Reader is
 
       Val_List  : Validity_Entry_List;
       Desc_List : Description_Entry_List;
+      Meta_List : Metadata_List;
 
       procedure Set_Error (Msg : String) is
          L : constant Natural := Natural'Min (Msg'Length, Result.Error_Reason'Length);
@@ -142,6 +143,7 @@ package body HRA_N.Storage.Journal_Reader is
                      Effects     : Effect_List;
                      Note_Text   : Description_Text := (Length => 0, Value => [others => ' ']);
                      Has_Note    : Boolean := False;
+                     Meta        : Transaction_Metadata_Entry := Empty_Entry;
                   begin
                      if not Parse_Iso_Date (Date_Str, Parsed_Date) then
                         Set_Error ("Invalid ISO date in TX record: " & Date_Str);
@@ -149,22 +151,69 @@ package body HRA_N.Storage.Journal_Reader is
                         return Result;
                      end if;
 
+                     Meta.Event := (Token => Make_Token (Ev_Id_Str));
+
                      --  Parse flows and optional metadata
                      for T in 4 .. Count loop
                         declare
                            Tok_Str : constant String := Slice (Line, Tokens (T));
                         begin
                            if Tokens (T).Kind = Tok_Quoted then
+                              if Has_Note or else Tok_Str'Length > Max_Description_Length then
+                                 Set_Error ("Invalid or duplicate description metadata");
+                                 Ada.Text_IO.Close (File);
+                                 return Result;
+                              end if;
                               Note_Text := Make_Description (Tok_Str);
                               Has_Note := True;
                            elsif Tok_Str'Length > 0 and then Tok_Str (Tok_Str'First) = '@' then
-                              null; -- Purpose tag
+                              if Meta.Purpose.Present or else Tok_Str'Length = 1
+                                or else Tok_Str'Length - 1 > Max_Token_Length
+                              then
+                                 Set_Error ("Invalid or duplicate purpose metadata");
+                                 Ada.Text_IO.Close (File);
+                                 return Result;
+                              end if;
+                              Meta.Purpose :=
+                                (Present => True,
+                                 Value => Make_Token
+                                   (Tok_Str (Tok_Str'First + 1 .. Tok_Str'Last)));
                            elsif Tok_Str'Length >= 9 and then Tok_Str (Tok_Str'First .. Tok_Str'First + 8) = "replaces:" then
-                              null; -- Replaces metadata
+                              if Meta.Replaces.Present or else Tok_Str'Length = 9
+                                or else Tok_Str'Length - 9 > Max_Token_Length
+                              then
+                                 Set_Error ("Invalid or duplicate replacement metadata");
+                                 Ada.Text_IO.Close (File);
+                                 return Result;
+                              end if;
+                              Meta.Replaces :=
+                                (Present => True,
+                                 Value => (Token => Make_Token
+                                   (Tok_Str (Tok_Str'First + 9 .. Tok_Str'Last))));
                            elsif Tok_Str'Length >= 9 and then Tok_Str (Tok_Str'First .. Tok_Str'First + 8) = "relation:" then
-                              null; -- Relation metadata
+                              if Meta.Relation.Present or else Tok_Str'Length = 9
+                                or else Tok_Str'Length - 9 > Max_Token_Length
+                              then
+                                 Set_Error ("Invalid or duplicate relation metadata");
+                                 Ada.Text_IO.Close (File);
+                                 return Result;
+                              end if;
+                              Meta.Relation :=
+                                (Present => True,
+                                 Value => Make_Token
+                                   (Tok_Str (Tok_Str'First + 9 .. Tok_Str'Last)));
                            elsif Tok_Str'Length >= 11 and then Tok_Str (Tok_Str'First .. Tok_Str'First + 10) = "discharges:" then
-                              null; -- Discharge metadata
+                              if Meta.Discharge.Present or else Tok_Str'Length = 11
+                                or else Tok_Str'Length - 11 > Max_Token_Length
+                              then
+                                 Set_Error ("Invalid or duplicate discharge metadata");
+                                 Ada.Text_IO.Close (File);
+                                 return Result;
+                              end if;
+                              Meta.Discharge :=
+                                (Present => True,
+                                 Value => Make_Token
+                                   (Tok_Str (Tok_Str'First + 11 .. Tok_Str'Last)));
                            else
                               --  Must be a flow
                               declare
@@ -207,13 +256,21 @@ package body HRA_N.Storage.Journal_Reader is
                         Result.Events.Append (Ev);
                      end;
 
-                     --  Record Validity fact
-                     if Val_List.Count < Max_Validity_Entries then
-                        Val_List.Count := Val_List.Count + 1;
-                        Val_List.Values (Val_List.Count) :=
-                          (Event_Id => (Token => Make_Token (Ev_Id_Str)),
-                           Valid_On => Parsed_Date);
+                     --  Record identity-keyed facts. Every Event receives one
+                     --  metadata row, including an all-absent row.
+                     if Val_List.Count = Max_Validity_Entries
+                       or else Meta_List.Count = Max_Metadata_Entries
+                     then
+                        Set_Error ("Journal exceeds admitted event capacity");
+                        Ada.Text_IO.Close (File);
+                        return Result;
                      end if;
+                     Val_List.Count := Val_List.Count + 1;
+                     Val_List.Values (Val_List.Count) :=
+                       (Event_Id => (Token => Make_Token (Ev_Id_Str)),
+                        Valid_On => Parsed_Date);
+                     Meta_List.Count := Meta_List.Count + 1;
+                     Meta_List.Values (Meta_List.Count) := Meta;
 
                      --  Record Description fact
                      if Has_Note and then Desc_List.Count < Max_Description_Entries then
@@ -244,6 +301,21 @@ package body HRA_N.Storage.Journal_Reader is
          Set_Error ("Duplicate Event_Id in journal description facts");
          return Result;
       end if;
+
+      if not Metadata_Event_Ids_Are_Unique (Meta_List) then
+         Set_Error ("Duplicate Event_Id in transaction metadata");
+         return Result;
+      elsif not Replacement_References_Are_Closed (Meta_List) then
+         Set_Error ("Replacement references unknown Event_Id");
+         return Result;
+      elsif not Replacements_Are_One_To_One (Meta_List) then
+         Set_Error ("Replacement history branches");
+         return Result;
+      elsif not Replacements_Are_Acyclic (Meta_List) then
+         Set_Error ("Replacement history contains a cycle");
+         return Result;
+      end if;
+      Result.Metadata := Make_Metadata_Memory (Meta_List);
 
       Result.Success := True;
       return Result;
