@@ -50,6 +50,9 @@ current design authority, claims policy, PTA capability boundary, and division
 of work between Alloy, TLA+, SPIN, SPARK, and executable tests.
 [`docs/FRONTEND_ARCHITECTURE.md`](docs/FRONTEND_ARCHITECTURE.md) defines the
 minimum TUI and shared CLI/GUI/AI authority boundary.
+[`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) records current Loam
+parity gaps, delivery order, evidence, and size guardrails. Contributors and pits
+start with [`AGENTS.md`](AGENTS.md).
 
 Current executable models:
 

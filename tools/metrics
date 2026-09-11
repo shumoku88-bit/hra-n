@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+loam_root=""
+
+if [[ "${1:-}" == "--loam-root" ]]; then
+  [[ $# -eq 2 ]] || { echo "usage: ./tools/metrics [--loam-root PATH]" >&2; exit 2; }
+  loam_root="$(cd "$2" && pwd)"
+elif [[ $# -ne 0 ]]; then
+  echo "usage: ./tools/metrics [--loam-root PATH]" >&2
+  exit 2
+fi
+
+command -v cloc >/dev/null || { echo "metrics: cloc is required" >&2; exit 1; }
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/hra-metrics.XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT
+
+measure() {
+  local label="$1"
+  local repository="$2"
+  local list="$3"
+  local physical code files
+  files="$(wc -l < "$list" | tr -d ' ')"
+  if [[ "$files" == "0" ]]; then
+    physical=0
+    code=0
+  else
+    physical="$(cd "$repository" && xargs wc -l < "$list" | tail -1 | awk '{print $1}')"
+    code="$(cd "$repository" && cloc --quiet --list-file="$list" --csv | awk -F, '$2 == "SUM" {print $5}')"
+  fi
+  printf '%-28s %6s files %8s physical %8s code\n' "$label" "$files" "$physical" "$code"
+}
+
+list_existing() {
+  local repository="$1"
+  shift
+  (
+    cd "$repository"
+    git ls-files --cached --others --exclude-standard -- "$@" |
+      while IFS= read -r path; do
+        [[ -f "$path" ]] && printf '%s\n' "$path"
+      done
+  )
+}
+
+list_existing "$root" 'src/*.ad?' 'src/**/*.ad?' > "$tmp/hra-production"
+list_existing "$root" 'src/core/*.ad?' > "$tmp/hra-core"
+list_existing "$root" 'src/storage/*.ad?' > "$tmp/hra-storage"
+list_existing "$root" 'src/application/*.ad?' > "$tmp/hra-application"
+list_existing "$root" 'src/ui/*.ad?' > "$tmp/hra-ui"
+list_existing "$root" 'src/ui/*tui*.ad?' 'src/ui/hra_n-ui-terminal.ad?' > "$tmp/hra-tui"
+list_existing "$root" 'tests/*.ad?' 'tests/*.py' > "$tmp/hra-tests"
+
+printf 'HRA-N %s\n' "$(git -C "$root" rev-parse --short HEAD)"
+measure "production Ada" "$root" "$tmp/hra-production"
+measure "core" "$root" "$tmp/hra-core"
+measure "storage" "$root" "$tmp/hra-storage"
+measure "application" "$root" "$tmp/hra-application"
+measure "UI all" "$root" "$tmp/hra-ui"
+measure "Curses TUI slice" "$root" "$tmp/hra-tui"
+measure "tests" "$root" "$tmp/hra-tests"
+
+if [[ -n "$loam_root" ]]; then
+  list_existing "$loam_root" 'Loam/*.lean' 'Loam/**/*.lean' |
+    grep -v '/Tests/' > "$tmp/loam-production"
+  list_existing "$loam_root" 'Loam/Tui/*.lean' > "$tmp/loam-tui"
+  printf '\nLoam %s\n' "$(git -C "$loam_root" rev-parse --short HEAD)"
+  measure "production Lean" "$loam_root" "$tmp/loam-production"
+  measure "TUI Lean" "$loam_root" "$tmp/loam-tui"
+fi
