@@ -41,6 +41,10 @@ def main() -> None:
             stream.write(f'TX e0001 {today} cash:-100 food:100 "PTY fixture"\n')
         with open(os.path.join(gen_dir, "policy.hra"), "w", encoding="utf-8") as stream:
             stream.write("ROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n")
+            stream.write("CAPACITY food 1000 jpy\n")
+            stream.write(f"EFFECTIVE cap0001 {today}\n")
+            stream.write("ROUTE food food\n")
+            stream.write("WINDOW PTYWindow: 2026-01-01 -> 2027-01-01\n")
         with open(os.path.join(gen_dir, "scheduled.hra"), "w", encoding="utf-8") as stream:
             stream.write(f"SCHED s0001 {today} cash:-1000 food:1000\n")
 
@@ -247,6 +251,84 @@ def main() -> None:
             read_until(fd, output, b"Order:")
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
+
+            # Open Capacity workspace from Home
+            os.write(fd, b"e")
+            read_until(fd, output, b"t: transfer   r: rebalance")
+            assert b"unallocated" in output
+            assert b"food" in output
+
+            # Transfer unallocated -> misc seeded from the cursor row
+            os.write(fd, b"t")
+            read_until(fd, output, b"From (unallocated or purpose)")
+            os.write(fd, b"\n")
+            read_until(fd, output, b"To (unallocated or purpose)")
+            time.sleep(0.05)
+            os.write(fd, b"misc\n")
+            read_until(fd, output, b"Amount (jpy, positive)")
+            time.sleep(0.05)
+            os.write(fd, b"500\n")
+            read_until(fd, output, b"Effective (YYYY-MM-DD")
+            time.sleep(0.05)
+            os.write(fd, b"\n")
+            read_until(fd, output, b"CAPACITY TRANSFER PREVIEW")
+            os.write(fd, b"y")
+            read_until(fd, output, b"misc")
+
+            # Rebalance food/misc through the pairs loop
+            os.write(fd, b"r")
+            read_until(fd, output, b"Effective (YYYY-MM-DD")
+            os.write(fd, b"\n")
+            read_until(fd, output, b"Coordinate (blank finishes")
+            time.sleep(0.05)
+            os.write(fd, b"food\n")
+            read_until(fd, output, b"Amount for food")
+            time.sleep(0.05)
+            os.write(fd, b"-100\n")
+            read_until(fd, output, b"Coordinate (blank finishes")
+            time.sleep(0.05)
+            os.write(fd, b"misc\n")
+            read_until(fd, output, b"Amount for misc")
+            time.sleep(0.05)
+            os.write(fd, b"100\n")
+            read_until(fd, output, b"Coordinate (blank finishes")
+            time.sleep(0.05)
+            os.write(fd, b"\n")
+            read_until(fd, output, b"CAPACITY REBALANCE PREVIEW")
+            os.write(fd, b"y")
+            read_until(fd, output, b"t: transfer   r: rebalance")
+
+            # Return to Home
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
+
+            # Open Budget decision surface from Home
+            os.write(fd, b"c")
+            read_until(fd, output, b"g: grant shortage")
+            assert b"PTYWindow" in output
+            assert b"food" in output
+            assert b"OVERSPENT" in output
+
+            # Grant the food shortage through a seeded transfer
+            os.write(fd, b"g")
+            read_until(fd, output, b"From (unallocated or purpose)")
+            os.write(fd, b"\n")
+            read_until(fd, output, b"To (unallocated or purpose)")
+            time.sleep(0.05)
+            os.write(fd, b"\n")
+            read_until(fd, output, b"Amount (jpy, positive)")
+            time.sleep(0.05)
+            os.write(fd, b"200\n")
+            read_until(fd, output, b"Effective (YYYY-MM-DD")
+            time.sleep(0.05)
+            os.write(fd, b"\n")
+            read_until(fd, output, b"CAPACITY TRANSFER PREVIEW")
+            os.write(fd, b"y")
+            read_until(fd, output, b"1100")
+
+            # Return to Home
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
         except Exception:
             os.kill(pid, signal.SIGKILL)
             os.waitpid(pid, 0)
@@ -282,7 +364,7 @@ def main() -> None:
         if not os.WIFEXITED(exit_status) or os.WEXITSTATUS(exit_status) != 0:
             raise AssertionError(f"Home TUI exited unsuccessfully: {exit_status}")
 
-        print("TUI PTY: Home, Selected Day, Movement record editor, Actual detail, Scheduled TUI/detail, Balances TUI, resize, redraw, and quit passed")
+        print("TUI PTY: Home, Selected Day, Movement record editor, Actual detail, Scheduled TUI/detail, Balances TUI, Capacity TUI/editors, Budget surface/grant, resize, redraw, and quit passed")
     finally:
         shutil.rmtree(household, ignore_errors=True)
 

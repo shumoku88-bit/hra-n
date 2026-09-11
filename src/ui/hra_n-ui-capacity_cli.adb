@@ -5,8 +5,6 @@
 
 with Ada.Command_Line;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
-with HRA_N.Core.Capacity; use HRA_N.Core.Capacity;
-with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Capacity_Command; use HRA_N.Application.Capacity_Command;
 with HRA_N.Application.Capacity_Query; use HRA_N.Application.Capacity_Query;
@@ -62,6 +60,7 @@ package body HRA_N.UI.Capacity_CLI is
       Value := Quanta_Type (Parsed);
       return True;
    end Parse_Amount;
+
 
    procedure Display_Capacity (Paths : Path_Config; Success : out Boolean) is
       View : constant Capacity_View := Execute (Paths);
@@ -213,7 +212,7 @@ package body HRA_N.UI.Capacity_CLI is
                      if Colon_Pos = 0
                        or else Colon_Pos = Pair_Str'First
                        or else Colon_Pos = Pair_Str'Last
-                       or else Natural (Intent.Count) >= Max_Rebalance_Changes
+                       or else Natural (Intent.Count) = Max_Rebalance_Changes
                      then
                         Put_Line ("[ERROR] Malformed rebalance change: " & Pair_Str);
                         return;

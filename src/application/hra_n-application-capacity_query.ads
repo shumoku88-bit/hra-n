@@ -11,6 +11,7 @@
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Core.Capacity; use HRA_N.Core.Capacity;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
+with HRA_N.Application.Frontend_Types;
 
 package HRA_N.Application.Capacity_Query is
 
@@ -25,6 +26,8 @@ package HRA_N.Application.Capacity_Query is
 
    type Capacity_View is record
       Success   : Boolean := False;
+      Snapshot  : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned);
       Count     : Natural := 0;
       Rows      : Row_Array :=
         [others => (Coord  => (Kind    => Coord_Unallocated,

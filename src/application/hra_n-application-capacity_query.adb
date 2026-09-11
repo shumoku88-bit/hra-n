@@ -38,6 +38,10 @@ package body HRA_N.Application.Capacity_Query is
       if not Paths.Resolution_Ok then
          Set_Error ("authority resolution failed");
          return View;
+      elsif Paths.Is_Versioned then
+         View.Snapshot :=
+           (Kind     => HRA_N.Application.Frontend_Types.Snapshot_Versioned,
+            Identity => Make_Token (Snapshot_Id_Str (Paths)));
       end if;
 
       Policy := Read_Policy_File (Policy_Path_Str (Paths));
