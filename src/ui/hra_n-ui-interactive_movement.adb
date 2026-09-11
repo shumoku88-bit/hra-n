@@ -33,6 +33,26 @@ package body HRA_N.UI.Interactive_Movement is
       return Trim (Buffer (1 .. Last), Ada.Strings.Both);
    end Prompt_Line;
 
+   function Format_Quanta_With_Commas (Amount : Quanta_Type) return String is
+      Raw          : constant String := Trim (Quanta_Type'Image (Amount), Ada.Strings.Both);
+      Result       : String (1 .. Raw'Length + Raw'Length / 3 + 2);
+      Res_Len      : Natural := 0;
+      Digits_Count : Natural := 0;
+   begin
+      for I in reverse Raw'Range loop
+         if Raw (I) in '0' .. '9' then
+            if Digits_Count > 0 and then Digits_Count mod 3 = 0 then
+               Res_Len := Res_Len + 1;
+               Result (Result'Last - Res_Len + 1) := ',';
+            end if;
+            Digits_Count := Digits_Count + 1;
+         end if;
+         Res_Len := Res_Len + 1;
+         Result (Result'Last - Res_Len + 1) := Raw (I);
+      end loop;
+      return Result (Result'Last - Res_Len + 1 .. Result'Last);
+   end Format_Quanta_With_Commas;
+
    procedure Run_Interactive
      (Authority_Dir : String;
       Catalog_Path  : String := "";
@@ -60,6 +80,26 @@ package body HRA_N.UI.Interactive_Movement is
       Desc_Len   : Natural := 0;
 
       PR : constant Policy_Result := Read_Policy_File (P_Path);
+
+      function Is_Known_Locus (Name : String) return Boolean is
+      begin
+         if not PR.Success then
+            return True;
+         end if;
+         for I in 1 .. Entry_Count (PR.Roles) loop
+            declare
+               Assign  : constant Role_Assignment := Entry_At (PR.Roles, I);
+               Loc_Str : constant String :=
+                 Assign.Locus.Token.Value (1 .. Assign.Locus.Token.Length);
+            begin
+               if Loc_Str = Name then
+                  return True;
+               end if;
+            end;
+         end loop;
+         return False;
+      end Is_Known_Locus;
+
    begin
       Success := False;
 
@@ -86,24 +126,51 @@ package body HRA_N.UI.Interactive_Movement is
          end;
       end loop;
 
-      --  Step 2: Display known policy roles/loci
+      --  Step 2: Display known policy roles/loci grouped by role
       if PR.Success and then Entry_Count (PR.Roles) > 0 then
          Put_Line ("------------------------------------------------------------");
          Put_Line ("Available Loci from Policy:");
-         for I in 1 .. Entry_Count (PR.Roles) loop
+         for R in Accounting_Role loop
             declare
-               Assign  : constant Role_Assignment := Entry_At (PR.Roles, I);
-               Loc_Str : constant String :=
-                 Assign.Locus.Token.Value (1 .. Assign.Locus.Token.Length);
-               Role_Name : constant String :=
-                 (case Assign.Role is
-                    when Role_Asset     => "asset",
-                    when Role_Liability => "liability",
-                    when Role_Equity    => "equity",
-                    when Role_Income    => "income",
-                    when Role_Expense   => "expense");
+               Role_Header : constant String :=
+                 (case R is
+                    when Role_Asset     => "  Assets     : ",
+                    when Role_Liability => "  Liabilities: ",
+                    when Role_Equity    => "  Equity     : ",
+                    when Role_Income    => "  Income     : ",
+                    when Role_Expense   => "  Expenses   : ");
+               Has_Any  : Boolean := False;
+               Line_Buf : String (1 .. 256) := [others => ' '];
+               Line_Len : Natural := 0;
             begin
-               Put_Line ("  " & Pad_Right (Loc_Str, 15) & " (" & Role_Name & ")");
+               for I in 1 .. Entry_Count (PR.Roles) loop
+                  declare
+                     Assign : constant Role_Assignment := Entry_At (PR.Roles, I);
+                  begin
+                     if Assign.Role = R then
+                        declare
+                           Loc_Str : constant String :=
+                             Assign.Locus.Token.Value (1 .. Assign.Locus.Token.Length);
+                        begin
+                           if Has_Any then
+                              if Line_Len + 2 + Loc_Str'Length <= Line_Buf'Length then
+                                 Line_Buf (Line_Len + 1 .. Line_Len + 2) := ", ";
+                                 Line_Len := Line_Len + 2;
+                                 Line_Buf (Line_Len + 1 .. Line_Len + Loc_Str'Length) := Loc_Str;
+                                 Line_Len := Line_Len + Loc_Str'Length;
+                              end if;
+                           else
+                              Has_Any := True;
+                              Line_Buf (1 .. Loc_Str'Length) := Loc_Str;
+                              Line_Len := Loc_Str'Length;
+                           end if;
+                        end;
+                     end if;
+                  end;
+               end loop;
+               if Has_Any then
+                  Put_Line (Role_Header & Line_Buf (1 .. Line_Len));
+               end if;
             end;
          end loop;
          Put_Line ("------------------------------------------------------------");
@@ -119,6 +186,9 @@ package body HRA_N.UI.Interactive_Movement is
             else
                From_Len := Natural'Min (Input'Length, From_Locus'Length);
                From_Locus (1 .. From_Len) := Input (Input'First .. Input'First + From_Len - 1);
+               if not Is_Known_Locus (From_Locus (1 .. From_Len)) then
+                  Put_Line ("  (Notice: '" & From_Locus (1 .. From_Len) & "' is not currently in Policy)");
+               end if;
                exit;
             end if;
          end;
@@ -136,6 +206,9 @@ package body HRA_N.UI.Interactive_Movement is
             else
                To_Len := Natural'Min (Input'Length, To_Locus'Length);
                To_Locus (1 .. To_Len) := Input (Input'First .. Input'First + To_Len - 1);
+               if not Is_Known_Locus (To_Locus (1 .. To_Len)) then
+                  Put_Line ("  (Notice: '" & To_Locus (1 .. To_Len) & "' is not currently in Policy)");
+               end if;
                exit;
             end if;
          end;
@@ -172,7 +245,7 @@ package body HRA_N.UI.Interactive_Movement is
 
       --  Preview and Confirmation
       declare
-         Amt_Str : constant String := Trim (Quanta_Type'Image (Amount), Ada.Strings.Both);
+         Fmt_Amt : constant String := Format_Quanta_With_Commas (Amount);
          Intent  : constant Movement_Intent :=
            (From_Locus  => (Token => Make_Token (From_Locus (1 .. From_Len))),
             To_Locus    => (Token => Make_Token (To_Locus (1 .. To_Len))),
@@ -190,11 +263,12 @@ package body HRA_N.UI.Interactive_Movement is
 
          Put_Line ("------------------------------------------------------------");
          Put_Line ("Admission Preview:");
-         Put_Line ("  FROM : " & From_Locus (1 .. From_Len) & " (-" & Amt_Str & " jpy)");
-         Put_Line ("  TO   : " & To_Locus (1 .. To_Len) & " (+" & Amt_Str & " jpy)");
-         Put_Line ("  DATE : " & Format_Iso_Date (Valid_On));
+         Put_Line ("  DATE   : " & Format_Iso_Date (Valid_On));
+         Put_Line ("  FROM   : " & Pad_Right (From_Locus (1 .. From_Len), 16) & " (-" & Fmt_Amt & " jpy)");
+         Put_Line ("  TO     : " & Pad_Right (To_Locus (1 .. To_Len), 16) & " (+" & Fmt_Amt & " jpy)");
+         Put_Line ("  TOTAL  : " & Fmt_Amt & " jpy (balanced)");
          if Desc_Len > 0 then
-            Put_Line ("  DESC : " & Description (1 .. Desc_Len));
+            Put_Line ("  DESC   : " & Description (1 .. Desc_Len));
          end if;
          Put_Line ("------------------------------------------------------------");
 

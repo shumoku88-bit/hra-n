@@ -13,6 +13,7 @@ with HRA_N.Core.Types;                 use HRA_N.Core.Types;
 with HRA_N.Core.Accounting_Role;       use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Validity;              use HRA_N.Core.Validity;
 with HRA_N.Storage.Journal_Reader;     use HRA_N.Storage.Journal_Reader;
+with HRA_N.Storage.Policy_Reader;      use HRA_N.Storage.Policy_Reader;
 
 package HRA_N.Application.Statement is
 
@@ -57,6 +58,15 @@ package HRA_N.Application.Statement is
      (Events : in Event_Vectors.Vector;
       Roles  : in Role_Map;
       Report : out Statement_Report);
+
+   --  In-memory projection of Financial Statement query from preloaded journal and policy
+   function Project
+     (Journal      : Journal_Result;
+      Policy       : Policy_Result;
+      As_Of        : Date_Type := (Year => 2026, Month => 1, Day => 1);
+      Has_As_Of    : Boolean   := False;
+      Snapshot     : Token_Text := (Length => 0, Value => [others => ' ']);
+      Is_Versioned : Boolean := False) return Statement_Report;
 
    --  V2 snapshot-bound Financial Statement query over selected versioned authority
    function Execute_Statement_Query

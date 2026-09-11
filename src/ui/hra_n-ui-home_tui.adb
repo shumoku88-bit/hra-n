@@ -10,6 +10,7 @@
 
 with Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
+with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Application.Actual_Query;
@@ -27,15 +28,18 @@ with HRA_N.UI.Scheduled_TUI;
 with HRA_N.UI.Balance_TUI;
 with HRA_N.UI.Record_TUI;
 with HRA_N.UI.Report_TUI;
+with HRA_N.Storage.Journal_Reader;
+with HRA_N.Storage.Policy_Reader;
+with HRA_N.Storage.Scheduled_Journal_Reader;
 with HRA_N.UI.Snapshot_Label;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
+with HRA_N.UI.Terminal_Style;
+with HRA_N.UI.TUI_Input;
 with Terminal_Interface.Curses;
 
 package body HRA_N.UI.Home_TUI is
 
    package Curses renames Terminal_Interface.Curses;
-
-   Ctrl_L : constant Integer := 12;
 
    function Image (Value : Natural) return String is
      (Trim (Value'Image, Ada.Strings.Both));
@@ -79,222 +83,248 @@ package body HRA_N.UI.Home_TUI is
 
    procedure Draw
      (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
+      JR           : HRA_N.Storage.Journal_Reader.Journal_Result;
+      PR           : HRA_N.Storage.Policy_Reader.Policy_Result;
+      SR           : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
       Selected_Day : Date_Type;
       Healthy      : out Boolean)
    is
-      View : constant HRA_N.Application.Home_Query.Home_View :=
-        HRA_N.Application.Home_Query.Execute
-          (Paths,
-           (Selected_Day => Selected_Day));
+      use HRA_N.Application.Path_Resolver;
 
-      First_Day_Date    : constant Date_Type := Make_Date (Selected_Day.Year, Selected_Day.Month, 1);
-      First_Weekday     : constant Natural := Day_Of_Week (First_Day_Date);
-      Days_In_Month_Val : constant Day_Type := Days_In_Month (Selected_Day.Year, Selected_Day.Month);
-      Today             : constant Date_Type := Get_System_Date;
-      Next_Row          : Natural := 0;
+      Snap : Snapshot_Reference := (Kind => Snapshot_Unversioned);
    begin
-      Curses.Erase;
-      Put_Clipped
-        (0,
-         "HRA-N HOME  " & Format_Iso_Date (Selected_Day) &
-         "  [Known: " & Format_Iso_Date (Today) & "]");
-      Put_Clipped (1, "============================================================");
+      if Paths.Is_Versioned then
+         Snap :=
+           (Kind     => Snapshot_Versioned,
+            Identity => Make_Token (Snapshot_Id_Str (Paths)));
+      end if;
 
-      if View.Status = Query_Rejected then
-         Healthy := False;
-         Put_Clipped (3, "AUTHORITY REJECTED");
-         Put_Clipped (4, View.Diagnostic (1 .. View.Diagnostic_Len));
-      else
-         Healthy := True;
+      declare
+         View : constant HRA_N.Application.Home_Query.Home_View :=
+           HRA_N.Application.Home_Query.Project
+             (JR       => JR,
+              PR       => PR,
+              SR       => SR,
+              Query    => (Selected_Day => Selected_Day),
+              Snapshot => Snap);
 
-         --  Monthly Calendar Header & Grid
-         Put_Clipped (2, "   " & Month_Title (Selected_Day.Year, Selected_Day.Month));
-         Put_Clipped (3, " Mon  Tue  Wed  Thu  Fri  Sat  Sun");
-
-         declare
-            Current_Day : Natural := 1;
-            Cal_Row     : Natural := 4;
-         begin
-            while Current_Day <= Days_In_Month_Val and then Cal_Row < 10 loop
-               declare
-                  Row_Str : String (1 .. 35) := [others => ' '];
-               begin
-                  for Col in 1 .. 7 loop
-                     declare
-                        Cell_Start : constant Positive := (Col - 1) * 5 + 1;
-                     begin
-                        if (Cal_Row = 4 and then Col < First_Weekday)
-                          or else Current_Day > Days_In_Month_Val
-                        then
-                           Row_Str (Cell_Start .. Cell_Start + 4) := "     ";
-                        else
-                           declare
-                              D_Str : constant String :=
-                                (if Current_Day < 10
-                                 then " " & Trim (Current_Day'Image, Ada.Strings.Both)
-                                 else Trim (Current_Day'Image, Ada.Strings.Both));
-                              Is_Selected : constant Boolean := (Current_Day = Selected_Day.Day);
-                              Is_Today    : constant Boolean :=
-                                (Today.Year = Selected_Day.Year
-                                 and then Today.Month = Selected_Day.Month
-                                 and then Today.Day = Current_Day);
-                           begin
-                              if Is_Selected then
-                                 Row_Str (Cell_Start .. Cell_Start + 4) := "[" & D_Str & "] ";
-                              elsif Is_Today then
-                                 Row_Str (Cell_Start .. Cell_Start + 4) := "_" & D_Str & "_ ";
-                              else
-                                 Row_Str (Cell_Start .. Cell_Start + 4) := " " & D_Str & "  ";
-                              end if;
-                              Current_Day := Current_Day + 1;
-                           end;
-                        end if;
-                     end;
-                  end loop;
-                  Put_Clipped (Cal_Row, Row_Str);
-                  Cal_Row := Cal_Row + 1;
-               end;
-            end loop;
-            Next_Row := Cal_Row;
-         end;
-
-         Put_Clipped (Next_Row, "------------------------------------------------------------");
-         Next_Row := Next_Row + 1;
-
-         --  Evidence & Status Summaries
+         First_Day_Date    : constant Date_Type := Make_Date (Selected_Day.Year, Selected_Day.Month, 1);
+         First_Weekday     : constant Natural := Day_Of_Week (First_Day_Date);
+         Days_In_Month_Val : constant Day_Type := Days_In_Month (Selected_Day.Year, Selected_Day.Month);
+         Today             : constant Date_Type := Get_System_Date;
+         Next_Row          : Natural := 0;
+      begin
+         Curses.Erase;
+         HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Header_Style);
          Put_Clipped
-           (Next_Row,
-            "Evidence   " &
-            (if View.Status = Query_Complete then "COMPLETE" else "PARTIAL"));
-         Next_Row := Next_Row + 1;
+           (0,
+            "HRA-N HOME  " & Format_Iso_Date (Selected_Day) &
+            "  [Known: " & Format_Iso_Date (Today) & "]");
+         HRA_N.UI.Terminal_Style.Reset;
+         Put_Clipped (1, "============================================================");
 
-         Put_Clipped
-           (Next_Row,
-            "Actual     " & Image (View.Selected_Actual) & " selected / " &
-            Image (View.Total_Actual) & " total");
-         Next_Row := Next_Row + 1;
+         if View.Status = Query_Rejected then
+            Healthy := False;
+            HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Error_Style);
+            Put_Clipped (3, "AUTHORITY REJECTED");
+            HRA_N.UI.Terminal_Style.Reset;
+            Put_Clipped (4, View.Diagnostic (1 .. View.Diagnostic_Len));
+         else
+            Healthy := True;
 
-         Put_Clipped
-           (Next_Row,
-            "Scheduled  " & Image (View.Selected_Scheduled) & " selected / " &
-            Image (View.Open_Scheduled) & " open / " &
-            Image (View.Total_Scheduled) & " retained");
-         Next_Row := Next_Row + 1;
+            --  Monthly Calendar Header & Grid
+            Put_Clipped (2, "   " & Month_Title (Selected_Day.Year, Selected_Day.Month));
+            Put_Clipped (3, " Mon  Tue  Wed  Thu  Fri  Sat  Sun");
 
-         Put_Clipped
-           (Next_Row,
-            "Policy     " & Image (View.Role_Assignments) & " roles / " &
-            Image (View.Zero_Origins) & " zero origins");
-         Next_Row := Next_Row + 1;
+            declare
+               Current_Day : Natural := 1;
+               Cal_Row     : Natural := 4;
+            begin
+               while Current_Day <= Days_In_Month_Val and then Cal_Row < 10 loop
+                  declare
+                     Row_Str : String (1 .. 35) := [others => ' '];
+                  begin
+                     for Col in 1 .. 7 loop
+                        declare
+                           Cell_Start : constant Positive := (Col - 1) * 5 + 1;
+                        begin
+                           if (Cal_Row = 4 and then Col < First_Weekday)
+                             or else Current_Day > Days_In_Month_Val
+                           then
+                              Row_Str (Cell_Start .. Cell_Start + 4) := "     ";
+                           else
+                              declare
+                                 D_Str : constant String :=
+                                   (if Current_Day < 10
+                                    then " " & Trim (Current_Day'Image, Ada.Strings.Both)
+                                    else Trim (Current_Day'Image, Ada.Strings.Both));
+                                 Is_Selected : constant Boolean := (Current_Day = Selected_Day.Day);
+                                 Is_Today    : constant Boolean :=
+                                   (Today.Year = Selected_Day.Year
+                                    and then Today.Month = Selected_Day.Month
+                                    and then Today.Day = Current_Day);
+                              begin
+                                 if Is_Selected then
+                                    Row_Str (Cell_Start .. Cell_Start + 4) := "[" & D_Str & "] ";
+                                 elsif Is_Today then
+                                    Row_Str (Cell_Start .. Cell_Start + 4) := "_" & D_Str & "_ ";
+                                 else
+                                    Row_Str (Cell_Start .. Cell_Start + 4) := " " & D_Str & "  ";
+                                 end if;
+                                 Current_Day := Current_Day + 1;
+                              end;
+                           end if;
+                        end;
+                     end loop;
+                     Put_Clipped (Cal_Row, Row_Str);
+                     Cal_Row := Cal_Row + 1;
+                  end;
+               end loop;
+               Next_Row := Cal_Row;
+            end;
 
-         Put_Clipped
-           (Next_Row,
-            "Attention  " &
-            (if View.Open_Attentions > 0
-             then Image (View.Open_Attentions) & " open" &
-               (if View.Unresolved_Loci > 0
-                then " / " & Image (View.Unresolved_Loci) & " unclassified"
-                else "")
-             elsif View.Unresolved_Loci = 0
-             then "none from this projection"
-             else Image (View.Unresolved_Loci) & " unclassified loci"));
-         Next_Row := Next_Row + 1;
-
-         Put_Clipped
-           (Next_Row, "Snapshot   " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
-         Next_Row := Next_Row + 1;
-
-         --  Direct inspection of Selected Day Actual transactions if screen height allows
-         if Rows > Next_Row + 4 then
             Put_Clipped (Next_Row, "------------------------------------------------------------");
             Next_Row := Next_Row + 1;
 
-            declare
-               Act_View : constant HRA_N.Application.Actual_Query.Actual_View :=
-                 HRA_N.Application.Actual_Query.Execute
-                   (Paths,
-                    (Scope        => HRA_N.Application.Actual_Query.Scope_Selected_Day,
-                     Selected_Day => Selected_Day,
-                     Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First));
-               Max_Act_Lines : constant Natural :=
-                 (if Rows > Next_Row + 4 then Natural'Min (Natural (Act_View.Row_Count), 3) else 0);
-            begin
-               Put_Clipped (Next_Row, "Actual Transactions (" & Image (Natural (Act_View.Row_Count)) & "):");
+            --  Evidence & Status Summaries
+            Put_Clipped
+              (Next_Row,
+               "Evidence   " &
+               (if View.Status = Query_Complete then "COMPLETE" else "PARTIAL"));
+            Next_Row := Next_Row + 1;
+
+            Put_Clipped
+              (Next_Row,
+               "Actual     " & Image (View.Selected_Actual) & " selected / " &
+               Image (View.Total_Actual) & " total");
+            Next_Row := Next_Row + 1;
+
+            Put_Clipped
+              (Next_Row,
+               "Scheduled  " & Image (View.Selected_Scheduled) & " selected / " &
+               Image (View.Open_Scheduled) & " open / " &
+               Image (View.Total_Scheduled) & " retained");
+            Next_Row := Next_Row + 1;
+
+            Put_Clipped
+              (Next_Row,
+               "Policy     " & Image (View.Role_Assignments) & " roles / " &
+               Image (View.Zero_Origins) & " zero origins");
+            Next_Row := Next_Row + 1;
+
+            Put_Clipped
+              (Next_Row,
+               "Attention  " &
+               (if View.Open_Attentions > 0
+                then Image (View.Open_Attentions) & " open" &
+                  (if View.Unresolved_Loci > 0
+                   then " / " & Image (View.Unresolved_Loci) & " unclassified"
+                   else "")
+                elsif View.Unresolved_Loci = 0
+                then "none from this projection"
+                else Image (View.Unresolved_Loci) & " unclassified loci"));
+            Next_Row := Next_Row + 1;
+
+            Put_Clipped
+              (Next_Row, "Snapshot   " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
+            Next_Row := Next_Row + 1;
+
+            --  Direct inspection of Selected Day Actual transactions if screen height allows
+            if Rows > Next_Row + 4 then
+               Put_Clipped (Next_Row, "------------------------------------------------------------");
                Next_Row := Next_Row + 1;
 
-               if Act_View.Row_Count = 0 then
-                  Put_Clipped (Next_Row, "   (none recorded on this day)");
+               declare
+                  Act_View : constant HRA_N.Application.Actual_Query.Actual_View :=
+                    HRA_N.Application.Actual_Query.Project
+                      (Journal  => JR,
+                       Request  =>
+                         (Scope        => HRA_N.Application.Actual_Query.Scope_Selected_Day,
+                          Selected_Day => Selected_Day,
+                          Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First),
+                       Snapshot => Snap);
+                  Max_Act_Lines : constant Natural :=
+                    (if Rows > Next_Row + 4 then Natural'Min (Natural (Act_View.Row_Count), 3) else 0);
+               begin
+                  Put_Clipped (Next_Row, "Actual Transactions (" & Image (Natural (Act_View.Row_Count)) & "):");
                   Next_Row := Next_Row + 1;
-               else
-                  for I in 1 .. Max_Act_Lines loop
-                     declare
-                        Row_Item : constant HRA_N.Application.Actual_Query.Actual_Row := Act_View.Rows (I);
-                        Id_Str   : constant String := Row_Item.Event_Id.Value (1 .. Row_Item.Event_Id.Length);
-                        Desc_Str : constant String :=
-                          (if Row_Item.Description.Length > 0
-                           then To_String (Row_Item.Description)
-                           else "(no description)");
-                     begin
-                        Put_Clipped (Next_Row, "   - " & Id_Str & "  " & Desc_Str);
-                        Next_Row := Next_Row + 1;
-                     end;
-                  end loop;
-                  if Natural (Act_View.Row_Count) > Max_Act_Lines then
-                     Put_Clipped
-                       (Next_Row,
-                        "   ... and " & Image (Natural (Act_View.Row_Count) - Max_Act_Lines) &
-                        " more (Enter: open day)");
+
+                  if Act_View.Row_Count = 0 then
+                     Put_Clipped (Next_Row, "   (none recorded on this day)");
                      Next_Row := Next_Row + 1;
-                  end if;
-               end if;
-            end;
-         end if;
-
-         --  Direct inspection of Planned Payments for Selected Day
-         if Rows > Next_Row + 3 then
-            declare
-               Sched_View : constant HRA_N.Application.Scheduled_Query.Scheduled_View :=
-                 HRA_N.Application.Scheduled_Query.Execute
-                   (Paths,
-                    (Scope        => HRA_N.Application.Scheduled_Query.Scope_Selected_Day,
-                     Selected_Day => Selected_Day,
-                     Ordering     => HRA_N.Application.Scheduled_Query.Order_Due_Ascending));
-            begin
-               Put_Clipped (Next_Row, "Planned Payments (" & Image (Natural (Sched_View.Row_Count)) & "):");
-               Next_Row := Next_Row + 1;
-
-               if Sched_View.Row_Count = 0 then
-                  Put_Clipped (Next_Row, "   (none due on this day)");
-                  Next_Row := Next_Row + 1;
-               else
-                  for I in 1 .. Natural'Min (Natural (Sched_View.Row_Count), 2) loop
-                     declare
-                        Row_Item : constant HRA_N.Application.Scheduled_Query.Scheduled_Row := Sched_View.Rows (I);
-                        Id_Str   : constant String := Row_Item.Id.Value (1 .. Row_Item.Id.Length);
-                        Flow_Str : constant String := Row_Item.Flow_Summary (1 .. Row_Item.Flow_Len);
-                     begin
-                        Put_Clipped (Next_Row, "   - " & Id_Str & "  " & Flow_Str);
+                  else
+                     for I in 1 .. Max_Act_Lines loop
+                        declare
+                           Row_Item : constant HRA_N.Application.Actual_Query.Actual_Row := Act_View.Rows (I);
+                           Id_Str   : constant String := Row_Item.Event_Id.Value (1 .. Row_Item.Event_Id.Length);
+                           Desc_Str : constant String :=
+                             (if Row_Item.Description.Length > 0
+                              then To_String (Row_Item.Description)
+                              else "(no description)");
+                        begin
+                           Put_Clipped (Next_Row, "   - " & Id_Str & "  " & Desc_Str);
+                           Next_Row := Next_Row + 1;
+                        end;
+                     end loop;
+                     if Natural (Act_View.Row_Count) > Max_Act_Lines then
+                        Put_Clipped
+                          (Next_Row,
+                           "   ... and " & Image (Natural (Act_View.Row_Count) - Max_Act_Lines) &
+                           " more (Enter: open day)");
                         Next_Row := Next_Row + 1;
-                     end;
-                  end loop;
-               end if;
-            end;
-         end if;
-      end if;
+                     end if;
+                  end if;
+               end;
+            end if;
 
-      if Rows > 3 and then Columns < 120 then
-         Put_Clipped
-           (Rows - 3,
-            "h/l: day  k/j: week  g: today  Enter: sel day  n: record  a: Actual  s: Sched");
-         Put_Clipped
-           (Rows - 2,
-            "b: Balances  c: Budget  e: Capacity  p: Reports  r/u: Route  v: Loci  i: Attention  q: quit");
-      elsif Rows > 2 then
-         Put_Clipped
-           (Rows - 2,
-            "h/l: day  k/j: week  g: today  Enter: sel day  n: record  a: Actual  s: Sched  b: Balances  c: Budget  e: Capacity  p: Reports  r/u: Route  v: Loci  i: Attention  q: quit");
-      end if;
-      Curses.Refresh;
+            --  Direct inspection of Planned Payments for Selected Day
+            if Rows > Next_Row + 3 then
+               declare
+                  Sched_View : constant HRA_N.Application.Scheduled_Query.Scheduled_View :=
+                    HRA_N.Application.Scheduled_Query.Project
+                      (Sched_Res => SR,
+                       Request   =>
+                         (Scope        => HRA_N.Application.Scheduled_Query.Scope_Selected_Day,
+                          Selected_Day => Selected_Day,
+                          Ordering     => HRA_N.Application.Scheduled_Query.Order_Due_Ascending),
+                       Snapshot  => Snap);
+               begin
+                  Put_Clipped (Next_Row, "Planned Payments (" & Image (Natural (Sched_View.Row_Count)) & "):");
+                  Next_Row := Next_Row + 1;
+
+                  if Sched_View.Row_Count = 0 then
+                     Put_Clipped (Next_Row, "   (none due on this day)");
+                     Next_Row := Next_Row + 1;
+                  else
+                     for I in 1 .. Natural'Min (Natural (Sched_View.Row_Count), 2) loop
+                        declare
+                           Row_Item : constant HRA_N.Application.Scheduled_Query.Scheduled_Row := Sched_View.Rows (I);
+                           Id_Str   : constant String := Row_Item.Id.Value (1 .. Row_Item.Id.Length);
+                           Flow_Str : constant String := Row_Item.Flow_Summary (1 .. Row_Item.Flow_Len);
+                        begin
+                           Put_Clipped (Next_Row, "   - " & Id_Str & "  " & Flow_Str);
+                           Next_Row := Next_Row + 1;
+                        end;
+                     end loop;
+                  end if;
+               end;
+            end if;
+         end if;
+
+         if Rows > 3 and then Columns < 120 then
+            Put_Clipped
+              (Rows - 3,
+               "h/l: day  k/j: week  g: today  Enter: sel day  n: record  m: split  a: Actual");
+            Put_Clipped
+              (Rows - 2,
+               "s: Sched  b: Balances  c: Budget  e: Capacity  p: Reports  r/u: Route  v: Loci  i: Attention  q: quit");
+         elsif Rows > 2 then
+            Put_Clipped
+              (Rows - 2,
+               "h/l: day  k/j: week  g: today  Enter: sel day  n: record  m: split  a: Actual  s: Sched  b: Balances  c: Budget  e: Capacity  p: Reports  r/u: Route  v: Loci  i: Attention  q: quit");
+         end if;
+         Curses.Refresh;
+      end;
    end Draw;
 
    procedure Run
@@ -306,6 +336,20 @@ package body HRA_N.UI.Home_TUI is
       Running        : Boolean := True;
       Screen_Started : Boolean := False;
       Query_Healthy  : Boolean := False;
+
+      JR : HRA_N.Storage.Journal_Reader.Journal_Result;
+      PR : HRA_N.Storage.Policy_Reader.Policy_Result;
+      SR : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
+
+      procedure Reload is
+      begin
+         JR := HRA_N.Storage.Journal_Reader.Read_Journal_File
+                 (HRA_N.Application.Path_Resolver.Journal_Path_Str (Current_Paths));
+         PR := HRA_N.Storage.Policy_Reader.Read_Policy_File
+                 (HRA_N.Application.Path_Resolver.Policy_Path_Str (Current_Paths));
+         SR := HRA_N.Storage.Scheduled_Journal_Reader.Read_Scheduled_Journal_File
+                 (HRA_N.Application.Path_Resolver.Scheduled_Path_Str (Current_Paths));
+      end Reload;
    begin
       Success := False;
       HRA_N.UI.Terminal.Initialize;
@@ -316,138 +360,196 @@ package body HRA_N.UI.Home_TUI is
       Curses.Set_KeyPad_Mode (Curses.Standard_Window, True);
       Curses.Use_Insert_Delete_Character (Curses.Standard_Window, False);
 
+      HRA_N.UI.Terminal_Style.Initialize;
+      HRA_N.UI.TUI_Input.Start_Mouse_Scroll;
+
+      Reload;
+
       while Running loop
-         Draw (Current_Paths, Selected, Query_Healthy);
+         Draw (Current_Paths, JR, PR, SR, Selected, Query_Healthy);
          declare
-            Key : constant Integer := Integer (Curses.Get_Keystroke);
+            Evt : constant HRA_N.UI.TUI_Input.Event := HRA_N.UI.TUI_Input.Read;
          begin
-            if Key = Character'Pos ('q') or else Key = Character'Pos ('Q') then
-               Running := False;
-            elsif Key = Integer (Curses.KEY_ENTER)
-              or else Key = Integer (Curses.Key_Enter_Or_Send)
-              or else Key = Character'Pos (ASCII.LF)
-            then
-               HRA_N.UI.Actual_TUI.Run
-                 (Current_Paths,
-                  Selected,
-                  HRA_N.Application.Actual_Query.Scope_Selected_Day);
-               Current_Paths :=
-                 HRA_N.Application.Path_Resolver.Resolve_Paths
-                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-            elsif Key = Character'Pos ('a') or else Key = Character'Pos ('A') then
-               HRA_N.UI.Actual_TUI.Run
-                 (Current_Paths,
-                  Selected,
-                  HRA_N.Application.Actual_Query.Scope_All);
-               Current_Paths :=
-                 HRA_N.Application.Path_Resolver.Resolve_Paths
-                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-            elsif Key = Character'Pos ('p') or else Key = Character'Pos ('P') then
-               HRA_N.UI.Report_TUI.Run (Current_Paths, Selected);
-               Current_Paths :=
-                 HRA_N.Application.Path_Resolver.Resolve_Paths
-                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-            elsif Key = Character'Pos ('s') or else Key = Character'Pos ('S')
-              or else Key = 9  --  Tab
-            then
-               HRA_N.UI.Scheduled_TUI.Run
-                 (Current_Paths,
-                  Selected,
-                  HRA_N.Application.Scheduled_Query.Scope_Current_Open);
-               Current_Paths :=
-                 HRA_N.Application.Path_Resolver.Resolve_Paths
-                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-            elsif Key = Character'Pos ('b') or else Key = Character'Pos ('B') then
-               HRA_N.UI.Balance_TUI.Run
-                 (Current_Paths,
-                  Selected);
-               Current_Paths :=
-                 HRA_N.Application.Path_Resolver.Resolve_Paths
-                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-            elsif Key = Character'Pos ('e') or else Key = Character'Pos ('E') then
-               HRA_N.UI.Capacity_TUI.Run (Current_Paths);
-               Current_Paths :=
-                 HRA_N.Application.Path_Resolver.Resolve_Paths
-                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-            elsif Key = Character'Pos ('c') or else Key = Character'Pos ('C') then
-               HRA_N.UI.Budget_TUI.Run (Current_Paths);
-               Current_Paths :=
-                 HRA_N.Application.Path_Resolver.Resolve_Paths
-                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-            elsif Key = Character'Pos ('i') or else Key = Character'Pos ('I') then
-               HRA_N.UI.Attention_TUI.Run (Current_Paths);
-               Current_Paths :=
-                 HRA_N.Application.Path_Resolver.Resolve_Paths
-                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-            elsif Key = Character'Pos ('v') or else Key = Character'Pos ('V') then
-               HRA_N.UI.Locus_TUI.Run (Current_Paths);
-               Current_Paths :=
-                 HRA_N.Application.Path_Resolver.Resolve_Paths
-                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-            elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R')
-              or else Key = Character'Pos ('u') or else Key = Character'Pos ('U')
-            then
-               HRA_N.UI.Routing_TUI.Run (Current_Paths, Selected);
-               Current_Paths :=
-                 HRA_N.Application.Path_Resolver.Resolve_Paths
-                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-            elsif Key = Character'Pos ('n') or else Key = Character'Pos ('N') then
-               declare
-                  Committed : Boolean := False;
-               begin
-                  HRA_N.UI.Record_TUI.Run (Current_Paths, Selected, Committed);
-                  if Committed then
-                     Current_Paths :=
-                       HRA_N.Application.Path_Resolver.Resolve_Paths
-                         (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-                  end if;
-               end;
-            elsif Key = Character'Pos ('h') or else Key = Integer (Curses.KEY_LEFT) then
-               if Selected.Year > Year_Type'First
-                 or else Selected.Month > Month_Type'First
-                 or else Selected.Day > Day_Type'First
-               then
-                  Selected := Prev_Day (Selected);
-               end if;
-            elsif Key = Character'Pos ('l') or else Key = Integer (Curses.KEY_RIGHT) then
-               if Selected.Year < Year_Type'Last
-                 or else Selected.Month < Month_Type'Last
-                 or else Selected.Day < Days_In_Month (Selected.Year, Selected.Month)
-               then
-                  Selected := Next_Day (Selected);
-               end if;
-            elsif Key = Character'Pos ('k') or else Key = Integer (Curses.KEY_UP) then
-               for Step in 1 .. 7 loop
-                  if Selected.Year > Year_Type'First
-                    or else Selected.Month > Month_Type'First
-                    or else Selected.Day > Day_Type'First
-                  then
-                     Selected := Prev_Day (Selected);
-                  end if;
-               end loop;
-            elsif Key = Character'Pos ('j') or else Key = Integer (Curses.KEY_DOWN) then
-               for Step in 1 .. 7 loop
-                  if Selected.Year < Year_Type'Last
-                    or else Selected.Month < Month_Type'Last
-                    or else Selected.Day < Days_In_Month (Selected.Year, Selected.Month)
-                  then
-                     Selected := Next_Day (Selected);
-                  end if;
-               end loop;
-            elsif Key = Character'Pos ('g') or else Key = Character'Pos ('G') then
-               Selected := Get_System_Date;
-            elsif Key = Ctrl_L or else Key = Integer (Curses.Key_Resize)
-            then
-               null;
-            end if;
+            case Evt.Kind is
+               when HRA_N.UI.TUI_Input.Scroll_Input =>
+                  case Evt.Direction is
+                     when HRA_N.UI.TUI_Input.Scroll_Up =>
+                        for Step in 1 .. 7 loop
+                           if Selected.Year > Year_Type'First
+                             or else Selected.Month > Month_Type'First
+                             or else Selected.Day > Day_Type'First
+                           then
+                              Selected := Prev_Day (Selected);
+                           end if;
+                        end loop;
+                     when HRA_N.UI.TUI_Input.Scroll_Down =>
+                        for Step in 1 .. 7 loop
+                           if Selected.Year < Year_Type'Last
+                             or else Selected.Month < Month_Type'Last
+                             or else Selected.Day < Days_In_Month (Selected.Year, Selected.Month)
+                           then
+                              Selected := Next_Day (Selected);
+                           end if;
+                        end loop;
+                  end case;
+
+               when HRA_N.UI.TUI_Input.Key_Input =>
+                  declare
+                     Key : constant Integer := Evt.Key_Code;
+                  begin
+                     if HRA_N.UI.TUI_Input.Is_Quit (Key) then
+                        Running := False;
+                     elsif HRA_N.UI.TUI_Input.Is_Enter (Key) then
+                        HRA_N.UI.Actual_TUI.Run
+                          (Current_Paths,
+                           Selected,
+                           HRA_N.Application.Actual_Query.Scope_Selected_Day);
+                        Current_Paths :=
+                          HRA_N.Application.Path_Resolver.Resolve_Paths
+                            (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                        Reload;
+                     elsif Key = Character'Pos ('a') or else Key = Character'Pos ('A') then
+                        HRA_N.UI.Actual_TUI.Run
+                          (Current_Paths,
+                           Selected,
+                           HRA_N.Application.Actual_Query.Scope_All);
+                        Current_Paths :=
+                          HRA_N.Application.Path_Resolver.Resolve_Paths
+                            (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                        Reload;
+                     elsif Key = Character'Pos ('p') or else Key = Character'Pos ('P') then
+                        HRA_N.UI.Report_TUI.Run (Current_Paths, Selected);
+                        Current_Paths :=
+                          HRA_N.Application.Path_Resolver.Resolve_Paths
+                            (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                        Reload;
+                     elsif Key = Character'Pos ('s') or else Key = Character'Pos ('S')
+                       or else Key = 9  --  Tab
+                     then
+                        HRA_N.UI.Scheduled_TUI.Run
+                          (Current_Paths,
+                           Selected,
+                           HRA_N.Application.Scheduled_Query.Scope_Current_Open);
+                        Current_Paths :=
+                          HRA_N.Application.Path_Resolver.Resolve_Paths
+                            (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                        Reload;
+                     elsif Key = Character'Pos ('b') or else Key = Character'Pos ('B') then
+                        HRA_N.UI.Balance_TUI.Run
+                          (Current_Paths,
+                           Selected);
+                        Current_Paths :=
+                          HRA_N.Application.Path_Resolver.Resolve_Paths
+                            (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                        Reload;
+                     elsif Key = Character'Pos ('e') or else Key = Character'Pos ('E') then
+                        HRA_N.UI.Capacity_TUI.Run (Current_Paths);
+                        Current_Paths :=
+                          HRA_N.Application.Path_Resolver.Resolve_Paths
+                            (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                        Reload;
+                     elsif Key = Character'Pos ('c') or else Key = Character'Pos ('C') then
+                        HRA_N.UI.Budget_TUI.Run (Current_Paths);
+                        Current_Paths :=
+                          HRA_N.Application.Path_Resolver.Resolve_Paths
+                            (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                        Reload;
+                     elsif Key = Character'Pos ('i') or else Key = Character'Pos ('I') then
+                        HRA_N.UI.Attention_TUI.Run (Current_Paths);
+                        Current_Paths :=
+                          HRA_N.Application.Path_Resolver.Resolve_Paths
+                            (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                        Reload;
+                     elsif Key = Character'Pos ('v') or else Key = Character'Pos ('V') then
+                        HRA_N.UI.Locus_TUI.Run (Current_Paths);
+                        Current_Paths :=
+                          HRA_N.Application.Path_Resolver.Resolve_Paths
+                            (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                        Reload;
+                     elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R')
+                       or else Key = Character'Pos ('u') or else Key = Character'Pos ('U')
+                     then
+                        HRA_N.UI.Routing_TUI.Run (Current_Paths, Selected);
+                        Current_Paths :=
+                          HRA_N.Application.Path_Resolver.Resolve_Paths
+                            (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                        Reload;
+                     elsif Key = Character'Pos ('n') or else Key = Character'Pos ('N') then
+                        declare
+                           Committed : Boolean := False;
+                        begin
+                           HRA_N.UI.Record_TUI.Run (Current_Paths, Selected, Committed);
+                           if Committed then
+                              Current_Paths :=
+                                HRA_N.Application.Path_Resolver.Resolve_Paths
+                                  (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                              Reload;
+                           end if;
+                        end;
+                     elsif Key = Character'Pos ('m') or else Key = Character'Pos ('M') then
+                        declare
+                           Committed : Boolean := False;
+                        begin
+                           HRA_N.UI.Record_TUI.Run_Split (Current_Paths, Selected, Committed);
+                           if Committed then
+                              Current_Paths :=
+                                HRA_N.Application.Path_Resolver.Resolve_Paths
+                                  (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                              Reload;
+                           end if;
+                        end;
+                     elsif HRA_N.UI.TUI_Input.Is_Left (Key) then
+                        if Selected.Year > Year_Type'First
+                          or else Selected.Month > Month_Type'First
+                          or else Selected.Day > Day_Type'First
+                        then
+                           Selected := Prev_Day (Selected);
+                        end if;
+                     elsif HRA_N.UI.TUI_Input.Is_Right (Key) then
+                        if Selected.Year < Year_Type'Last
+                          or else Selected.Month < Month_Type'Last
+                          or else Selected.Day < Days_In_Month (Selected.Year, Selected.Month)
+                        then
+                           Selected := Next_Day (Selected);
+                        end if;
+                     elsif HRA_N.UI.TUI_Input.Is_Up (Key) then
+                        for Step in 1 .. 7 loop
+                           if Selected.Year > Year_Type'First
+                             or else Selected.Month > Month_Type'First
+                             or else Selected.Day > Day_Type'First
+                           then
+                              Selected := Prev_Day (Selected);
+                           end if;
+                        end loop;
+                     elsif HRA_N.UI.TUI_Input.Is_Down (Key) then
+                        for Step in 1 .. 7 loop
+                           if Selected.Year < Year_Type'Last
+                             or else Selected.Month < Month_Type'Last
+                             or else Selected.Day < Days_In_Month (Selected.Year, Selected.Month)
+                           then
+                              Selected := Next_Day (Selected);
+                           end if;
+                        end loop;
+                     elsif Key = Character'Pos ('g') or else Key = Character'Pos ('G') then
+                        Selected := Get_System_Date;
+                     elsif HRA_N.UI.TUI_Input.Is_Redraw (Key) then
+                        Reload;
+                     end if;
+                  end;
+
+               when HRA_N.UI.TUI_Input.Ignored_Input =>
+                  null;
+            end case;
          end;
       end loop;
 
+      HRA_N.UI.TUI_Input.Stop_Mouse_Scroll;
       Curses.End_Windows;
       Screen_Started := False;
       Success := Query_Healthy;
    exception
       when others =>
+         HRA_N.UI.TUI_Input.Stop_Mouse_Scroll;
          if Screen_Started then
             begin
                Curses.End_Windows;

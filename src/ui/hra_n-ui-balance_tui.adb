@@ -13,16 +13,18 @@ with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Assertion_Command; use HRA_N.Application.Assertion_Command;
 with HRA_N.Application.Review; use HRA_N.Application.Review;
+with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
+with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 with HRA_N.UI.Line_Edit; use HRA_N.UI.Line_Edit;
 with HRA_N.UI.Output; use HRA_N.UI.Output;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
+with HRA_N.UI.Terminal_Style;
+with HRA_N.UI.TUI_Input;
 with Terminal_Interface.Curses;
 
 package body HRA_N.UI.Balance_TUI is
 
    package Curses renames Terminal_Interface.Curses;
-
-   Ctrl_L : constant Integer := 12;
 
    function Status_Badge (Status : Balance_Epistemic_Status) return String is
      (case Status is
@@ -58,38 +60,33 @@ package body HRA_N.UI.Balance_TUI is
    end Row_Text;
 
    procedure Draw
-     (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
-      Selected_Day : Date_Type;
-      Scope        : Balance_Scope;
-      Filter_As_Of : Boolean;
-      Cursor       : Positive;
-      Count        : out Natural)
+     (View   : Balance_View;
+      Cursor : Positive;
+      Count  : out Natural)
    is
-      View : constant Balance_View :=
-        HRA_N.Application.Balance_Query.Execute
-          (Paths,
-           (Scope      => Scope,
-            Has_As_Of  => Filter_As_Of,
-            As_Of_Date => Selected_Day));
       Capacity : constant Natural := (if Rows > 8 then Rows - 8 else 0);
       First    : Positive := 1;
       Last     : Natural := 0;
       Scope_Label : constant String :=
-        (case Scope is
+        (case View.Scope is
            when Scope_All          => "ALL",
            when Scope_Known_Only   => "KNOWN ZERO",
            when Scope_Unknown_Only => "UNKNOWN ORIGIN");
    begin
       Curses.Erase;
+      HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Header_Style);
       Put_Clipped
         (0,
          "HRA-N BALANCES  " & Scope_Label &
-         (if Filter_As_Of then " (as-of " & Format_Iso_Date (Selected_Day) & ")" else ""));
+         (if View.Has_As_Of then " (as-of " & Format_Iso_Date (View.As_Of_Date) & ")" else ""));
+      HRA_N.UI.Terminal_Style.Reset;
       Put_Clipped (1, "============================================================");
 
       Count := Natural (View.Row_Count);
       if View.Status = Query_Rejected then
+         HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Error_Style);
          Put_Clipped (3, "AUTHORITY REJECTED");
+         HRA_N.UI.Terminal_Style.Reset;
          Put_Clipped (4, View.Diagnostic (1 .. View.Diagnostic_Len));
       elsif Count = 0 then
          Put_Clipped (3, "No coordinate balances in this scope.");
@@ -102,10 +99,17 @@ package body HRA_N.UI.Balance_TUI is
             end if;
             Last := Natural'Min (Count, First + Capacity - 1);
             for Index in First .. Last loop
-               Put_Clipped
-                 (5 + Index - First,
-                  (if Index = Cursor then "> " else "  ") &
-                  Row_Text (View.Rows (Index)));
+               if Index = Cursor then
+                  HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Selected_Style);
+                  Put_Clipped
+                    (5 + Index - First,
+                     "> " & Row_Text (View.Rows (Index)));
+                  HRA_N.UI.Terminal_Style.Reset;
+               else
+                  Put_Clipped
+                    (5 + Index - First,
+                     "  " & Row_Text (View.Rows (Index)));
+               end if;
             end loop;
          end if;
       end if;
@@ -113,7 +117,7 @@ package body HRA_N.UI.Balance_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "j/k: select   a: assert balance   f: scope   t: toggle as-of   b/Esc/q: home");
+            "j/k/wheel: select   a: assert balance   f: scope   t: toggle as-of   b/Esc/q: home");
       end if;
       Curses.Refresh;
    end Draw;
@@ -124,137 +128,188 @@ package body HRA_N.UI.Balance_TUI is
       Initial_Scope : HRA_N.Application.Balance_Query.Balance_Scope :=
         HRA_N.Application.Balance_Query.Scope_All)
    is
-      Current_Paths : Path_Config := Paths;
-      Scope         : Balance_Scope := Initial_Scope;
-      Filter_As_Of  : Boolean := False;
-      Cursor        : Positive := 1;
-      Count         : Natural := 0;
-      Running       : Boolean := True;
+      Current_Paths   : Path_Config := Paths;
+      Scope           : Balance_Scope := Initial_Scope;
+      Filter_As_Of    : Boolean := False;
+      Cursor          : Positive := 1;
+      Count           : Natural := 0;
+      Running         : Boolean := True;
+      Current_Journal : Journal_Result;
+      Current_Policy  : Policy_Result;
+      Current_View    : Balance_View;
+
+      procedure Recompute_View is
+         Snap : Snapshot_Reference := (Kind => Snapshot_Unversioned);
+      begin
+         if Current_Paths.Is_Versioned then
+            Snap := (Kind => Snapshot_Versioned, Identity => Make_Token (Snapshot_Id_Str (Current_Paths)));
+         end if;
+         Current_View := HRA_N.Application.Balance_Query.Project
+           (Journal  => Current_Journal,
+            Policy   => Current_Policy,
+            Request  => (Scope => Scope, Has_As_Of => Filter_As_Of, As_Of_Date => Selected_Day),
+            Snapshot => Snap);
+      end Recompute_View;
+
+      procedure Reload is
+      begin
+         Current_Journal := Read_Journal_File (Journal_Path_Str (Current_Paths));
+         Current_Policy  := Read_Policy_File (Policy_Path_Str (Current_Paths));
+         Recompute_View;
+      end Reload;
    begin
+      HRA_N.UI.Terminal_Style.Initialize;
+      HRA_N.UI.TUI_Input.Start_Mouse_Scroll;
+
+      Reload;
+
       while Running loop
-         Draw (Current_Paths, Selected_Day, Scope, Filter_As_Of, Cursor, Count);
+         Draw (Current_View, Cursor, Count);
+         if Count = 0 then
+            Cursor := 1;
+         elsif Cursor > Count then
+            Cursor := Positive (Count);
+         end if;
+
          declare
-            Key : constant Integer := Integer (Curses.Get_Keystroke);
+            Evt : constant HRA_N.UI.TUI_Input.Event := HRA_N.UI.TUI_Input.Read;
          begin
-            if Key = Character'Pos ('b') or else Key = Character'Pos ('B')
-              or else Key = Character'Pos ('q') or else Key = Character'Pos ('Q')
-              or else Key = 27
-            then
-               Running := False;
-            elsif Key = Character'Pos ('j') or else Key = Integer (Curses.KEY_DOWN) then
-               if Count > 0 and then Cursor < Count then
-                  Cursor := Cursor + 1;
-               end if;
-            elsif Key = Character'Pos ('k') or else Key = Integer (Curses.KEY_UP) then
-               if Cursor > 1 then
-                  Cursor := Cursor - 1;
-               end if;
-            elsif Key = Integer (Curses.KEY_NPAGE)
-              or else Key = 4
-              or else Key = 32
-            then
-               declare
-                  Step : constant Positive :=
-                    Positive'Max (1, (if Rows > 8 then Rows - 8 else 5));
-               begin
-                  Cursor := (if Count > 0 then Natural'Min (Count, Cursor + Step) else 1);
-               end;
-            elsif Key = Integer (Curses.KEY_PPAGE)
-              or else Key = 21
-            then
-               declare
-                  Step : constant Positive :=
-                    Positive'Max (1, (if Rows > 8 then Rows - 8 else 5));
-               begin
-                  Cursor := (if Cursor > Step then Cursor - Step else 1);
-               end;
-            elsif Key = Character'Pos ('G') then
-               if Count > 0 then
-                  Cursor := Count;
-               end if;
-            elsif Key = Character'Pos ('g') then
-               Cursor := 1;
-            elsif (Key = Character'Pos ('a') or else Key = Character'Pos ('A')) and then Count > 0 then
-               declare
-                  Cur_View : constant Balance_View :=
-                    HRA_N.Application.Balance_Query.Execute
-                      (Current_Paths,
-                       (Scope      => Scope,
-                        Has_As_Of  => Filter_As_Of,
-                        As_Of_Date => Selected_Day));
-               begin
-                  if Cur_View.Status /= Query_Rejected and then Cursor <= Natural (Cur_View.Row_Count) then
-                     declare
-                        Row        : constant Balance_Row := Cur_View.Rows (Cursor);
-                        Loc_Str    : constant String := Row.Locus.Value (1 .. Row.Locus.Length);
-                        Mea_Str    : constant String := Row.Measure.Value (1 .. Row.Measure.Length);
-                        Prompt_Row : constant Natural := (if Rows > 2 then Rows - 1 else 0);
-                        Amt_Text   : constant String :=
-                          Prompt_For
-                            (Prompt_Row,
-                             "Assert balance for " & Loc_Str & " (" & Mea_Str & "): ");
-                     begin
-                        if Amt_Text'Length > 0 then
+            case Evt.Kind is
+               when HRA_N.UI.TUI_Input.Scroll_Input =>
+                  case Evt.Direction is
+                     when HRA_N.UI.TUI_Input.Scroll_Up =>
+                        if Cursor > 1 then
+                           Cursor := Cursor - 1;
+                        end if;
+                     when HRA_N.UI.TUI_Input.Scroll_Down =>
+                        if Cursor < Count then
+                           Cursor := Cursor + 1;
+                        end if;
+                  end case;
+
+               when HRA_N.UI.TUI_Input.Key_Input =>
+                  declare
+                     Key : constant Integer := Evt.Key_Code;
+                  begin
+                     if HRA_N.UI.TUI_Input.Is_Quit (Key)
+                       or else Key = Character'Pos ('b')
+                       or else Key = Character'Pos ('B')
+                     then
+                        Running := False;
+                     elsif HRA_N.UI.TUI_Input.Is_Down (Key) then
+                        if Count > 0 and then Cursor < Count then
+                           Cursor := Cursor + 1;
+                        end if;
+                     elsif HRA_N.UI.TUI_Input.Is_Up (Key) then
+                        if Cursor > 1 then
+                           Cursor := Cursor - 1;
+                        end if;
+                     elsif Key = Integer (Curses.KEY_NPAGE)
+                       or else Key = 4
+                       or else Key = 32
+                     then
+                        declare
+                           Step : constant Positive :=
+                             Positive'Max (1, (if Rows > 8 then Rows - 8 else 5));
+                        begin
+                           Cursor := (if Count > 0 then Natural'Min (Count, Cursor + Step) else 1);
+                        end;
+                     elsif Key = Integer (Curses.KEY_PPAGE)
+                       or else Key = 21
+                     then
+                        declare
+                           Step : constant Positive :=
+                             Positive'Max (1, (if Rows > 8 then Rows - 8 else 5));
+                        begin
+                           Cursor := (if Cursor > Step then Cursor - Step else 1);
+                        end;
+                     elsif Key = Character'Pos ('G') then
+                        if Count > 0 then
+                           Cursor := Count;
+                        end if;
+                     elsif Key = Character'Pos ('g') then
+                        Cursor := 1;
+                     elsif (Key = Character'Pos ('a') or else Key = Character'Pos ('A')) and then Count > 0 then
+                        if Current_View.Status /= Query_Rejected and then Cursor <= Natural (Current_View.Row_Count) then
                            declare
-                              Amount_Val : Long_Long_Integer;
+                              Row        : constant Balance_Row := Current_View.Rows (Cursor);
+                              Loc_Str    : constant String := Row.Locus.Value (1 .. Row.Locus.Length);
+                              Mea_Str    : constant String := Row.Measure.Value (1 .. Row.Measure.Length);
+                              Prompt_Row : constant Natural := (if Rows > 2 then Rows - 1 else 0);
+                              Amt_Text   : constant String :=
+                                Prompt_For
+                                  (Prompt_Row,
+                                   "Assert balance for " & Loc_Str & " (" & Mea_Str & "): ");
                            begin
-                              Amount_Val := Long_Long_Integer'Value (Amt_Text);
-                              declare
-                                 Intent : constant Assertion_Intent :=
-                                   (Id          => (Length => 0, Value => [others => ' ']),
-                                    Valid_On    =>
-                                      (if Filter_As_Of then Selected_Day else Get_System_Date),
-                                    Locus       => (Token => Make_Token (Loc_Str)),
-                                    Measure     => (Token => Make_Token (Mea_Str)),
-                                    Amount      => Quanta_Type (Amount_Val),
-                                    Description => Make_Token ("TUI balance assertion"));
-                                 Prop_Res : constant Proposal_Result := Propose (Current_Paths, Intent);
-                              begin
-                                 if not Prop_Res.Success then
-                                    Wait_Key
-                                      (Prompt_Row,
-                                       "Assertion rejected: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                                 else
+                              if Amt_Text'Length > 0 then
+                                 declare
+                                    Amount_Val : Long_Long_Integer;
+                                 begin
+                                    Amount_Val := Long_Long_Integer'Value (Amt_Text);
                                     declare
-                                       Rec : constant Assertion_Receipt := Commit (Prop_Res.Proposal);
+                                       Intent : constant Assertion_Intent :=
+                                         (Id          => (Length => 0, Value => [others => ' ']),
+                                          Valid_On    =>
+                                            (if Filter_As_Of then Selected_Day else Get_System_Date),
+                                          Locus       => (Token => Make_Token (Loc_Str)),
+                                          Measure     => (Token => Make_Token (Mea_Str)),
+                                          Amount      => Quanta_Type (Amount_Val),
+                                          Description => Make_Token ("TUI balance assertion"));
+                                       Prop_Res : constant Proposal_Result := Propose (Current_Paths, Intent);
                                     begin
-                                       if Rec.Success then
-                                          Current_Paths :=
-                                            HRA_N.Application.Path_Resolver.Resolve_Paths
-                                              (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-                                       else
+                                       if not Prop_Res.Success then
                                           Wait_Key
                                             (Prompt_Row,
-                                             "Commit rejected: " & Rec.Error (1 .. Rec.Error_Len));
+                                             "Assertion rejected: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
+                                       else
+                                          declare
+                                             Rec : constant Assertion_Receipt := Commit (Prop_Res.Proposal);
+                                          begin
+                                             if Rec.Success then
+                                                Current_Paths :=
+                                                  HRA_N.Application.Path_Resolver.Resolve_Paths
+                                                    (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                                                Reload;
+                                             else
+                                                Wait_Key
+                                                  (Prompt_Row,
+                                                   "Commit rejected: " & Rec.Error (1 .. Rec.Error_Len));
+                                             end if;
+                                          end;
                                        end if;
                                     end;
-                                 end if;
-                              end;
-                           exception
-                              when others =>
-                                 Wait_Key (Prompt_Row, "Invalid integer amount.");
+                                 exception
+                                    when others =>
+                                       Wait_Key (Prompt_Row, "Invalid integer amount.");
+                                 end;
+                              end if;
                            end;
                         end if;
-                     end;
-                  end if;
-               end;
-            elsif Key = Character'Pos ('f') or else Key = Character'Pos ('F') then
-               Scope :=
-                 (case Scope is
-                    when Scope_All          => Scope_Known_Only,
-                    when Scope_Known_Only   => Scope_Unknown_Only,
-                    when Scope_Unknown_Only => Scope_All);
-               Cursor := 1;
-            elsif Key = Character'Pos ('t') or else Key = Character'Pos ('T') then
-               Filter_As_Of := not Filter_As_Of;
-               Cursor := 1;
-            elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R')
-              or else Key = Ctrl_L or else Key = Integer (Curses.Key_Resize)
-            then
-               Current_Paths :=
-                 HRA_N.Application.Path_Resolver.Resolve_Paths
-                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-            end if;
+                     elsif Key = Character'Pos ('f') or else Key = Character'Pos ('F') then
+                        Scope :=
+                          (case Scope is
+                             when Scope_All          => Scope_Known_Only,
+                             when Scope_Known_Only   => Scope_Unknown_Only,
+                             when Scope_Unknown_Only => Scope_All);
+                        Cursor := 1;
+                        Recompute_View;
+                     elsif Key = Character'Pos ('t') or else Key = Character'Pos ('T') then
+                        Filter_As_Of := not Filter_As_Of;
+                        Cursor := 1;
+                        Recompute_View;
+                     elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R')
+                       or else HRA_N.UI.TUI_Input.Is_Redraw (Key)
+                     then
+                        Current_Paths :=
+                          HRA_N.Application.Path_Resolver.Resolve_Paths
+                            (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                        Reload;
+                     end if;
+                  end;
+
+               when HRA_N.UI.TUI_Input.Ignored_Input =>
+                  null;
+            end case;
          end;
       end loop;
    end Run;

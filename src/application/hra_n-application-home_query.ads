@@ -6,6 +6,10 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;
 
+with HRA_N.Storage.Journal_Reader;
+with HRA_N.Storage.Policy_Reader;
+with HRA_N.Storage.Scheduled_Journal_Reader;
+
 package HRA_N.Application.Home_Query is
 
    type Home_Query is record
@@ -30,6 +34,15 @@ package HRA_N.Application.Home_Query is
       Diagnostic          : Frontend_Types.Diagnostic_Text := [others => ' '];
       Diagnostic_Len      : Frontend_Types.Diagnostic_Length := 0;
    end record;
+
+   --  Project in-memory streams directly to Home_View without disk I/O.
+   function Project
+     (JR       : HRA_N.Storage.Journal_Reader.Journal_Result;
+      PR       : HRA_N.Storage.Policy_Reader.Policy_Result;
+      SR       : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
+      Query    : Home_Query;
+      Snapshot : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned)) return Home_View;
 
    --  Acquire all three logical streams once and derive a presentation-neutral
    --  Home projection. A selected generation carries its snapshot identity;

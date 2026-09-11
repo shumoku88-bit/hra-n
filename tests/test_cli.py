@@ -671,5 +671,32 @@ class TestHraNCli(unittest.TestCase):
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("invalid --as-of date", res.stdout + res.stderr)
 
+        # 59. Headless Reporting Export (--flow, --pace, --audit, --mom, --budget, --balances)
+        res = self.run_cmd("report", "--flow", "--month", "9", "--year", "2026")
+        self.assertEqual(res.returncode, 0, f"report --flow failed: {res.stderr}")
+        self.assertIn("DAILY CASH FLOW TIMELINE", res.stdout)
+        self.assertIn("Total Monthly Flow", res.stdout)
+
+        res = self.run_cmd("report", "--pace", "--month", "9", "--year", "2026")
+        self.assertEqual(res.returncode, 0, f"report --pace failed: {res.stderr}")
+        self.assertIn("DAILY SPENDING PACE & TARGET", res.stdout)
+
+        res = self.run_cmd("report", "--audit", "--month", "9", "--year", "2026")
+        self.assertEqual(res.returncode, 0, f"report --audit failed: {res.stderr}")
+        self.assertIn("FAIL-CLOSED AUDIT, INTEGRITY & COHERENCE", res.stdout)
+        self.assertIn("UNIVERSAL FINANCIAL CONSERVATION", res.stdout)
+
+        res = self.run_cmd("report", "--mom", "--month", "9", "--year", "2026")
+        self.assertEqual(res.returncode, 0, f"report --mom failed: {res.stderr}")
+        self.assertIn("MONTH-OVER-MONTH COMPARISON", res.stdout)
+
+        res = self.run_cmd("report", "--budget", "--month", "9", "--year", "2026")
+        self.assertEqual(res.returncode, 0, f"report --budget failed: {res.stderr}")
+        self.assertIn("BUDGET & ENVELOPE PROJECTION", res.stdout)
+
+        res = self.run_cmd("report", "--balances", "--month", "9", "--year", "2026")
+        self.assertEqual(res.returncode, 0, f"report --balances failed: {res.stderr}")
+        self.assertIn("COORDINATE BALANCES as of", res.stdout)
+
 if __name__ == "__main__":
     unittest.main()

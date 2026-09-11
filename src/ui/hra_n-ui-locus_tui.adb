@@ -10,12 +10,13 @@ with HRA_N.Application.Proposal;
 with HRA_N.Core.Types;                 use HRA_N.Core.Types;
 with HRA_N.UI.Line_Edit;               use HRA_N.UI.Line_Edit;
 with HRA_N.UI.Terminal;                use HRA_N.UI.Terminal;
+with HRA_N.UI.Terminal_Style;
+with HRA_N.UI.TUI_Input;
 with Terminal_Interface.Curses;
 
 package body HRA_N.UI.Locus_TUI is
 
    package Curses renames Terminal_Interface.Curses;
-   Ctrl_L : constant Integer := 12;
 
    procedure Run_Add
      (Paths     : Path_Config;
@@ -46,7 +47,9 @@ package body HRA_N.UI.Locus_TUI is
             return;
          end if;
          Curses.Erase;
+         HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Header_Style);
          Put_Clipped (0, "LOCUS ADMISSION PREVIEW  " & Text);
+         HRA_N.UI.Terminal_Style.Reset;
          Put_Clipped (1, "============================================================");
          Put_Clipped (3, "Stable token  " & Text);
          Put_Clipped (4, "Permission    new quantity writes");
@@ -85,13 +88,17 @@ package body HRA_N.UI.Locus_TUI is
       Last     : Natural := 0;
    begin
       Curses.Erase;
+      HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Header_Style);
       Put_Clipped (0, "LOCUS NEW-WRITE ADMISSION");
+      HRA_N.UI.Terminal_Style.Reset;
       Put_Clipped (1, "============================================================");
       Count := View.Row_Count;
       if View.Status = Query_Rejected then
          if View.Diagnostic_Len > 0 then
+            HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Error_Style);
             Put_Clipped
               (3, "! " & View.Diagnostic (1 .. View.Diagnostic_Len));
+            HRA_N.UI.Terminal_Style.Reset;
          end if;
       elsif View.Row_Count = 0 then
          Put_Clipped (3, "No Loci are admitted for new quantity writes.");
@@ -116,67 +123,92 @@ package body HRA_N.UI.Locus_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "j/k: scroll  n: admit new Locus  R: reload  b/Esc/q: home");
+            "j/k/wheel: scroll  n: admit new Locus  R: reload  b/Esc/q: home");
       end if;
       Curses.Refresh;
    end Draw;
 
    procedure Run (Paths : Path_Config) is
       Current_Paths : Path_Config := Paths;
-      Scroll  : Natural := 0;
-      Count   : Natural := 0;
-      Running : Boolean := True;
+      Scroll        : Natural := 0;
+      Count         : Natural := 0;
+      Running       : Boolean := True;
    begin
+      HRA_N.UI.Terminal_Style.Initialize;
+      HRA_N.UI.TUI_Input.Start_Mouse_Scroll;
+
       while Running loop
          Draw (Current_Paths, Scroll, Count);
          declare
-            Key : constant Integer := Integer (Curses.Get_Keystroke);
             Capacity : constant Natural := (if Rows > 7 then Rows - 7 else 5);
+            Evt      : constant HRA_N.UI.TUI_Input.Event := HRA_N.UI.TUI_Input.Read;
          begin
-            if Key = Character'Pos ('b') or else Key = Character'Pos ('B')
-              or else Key = Character'Pos ('q') or else Key = Character'Pos ('Q')
-              or else Key = 27
-            then
-               Running := False;
-            elsif Key = Character'Pos ('j') or else Key = Integer (Curses.KEY_DOWN) then
-               if Count > Capacity and then Scroll + Capacity < Count then
-                  Scroll := Scroll + 1;
-               end if;
-            elsif Key = Character'Pos ('k') or else Key = Integer (Curses.KEY_UP) then
-               if Scroll > 0 then
-                  Scroll := Scroll - 1;
-               end if;
-            elsif Key = Integer (Curses.KEY_NPAGE)
-              or else Key = 4
-              or else Key = 32
-            then
-               if Count > Capacity then
-                  Scroll := Natural'Min (Count - Capacity, Scroll + Capacity);
-               end if;
-            elsif Key = Integer (Curses.KEY_PPAGE)
-              or else Key = 21
-            then
-               Scroll := (if Scroll > Capacity then Scroll - Capacity else 0);
-            elsif Key = Character'Pos ('G') then
-               if Count > Capacity then
-                  Scroll := Count - Capacity;
-               end if;
-            elsif Key = Character'Pos ('g') then
-               Scroll := 0;
-            elsif Key = Character'Pos ('n') or else Key = Character'Pos ('N') then
-               declare
-                  Done : Boolean := False;
-               begin
-                  Run_Add (Current_Paths, Done);
-                  if Done then
-                     Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
-                  end if;
-               end;
-            elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R')
-              or else Key = Ctrl_L or else Key = Integer (Curses.Key_Resize)
-            then
-               Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
-            end if;
+            case Evt.Kind is
+               when HRA_N.UI.TUI_Input.Scroll_Input =>
+                  case Evt.Direction is
+                     when HRA_N.UI.TUI_Input.Scroll_Up =>
+                        if Scroll > 0 then
+                           Scroll := Scroll - 1;
+                        end if;
+                     when HRA_N.UI.TUI_Input.Scroll_Down =>
+                        if Count > Capacity and then Scroll + Capacity < Count then
+                           Scroll := Scroll + 1;
+                        end if;
+                  end case;
+
+               when HRA_N.UI.TUI_Input.Key_Input =>
+                  declare
+                     Key : constant Integer := Evt.Key_Code;
+                  begin
+                     if HRA_N.UI.TUI_Input.Is_Quit (Key)
+                       or else Key = Character'Pos ('b')
+                       or else Key = Character'Pos ('B')
+                     then
+                        Running := False;
+                     elsif HRA_N.UI.TUI_Input.Is_Down (Key) then
+                        if Count > Capacity and then Scroll + Capacity < Count then
+                           Scroll := Scroll + 1;
+                        end if;
+                     elsif HRA_N.UI.TUI_Input.Is_Up (Key) then
+                        if Scroll > 0 then
+                           Scroll := Scroll - 1;
+                        end if;
+                     elsif Key = Integer (Curses.KEY_NPAGE)
+                       or else Key = 4
+                       or else Key = 32
+                     then
+                        if Count > Capacity then
+                           Scroll := Natural'Min (Count - Capacity, Scroll + Capacity);
+                        end if;
+                     elsif Key = Integer (Curses.KEY_PPAGE)
+                       or else Key = 21
+                     then
+                        Scroll := (if Scroll > Capacity then Scroll - Capacity else 0);
+                     elsif Key = Character'Pos ('G') then
+                        if Count > Capacity then
+                           Scroll := Count - Capacity;
+                        end if;
+                     elsif Key = Character'Pos ('g') then
+                        Scroll := 0;
+                     elsif Key = Character'Pos ('n') or else Key = Character'Pos ('N') then
+                        declare
+                           Done : Boolean := False;
+                        begin
+                           Run_Add (Current_Paths, Done);
+                           if Done then
+                              Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+                           end if;
+                        end;
+                     elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R')
+                       or else HRA_N.UI.TUI_Input.Is_Redraw (Key)
+                     then
+                        Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+                     end if;
+                  end;
+
+               when HRA_N.UI.TUI_Input.Ignored_Input =>
+                  null;
+            end case;
          end;
       end loop;
    end Run;

@@ -105,16 +105,17 @@ package body HRA_N.Application.Scheduled_Query is
       end if;
    end Format_Flow_Summary;
 
-   function Execute
-     (Paths   : HRA_N.Application.Path_Resolver.Path_Config;
-      Request : Query) return Scheduled_View
+   function Project
+     (Sched_Res : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
+      Request   : Query;
+      Snapshot  : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned)) return Scheduled_View
    is
       use HRA_N.Application.Frontend_Types;
-      use HRA_N.Application.Path_Resolver;
 
       Result : Scheduled_View :=
         (Status                  => Query_Rejected,
-         Snapshot                => (Kind => Snapshot_Unversioned),
+         Snapshot                => Snapshot,
          Scope                   => Request.Scope,
          Selected_Day            => Request.Selected_Day,
          Total_Count             => 0,
@@ -124,9 +125,6 @@ package body HRA_N.Application.Scheduled_Query is
          Rows                    => [others => Empty_Scheduled_Row],
          Diagnostic              => [others => ' '],
          Diagnostic_Len          => 0);
-
-      Sched_Res : constant Scheduled_Journal_Result :=
-        Read_Scheduled_Journal_File (Scheduled_Path_Str (Paths));
 
       procedure Set_Diagnostic (Message : String) is
          Len : constant Natural :=
@@ -151,15 +149,6 @@ package body HRA_N.Application.Scheduled_Query is
       end Comes_Before;
 
    begin
-      if not Paths.Resolution_Ok then
-         Set_Diagnostic (Paths.Error_Reason (1 .. Paths.Error_Len));
-         return Result;
-      elsif Paths.Is_Versioned then
-         Result.Snapshot :=
-           (Kind     => Snapshot_Versioned,
-            Identity => Make_Token (Snapshot_Id_Str (Paths)));
-      end if;
-
       if not Sched_Res.Success then
          Set_Diagnostic
            ("scheduled.hra: " &
@@ -234,6 +223,42 @@ package body HRA_N.Application.Scheduled_Query is
 
       Result.Status := Query_Complete;
       return Result;
+   end Project;
+
+   function Execute
+     (Paths   : HRA_N.Application.Path_Resolver.Path_Config;
+      Request : Query) return Scheduled_View
+   is
+      use HRA_N.Application.Frontend_Types;
+      use HRA_N.Application.Path_Resolver;
+
+      Snap : Snapshot_Reference := (Kind => Snapshot_Unversioned);
+   begin
+      if not Paths.Resolution_Ok then
+         return
+           (Status                  => Query_Rejected,
+            Snapshot                => (Kind => Snapshot_Unversioned),
+            Scope                   => Request.Scope,
+            Selected_Day            => Request.Selected_Day,
+            Total_Count             => 0,
+            Open_Count              => 0,
+            Selected_Day_Open_Count => 0,
+            Row_Count               => 0,
+            Rows                    => [others => Empty_Scheduled_Row],
+            Diagnostic              => Paths.Error_Reason,
+            Diagnostic_Len          => Paths.Error_Len);
+      elsif Paths.Is_Versioned then
+         Snap :=
+           (Kind     => Snapshot_Versioned,
+            Identity => Make_Token (Snapshot_Id_Str (Paths)));
+      end if;
+
+      declare
+         SR : constant Scheduled_Journal_Result :=
+           Read_Scheduled_Journal_File (Scheduled_Path_Str (Paths));
+      begin
+         return Project (SR, Request, Snap);
+      end;
    end Execute;
 
 end HRA_N.Application.Scheduled_Query;

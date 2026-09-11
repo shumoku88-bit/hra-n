@@ -38,9 +38,9 @@ package body Test_HRA_Storage is
          J_Res : constant Journal_Result := Read_Journal_File (HRA_Data_Dir & "/journal.hra");
       begin
          Assert (J_Res.Success, "Real journal.hra loads successfully");
-         Assert_Equal_Int (588, Long_Long_Integer (J_Res.Events.Length), "Loaded exact count of 588 events");
-         Assert_Equal_Int (588, Long_Long_Integer (Entry_Count (J_Res.Validities)), "Loaded exact count of 588 validity facts");
-         Assert_Equal_Int (588, Long_Long_Integer (Entry_Count (J_Res.Descriptions)), "Loaded exact count of 588 description facts");
+         Assert_Equal_Int (592, Long_Long_Integer (J_Res.Events.Length), "Loaded exact count of 592 events");
+         Assert_Equal_Int (592, Long_Long_Integer (Entry_Count (J_Res.Validities)), "Loaded exact count of 592 validity facts");
+         Assert_Equal_Int (592, Long_Long_Integer (Entry_Count (J_Res.Descriptions)), "Loaded exact count of 592 description facts");
 
          -- Verify exact balances from journal
          declare
@@ -66,7 +66,7 @@ package body Test_HRA_Storage is
 
             Assert_Equal_Int (909, Cash_Bal, "Cash balance matches exactly: 909 jpy");
             Assert_Equal_Int (714, PayPay_Bal, "PayPay balance matches exactly: 714 jpy");
-            Assert_Equal_Int (72179, Smbc_Bal, "SMBC balance matches exactly: 72179 jpy");
+            Assert_Equal_Int (70539, Smbc_Bal, "SMBC balance matches exactly: 70539 jpy");
             Assert_Equal_Int (5000, Yucho_Bal, "Yucho balance matches exactly: 5000 jpy");
             Assert_Equal_Int (5600, AllC_Bal, "All-Country balance matches exactly: 5600 jpy");
          end;

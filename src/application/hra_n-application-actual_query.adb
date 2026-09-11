@@ -7,16 +7,17 @@ with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 
 package body HRA_N.Application.Actual_Query is
 
-   function Execute
-     (Paths   : HRA_N.Application.Path_Resolver.Path_Config;
-      Request : Query) return Actual_View
+   function Project
+     (Journal  : HRA_N.Storage.Journal_Reader.Journal_Result;
+      Request  : Query;
+      Snapshot : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned)) return Actual_View
    is
       use HRA_N.Application.Frontend_Types;
-      use HRA_N.Application.Path_Resolver;
 
       Result : Actual_View :=
         (Status         => Query_Rejected,
-         Snapshot       => (Kind => Snapshot_Unversioned),
+         Snapshot       => Snapshot,
          Scope          => Request.Scope,
          Selected_Day   => Request.Selected_Day,
          Ordering       => Request.Ordering,
@@ -25,8 +26,6 @@ package body HRA_N.Application.Actual_Query is
          Diagnostic     => [others => ' '],
          Diagnostic_Len => 0);
 
-      Journal : constant Journal_Result :=
-        Read_Journal_File (Journal_Path_Str (Paths));
       Missing_Date : Boolean := False;
 
       procedure Set_Diagnostic (Message : String) is
@@ -56,15 +55,6 @@ package body HRA_N.Application.Actual_Query is
       end Comes_Before;
 
    begin
-      if not Paths.Resolution_Ok then
-         Set_Diagnostic (Paths.Error_Reason (1 .. Paths.Error_Len));
-         return Result;
-      elsif Paths.Is_Versioned then
-         Result.Snapshot :=
-           (Kind     => Snapshot_Versioned,
-            Identity => Make_Token (Snapshot_Id_Str (Paths)));
-      end if;
-
       if not Journal.Success then
          Set_Diagnostic
            ("journal.hra: " &
@@ -138,6 +128,40 @@ package body HRA_N.Application.Actual_Query is
       end if;
 
       return Result;
+   end Project;
+
+   function Execute
+     (Paths   : HRA_N.Application.Path_Resolver.Path_Config;
+      Request : Query) return Actual_View
+   is
+      use HRA_N.Application.Frontend_Types;
+      use HRA_N.Application.Path_Resolver;
+
+      Snap : Snapshot_Reference := (Kind => Snapshot_Unversioned);
+   begin
+      if not Paths.Resolution_Ok then
+         return
+           (Status         => Query_Rejected,
+            Snapshot       => (Kind => Snapshot_Unversioned),
+            Scope          => Request.Scope,
+            Selected_Day   => Request.Selected_Day,
+            Ordering       => Request.Ordering,
+            Row_Count      => 0,
+            Rows           => [others => Empty_Actual_Row],
+            Diagnostic     => Paths.Error_Reason,
+            Diagnostic_Len => Paths.Error_Len);
+      elsif Paths.Is_Versioned then
+         Snap :=
+           (Kind     => Snapshot_Versioned,
+            Identity => Make_Token (Snapshot_Id_Str (Paths)));
+      end if;
+
+      declare
+         Journal : constant Journal_Result :=
+           Read_Journal_File (Journal_Path_Str (Paths));
+      begin
+         return Project (Journal, Request, Snap);
+      end;
    end Execute;
 
 end HRA_N.Application.Actual_Query;

@@ -7,9 +7,11 @@ with Ada.Command_Line;
 with Ada.Strings;       use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
+with HRA_N.Application.Review;
 with HRA_N.Core.Accounting_Role;       use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Validity;              use HRA_N.Core.Validity;
 with HRA_N.UI.Output;                  use HRA_N.UI.Output;
+with HRA_N.UI.Report_TUI;            use HRA_N.UI.Report_TUI;
 
 package body HRA_N.UI.Statement_Cli is
 
@@ -270,10 +272,15 @@ package body HRA_N.UI.Statement_Cli is
    end Display_Statement;
 
    procedure Dispatch (Paths : Path_Config; Start_Arg : Positive) is
-      Total     : constant Natural := Ada.Command_Line.Argument_Count;
-      Arg_Idx   : Positive := Start_Arg;
-      As_Of_Val : Date_Type := (Year => 2026, Month => 1, Day => 1);
-      Has_As_Of : Boolean := False;
+      Total        : constant Natural := Ada.Command_Line.Argument_Count;
+      Arg_Idx      : Positive := Start_Arg;
+      Sys_Date     : constant Date_Type := HRA_N.Application.Review.Get_System_Date;
+      As_Of_Val    : Date_Type := Sys_Date;
+      Has_As_Of    : Boolean := False;
+      Year_Val     : Year_Type := Sys_Date.Year;
+      Month_Val    : Month_Type := Sys_Date.Month;
+      Selected_Tab : HRA_N.UI.Report_TUI.Report_Tab := HRA_N.UI.Report_TUI.Tab_Statement;
+      Is_TUI       : Boolean := False;
    begin
       while Arg_Idx <= Total loop
          declare
@@ -295,7 +302,79 @@ package body HRA_N.UI.Statement_Cli is
                      return;
                   end if;
                   Has_As_Of := True;
+                  Year_Val := As_Of_Val.Year;
+                  Month_Val := As_Of_Val.Month;
                end;
+            elsif Arg = "--year" or else Arg = "-y" then
+               if Arg_Idx = Total then
+                  Put_Error_Line ("hra-n report: --year requires a YYYY argument");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  return;
+               end if;
+               Arg_Idx := Arg_Idx + 1;
+               declare
+                  Y_Str : constant String := Ada.Command_Line.Argument (Arg_Idx);
+                  Y_Num : Integer := 0;
+               begin
+                  begin
+                     Y_Num := Integer'Value (Y_Str);
+                  exception
+                     when others =>
+                        Put_Error_Line ("hra-n report: invalid --year '" & Y_Str & "'");
+                        Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                        return;
+                  end;
+                  if Y_Num in Year_Type'Range then
+                     Year_Val := Year_Type (Y_Num);
+                  else
+                     Put_Error_Line ("hra-n report: year out of range '" & Y_Str & "'");
+                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                     return;
+                  end if;
+               end;
+            elsif Arg = "--month" or else Arg = "-m" then
+               if Arg_Idx = Total then
+                  Put_Error_Line ("hra-n report: --month requires a 1..12 argument");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  return;
+               end if;
+               Arg_Idx := Arg_Idx + 1;
+               declare
+                  M_Str : constant String := Ada.Command_Line.Argument (Arg_Idx);
+                  M_Num : Integer := 0;
+               begin
+                  begin
+                     M_Num := Integer'Value (M_Str);
+                  exception
+                     when others =>
+                        Put_Error_Line ("hra-n report: invalid --month '" & M_Str & "'");
+                        Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                        return;
+                  end;
+                  if M_Num in Month_Type'Range then
+                     Month_Val := Month_Type (M_Num);
+                  else
+                     Put_Error_Line ("hra-n report: month out of range '" & M_Str & "' (expected 1..12)");
+                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                     return;
+                  end if;
+               end;
+            elsif Arg = "--flow" or else Arg = "--daily-flow" then
+               Selected_Tab := HRA_N.UI.Report_TUI.Tab_Daily_Flow;
+            elsif Arg = "--pace" or else Arg = "--pacing" then
+               Selected_Tab := HRA_N.UI.Report_TUI.Tab_Pacing;
+            elsif Arg = "--audit" then
+               Selected_Tab := HRA_N.UI.Report_TUI.Tab_Audit;
+            elsif Arg = "--mom" then
+               Selected_Tab := HRA_N.UI.Report_TUI.Tab_MoM;
+            elsif Arg = "--budget" then
+               Selected_Tab := HRA_N.UI.Report_TUI.Tab_Budget;
+            elsif Arg = "--balances" then
+               Selected_Tab := HRA_N.UI.Report_TUI.Tab_Balances;
+            elsif Arg = "--statement" then
+               Selected_Tab := HRA_N.UI.Report_TUI.Tab_Statement;
+            elsif Arg = "--tui" then
+               Is_TUI := True;
             else
                Put_Error_Line ("hra-n statement: unrecognized argument '" & Arg & "'");
                Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
@@ -305,15 +384,36 @@ package body HRA_N.UI.Statement_Cli is
          Arg_Idx := Arg_Idx + 1;
       end loop;
 
-      declare
-         Report : constant Statement_Report :=
-           Execute_Statement_Query (Paths, As_Of_Val, Has_As_Of);
-      begin
-         Display_Statement (Report);
-         if Report.Status = Query_Rejected then
-            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-         end if;
-      end;
+      if Is_TUI then
+         declare
+            End_D : constant Day_Type := Days_In_Month (Year_Val, Month_Val);
+            Sel_D : constant Date_Type :=
+              (if Has_As_Of then As_Of_Val
+               elsif Year_Val = Sys_Date.Year and then Month_Val = Sys_Date.Month then Sys_Date
+               else (Year => Year_Val, Month => Month_Val, Day => End_D));
+         begin
+            HRA_N.UI.Report_TUI.Run (Paths, Sel_D);
+         end;
+         return;
+      end if;
+
+      if Selected_Tab = HRA_N.UI.Report_TUI.Tab_Statement then
+         declare
+            Report : constant Statement_Report :=
+              Execute_Statement_Query (Paths, As_Of_Val, Has_As_Of);
+         begin
+            Display_Statement (Report);
+            if Report.Status = Query_Rejected then
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+            end if;
+         end;
+      else
+         HRA_N.UI.Report_TUI.Export_Cli
+           (Paths => Paths,
+            Tab   => Selected_Tab,
+            Year  => Year_Val,
+            Month => Month_Val);
+      end if;
    end Dispatch;
 
 end HRA_N.UI.Statement_Cli;

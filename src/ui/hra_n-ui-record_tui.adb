@@ -3,6 +3,7 @@
 --  Package body: HRA_N.UI.Record_TUI
 -------------------------------------------------------------------------------
 
+with Ada.Characters.Handling;
 with Ada.Strings; use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
@@ -39,6 +40,52 @@ package body HRA_N.UI.Record_TUI is
    end record;
    type Locus_Array is array (1 .. Max_Loci) of Locus_Entry;
    type Filtered_Array is array (1 .. Max_Loci) of Positive;
+
+   function Role_Name (Role : Accounting_Role) return String is
+     (case Role is
+        when Role_Asset     => "asset",
+        when Role_Liability => "liability",
+        when Role_Equity    => "equity",
+        when Role_Income    => "income",
+        when Role_Expense   => "expense");
+
+   function Pad_Right (Str : String; Width : Natural) return String is
+   begin
+      if Str'Length >= Width then
+         return Str;
+      else
+         return Str & String'(1 .. Width - Str'Length => ' ');
+      end if;
+   end Pad_Right;
+
+   function Pad_Left (Str : String; Width : Natural) return String is
+   begin
+      if Str'Length >= Width then
+         return Str;
+      else
+         return String'(1 .. Width - Str'Length => ' ') & Str;
+      end if;
+   end Pad_Left;
+
+   function Format_Quanta_With_Commas (Amount : Quanta_Type) return String is
+      Raw          : constant String := Trim (Quanta_Type'Image (Amount), Ada.Strings.Both);
+      Result       : String (1 .. Raw'Length + Raw'Length / 3 + 2);
+      Res_Len      : Natural := 0;
+      Digits_Count : Natural := 0;
+   begin
+      for I in reverse Raw'Range loop
+         if Raw (I) in '0' .. '9' then
+            if Digits_Count > 0 and then Digits_Count mod 3 = 0 then
+               Res_Len := Res_Len + 1;
+               Result (Result'Last - Res_Len + 1) := ',';
+            end if;
+            Digits_Count := Digits_Count + 1;
+         end if;
+         Res_Len := Res_Len + 1;
+         Result (Result'Last - Res_Len + 1) := Raw (I);
+      end loop;
+      return Result (Result'Last - Res_Len + 1 .. Result'Last);
+   end Format_Quanta_With_Commas;
 
    procedure Run_Internal
      (Paths         : HRA_N.Application.Path_Resolver.Path_Config;
@@ -91,19 +138,48 @@ package body HRA_N.UI.Record_TUI is
       end Set_Notice;
 
       procedure Update_Candidates (Pattern : String) is
+         Lower_Pat : constant String :=
+           Ada.Characters.Handling.To_Lower (Pattern);
       begin
          Filtered_Count := 0;
          Cand_Idx := 1;
+         if Pattern'Length = 0 then
+            for I in 1 .. Loci_Count loop
+               Filtered_Count := Filtered_Count + 1;
+               Filtered_Loci (Filtered_Count) := I;
+            end loop;
+            return;
+         end if;
+
+         --  1. Prefix matches first
          for I in 1 .. Loci_Count loop
             declare
-               Tok : constant String := Loci (I).Token.Value (1 .. Loci (I).Token.Length);
+               Tok       : constant String := Loci (I).Token.Value (1 .. Loci (I).Token.Length);
+               Lower_Tok : constant String := Ada.Characters.Handling.To_Lower (Tok);
             begin
-               if Pattern'Length = 0 then
+               if Pattern'Length <= Tok'Length
+                 and then Lower_Tok (Lower_Tok'First .. Lower_Tok'First + Pattern'Length - 1) = Lower_Pat
+               then
                   Filtered_Count := Filtered_Count + 1;
                   Filtered_Loci (Filtered_Count) := I;
-               elsif Pattern'Length <= Tok'Length
-                 and then Tok (Tok'First .. Tok'First + Pattern'Length - 1) = Pattern
-               then
+               end if;
+            end;
+         end loop;
+
+         --  2. Substring matches if not already included
+         for I in 1 .. Loci_Count loop
+            declare
+               Tok       : constant String := Loci (I).Token.Value (1 .. Loci (I).Token.Length);
+               Lower_Tok : constant String := Ada.Characters.Handling.To_Lower (Tok);
+               Already   : Boolean := False;
+            begin
+               for J in 1 .. Filtered_Count loop
+                  if Filtered_Loci (J) = I then
+                     Already := True;
+                     exit;
+                  end if;
+               end loop;
+               if not Already and then Index (Lower_Tok, Lower_Pat) > 0 then
                   Filtered_Count := Filtered_Count + 1;
                   Filtered_Loci (Filtered_Count) := I;
                end if;
@@ -347,6 +423,11 @@ package body HRA_N.UI.Record_TUI is
       end Handle_Enter;
 
       procedure Draw_Editing is
+         Max_R        : constant Natural := Rows;
+         Max_C        : constant Natural := Columns;
+         Cursor_Row   : Natural := 0;
+         Cursor_Col   : Natural := 0;
+         Cursor_Found : Boolean := False;
       begin
          Curses.Erase;
          Put_Clipped
@@ -358,124 +439,162 @@ package body HRA_N.UI.Record_TUI is
              then Snapshot_Id_Str (Paths)
              else "(unversioned)"));
          Put_Clipped (1, "============================================================");
+         Put_Clipped (2, " Source (FROM) locus decreases; Destination (TO) locus increases.");
 
-         Put_Clipped
-           (3,
-            (if Focus = Field_Date then "> Date:        [" else "  Date:        [") &
-            Date_Str (1 .. Date_Len) &
-            (if Focus = Field_Date then "_" else " ") &
-            "] (YYYY-MM-DD)");
+         --  Field 1: Date
+         declare
+            Prefix : constant String := (if Focus = Field_Date then "> Date:        [" else "  Date:        [");
+            Suffix : constant String := (if Focus = Field_Date then "_" else " ") & "] (YYYY-MM-DD)";
+         begin
+            Put_Clipped (3, Prefix & Date_Str (1 .. Date_Len) & Suffix);
+            if Focus = Field_Date then
+               Cursor_Row := 3;
+               Cursor_Col := Prefix'Length + Date_Len;
+               Cursor_Found := True;
+            end if;
+         end;
 
-         Put_Clipped
-           (4,
-            (if Focus = Field_From then "> From:        [" else "  From:        [") &
-            From_Str (1 .. From_Len) &
-            (if Focus = Field_From then "_" else " ") &
-            "] (source locus)");
+         --  Field 2: From Locus
+         declare
+            Prefix : constant String := (if Focus = Field_From then "> From:        [" else "  From:        [");
+            Suffix : constant String := (if Focus = Field_From then "_" else " ") & "] (source locus)";
+         begin
+            Put_Clipped (4, Prefix & From_Str (1 .. From_Len) & Suffix);
+            if Focus = Field_From then
+               Cursor_Row := 4;
+               Cursor_Col := Prefix'Length + From_Len;
+               Cursor_Found := True;
+            end if;
+         end;
 
-         Put_Clipped
-           (5,
-            (if Focus = Field_To then "> To:          [" else "  To:          [") &
-            To_Str (1 .. To_Len) &
-            (if Focus = Field_To then "_" else " ") &
-            "] (destination locus)");
+         --  Field 3: To Locus
+         declare
+            Prefix : constant String := (if Focus = Field_To then "> To:          [" else "  To:          [");
+            Suffix : constant String := (if Focus = Field_To then "_" else " ") & "] (destination locus)";
+         begin
+            Put_Clipped (5, Prefix & To_Str (1 .. To_Len) & Suffix);
+            if Focus = Field_To then
+               Cursor_Row := 5;
+               Cursor_Col := Prefix'Length + To_Len;
+               Cursor_Found := True;
+            end if;
+         end;
 
-         Put_Clipped
-           (6,
-            (if Focus = Field_Amount then "> Amount:      [" else "  Amount:      [") &
-            Amt_Str (1 .. Amt_Len) &
-            (if Focus = Field_Amount then "_" else " ") &
-            "] jpy");
+         --  Field 4: Amount
+         declare
+            Prefix : constant String := (if Focus = Field_Amount then "> Amount:      [" else "  Amount:      [");
+            Suffix : constant String := (if Focus = Field_Amount then "_" else " ") & "] jpy";
+         begin
+            Put_Clipped (6, Prefix & Amt_Str (1 .. Amt_Len) & Suffix);
+            if Focus = Field_Amount then
+               Cursor_Row := 6;
+               Cursor_Col := Prefix'Length + Amt_Len;
+               Cursor_Found := True;
+            end if;
+         end;
 
-         Put_Clipped
-           (7,
-            (if Focus = Field_Description then "> Description: [" else "  Description: [") &
-            Desc_Str (1 .. Desc_Len) &
-            (if Focus = Field_Description then "_" else " ") &
-            "]");
+         --  Field 5: Description
+         declare
+            Prefix : constant String := (if Focus = Field_Description then "> Description: [" else "  Description: [");
+            Suffix : constant String := (if Focus = Field_Description then "_" else " ") & "]";
+         begin
+            Put_Clipped (7, Prefix & Desc_Str (1 .. Desc_Len) & Suffix);
+            if Focus = Field_Description then
+               Cursor_Row := 7;
+               Cursor_Col := Prefix'Length + HRA_N.UI.Terminal_UTF8.Display_Width (Desc_Str (1 .. Desc_Len));
+               Cursor_Found := True;
+            end if;
+         end;
 
-         Put_Clipped (9, "------------------------------------------------------------");
+         Put_Clipped (8, "------------------------------------------------------------");
 
-         --  Candidate listing with active selection highlight
-         if Focus in Field_From | Field_To and then Filtered_Count > 0 then
-            Put_Clipped (10, "Candidates (Up/Down: pick, Enter/Right: accept):");
-            declare
-               Line_Text : String (1 .. 256) := [others => ' '];
-               Line_Len  : Natural := 0;
-            begin
-               for I in 1 .. Natural'Min (8, Filtered_Count) loop
-                  declare
-                     L_Idx   : constant Positive := Filtered_Loci (I);
-                     Tok     : constant String := Loci (L_Idx).Token.Value (1 .. Loci (L_Idx).Token.Length);
-                     Is_Sel  : constant Boolean := (I = Cand_Idx);
-                     Item_Str : constant String := (if Is_Sel then "[" & Tok & "]*" else " " & Tok & " ");
-                  begin
-                     if Line_Len + Item_Str'Length + 2 <= Line_Text'Length then
-                        if Line_Len > 0 then
-                           Line_Text (Line_Len + 1 .. Line_Len + 2) := "  ";
-                           Line_Len := Line_Len + 2;
-                        end if;
-                        Line_Text (Line_Len + 1 .. Line_Len + Item_Str'Length) := Item_Str;
-                        Line_Len := Line_Len + Item_Str'Length;
-                     end if;
-                  end;
-               end loop;
-               if Line_Len > 0 then
-                  Put_Clipped (11, "  " & Line_Text (1 .. Line_Len));
-               end if;
-            end;
-         elsif Loci_Count > 0 then
-            Put_Clipped (10, "All Available Loci:");
-            declare
-               Line_Text : String (1 .. 256) := [others => ' '];
-               Line_Len  : Natural := 0;
-
-               procedure Append_Item (Item_Str : String) is
+         --  Vertical Candidate listing (inspired by HRA and Loam)
+         if Focus in Field_From | Field_To then
+            Put_Clipped (9, "Candidate loci [Up/Down: pick, Enter/Right: accept]:");
+            if Filtered_Count > 0 then
+               declare
+                  Max_Visible : constant Positive := 5;
+                  Start_Idx   : constant Positive :=
+                    (if Cand_Idx > Max_Visible then Cand_Idx - Max_Visible + 1 else 1);
+                  End_Idx     : constant Positive :=
+                    Positive'Min (Filtered_Count, Start_Idx + Max_Visible - 1);
+                  Current_Row : Natural := 10;
                begin
-                  if Line_Len + Item_Str'Length + 2 <= Line_Text'Length then
-                     if Line_Len > 0 then
-                        Line_Text (Line_Len + 1 .. Line_Len + 2) := "  ";
-                        Line_Len := Line_Len + 2;
+                  for I in Start_Idx .. End_Idx loop
+                     if Current_Row < Max_R - 4 then
+                        declare
+                           L_Idx    : constant Positive := Filtered_Loci (I);
+                           Tok      : constant String := Loci (L_Idx).Token.Value (1 .. Loci (L_Idx).Token.Length);
+                           Role_Str : constant String := Role_Name (Loci (L_Idx).Role);
+                           Prefix   : constant String := (if I = Cand_Idx then " > " else "   ");
+                        begin
+                           Put_Clipped
+                             (Current_Row,
+                              Prefix & Pad_Right (Tok, 16) & " (" & Role_Str & ")");
+                           Current_Row := Current_Row + 1;
+                        end;
                      end if;
-                     Line_Text (Line_Len + 1 .. Line_Len + Item_Str'Length) := Item_Str;
-                     Line_Len := Line_Len + Item_Str'Length;
+                  end loop;
+                  if Filtered_Count > End_Idx and then Current_Row < Max_R - 4 then
+                     Put_Clipped
+                       (Current_Row,
+                        "   ... (" & Trim (Natural'Image (Filtered_Count - End_Idx), Both) & " more)");
                   end if;
-               end Append_Item;
+               end;
+            else
+               Put_Clipped (10, "   (no matching loci in Policy)");
+            end if;
+         elsif Loci_Count > 0 then
+            Put_Clipped (9, "Available Policy Loci:");
+            declare
+               Current_Row : Natural := 10;
+               End_Idx     : constant Positive := Positive'Min (5, Loci_Count);
             begin
-               for I in 1 .. Natural'Min (6, Loci_Count) loop
-                  declare
-                     Tok : constant String :=
-                       Loci (I).Token.Value (1 .. Loci (I).Token.Length);
-                     Role_Name : constant String :=
-                       (case Loci (I).Role is
-                          when Role_Asset     => "asset",
-                          when Role_Liability => "liability",
-                          when Role_Equity    => "equity",
-                          when Role_Income    => "income",
-                          when Role_Expense   => "expense");
-                  begin
-                     Append_Item (Tok & " (" & Role_Name & ")");
-                  end;
+               for I in 1 .. End_Idx loop
+                  if Current_Row < Max_R - 4 then
+                     declare
+                        Tok      : constant String := Loci (I).Token.Value (1 .. Loci (I).Token.Length);
+                        Role_Str : constant String := Role_Name (Loci (I).Role);
+                     begin
+                        Put_Clipped
+                          (Current_Row,
+                           "   " & Pad_Right (Tok, 16) & " (" & Role_Str & ")");
+                        Current_Row := Current_Row + 1;
+                     end;
+                  end if;
                end loop;
-               if Line_Len > 0 then
-                  Put_Clipped (11, Line_Text (1 .. Line_Len));
+               if Loci_Count > End_Idx and then Current_Row < Max_R - 4 then
+                  Put_Clipped
+                    (Current_Row,
+                     "   ... (" & Trim (Natural'Image (Loci_Count - End_Idx), Both) & " more)");
                end if;
             end;
          end if;
 
-         if Notice_Len > 0 then
-            Put_Clipped (13, "! " & Notice (1 .. Notice_Len));
+         --  Notice row
+         if Notice_Len > 0 and then Max_R > 4 then
+            Put_Clipped (Max_R - 4, "! " & Notice (1 .. Notice_Len));
          end if;
 
-         if Rows > 2 then
+         --  Footer
+         if Max_R > 2 then
             Put_Clipped
-              (Rows - 2,
-               "Enter: next/propose   Tab/Shift-Tab: nav   Up/Down: candidates   Esc: cancel");
+              (Max_R - 2,
+               "Tab/Shift-Tab: nav   Up/Down: pick locus   Enter: accept/propose   Esc: cancel");
          end if;
+
+         --  Position terminal hardware cursor at active edit position
+         if Cursor_Found and then Cursor_Row < Max_R and then Cursor_Col < Max_C then
+            Curses.Move_Cursor
+              (Line   => Curses.Line_Position (Cursor_Row),
+               Column => Curses.Column_Position (Cursor_Col));
+         end if;
+
          Curses.Refresh;
       end Draw_Editing;
 
       procedure Draw_Preview is
+         Max_R : constant Natural := Rows;
       begin
          Curses.Erase;
          Put_Clipped
@@ -495,6 +614,31 @@ package body HRA_N.UI.Record_TUI is
                " (-" & Amt_Str (1 .. Amt_Len) & " jpy) -> " &
                To_Str (1 .. To_Len) &
                " (+" & Amt_Str (1 .. Amt_Len) & " jpy)");
+            Put_Clipped
+              (7,
+               "Total:        " & Format_Quanta_With_Commas (Quanta_Type'Value (Amt_Str (1 .. Amt_Len))) & " jpy (balanced)");
+            if Desc_Len > 0 then
+               Put_Clipped (8, "Description:  " & Desc_Str (1 .. Desc_Len));
+            else
+               Put_Clipped (8, "Description:  (none)");
+            end if;
+            Put_Clipped
+              (9,
+               "Snapshot:     " & Expected_Snapshot (Proposal) &
+               " -> next immutable generation");
+            Put_Clipped (11, "------------------------------------------------------------");
+            Put_Clipped (12, "Ready to commit correction to authority.");
+         else
+            Put_Clipped (4, "Date:         " & Date_Str (1 .. Date_Len));
+            Put_Clipped
+              (5,
+               "Flow:         " & From_Str (1 .. From_Len) &
+               " (-" & Amt_Str (1 .. Amt_Len) & " jpy) -> " &
+               To_Str (1 .. To_Len) &
+               " (+" & Amt_Str (1 .. Amt_Len) & " jpy)");
+            Put_Clipped
+              (6,
+               "Total:        " & Format_Quanta_With_Commas (Quanta_Type'Value (Amt_Str (1 .. Amt_Len))) & " jpy (balanced)");
             if Desc_Len > 0 then
                Put_Clipped (7, "Description:  " & Desc_Str (1 .. Desc_Len));
             else
@@ -505,36 +649,21 @@ package body HRA_N.UI.Record_TUI is
                "Snapshot:     " & Expected_Snapshot (Proposal) &
                " -> next immutable generation");
             Put_Clipped (10, "------------------------------------------------------------");
-            Put_Clipped (11, "Ready to commit correction to authority.");
-         else
-            Put_Clipped (4, "Date:         " & Date_Str (1 .. Date_Len));
-            Put_Clipped
-              (5,
-               "Flow:         " & From_Str (1 .. From_Len) &
-               " (-" & Amt_Str (1 .. Amt_Len) & " jpy) -> " &
-               To_Str (1 .. To_Len) &
-               " (+" & Amt_Str (1 .. Amt_Len) & " jpy)");
-            if Desc_Len > 0 then
-               Put_Clipped (6, "Description:  " & Desc_Str (1 .. Desc_Len));
-            else
-               Put_Clipped (6, "Description:  (none)");
-            end if;
-            Put_Clipped
-              (7,
-               "Snapshot:     " & Expected_Snapshot (Proposal) &
-               " -> next immutable generation");
-            Put_Clipped (9, "------------------------------------------------------------");
-            Put_Clipped (10, "Ready to commit to authority.");
+            Put_Clipped (11, "Ready to commit to authority.");
          end if;
 
-         if Notice_Len > 0 then
-            Put_Clipped (13, "Notice: " & Notice (1 .. Notice_Len));
+         if Notice_Len > 0 and then Max_R > 4 then
+            Put_Clipped (Max_R - 4, "Notice: " & Notice (1 .. Notice_Len));
          end if;
 
-         if Rows > 2 then
+         if Max_R > 2 then
             Put_Clipped
-              (Rows - 2,
+              (Max_R - 2,
                "Enter: commit to authority   e / Esc: edit draft   q: cancel");
+         end if;
+
+         if Max_R > 0 and then Columns > 0 then
+            Curses.Move_Cursor (Line => 0, Column => 0);
          end if;
          Curses.Refresh;
       end Draw_Preview;
@@ -750,6 +879,124 @@ package body HRA_N.UI.Record_TUI is
       Prompt_Row : constant Natural := (if Rows > 2 then Rows - 1 else 0);
       Intent     : Record_Split_Intent;
 
+      Policy     : constant Policy_Result := Read_Policy_File (Policy_Path_Str (Paths));
+      Loci       : Locus_Array;
+      Loci_Count : Natural := 0;
+
+      procedure Draw_Split_Workspace is
+         Max_R : constant Natural := Rows;
+      begin
+         Curses.Erase;
+         Put_Clipped
+           (0,
+            "HRA-N RECORD SPLIT MOVEMENT  " &
+            (if Paths.Is_Versioned
+             then Snapshot_Id_Str (Paths)
+             else "(unversioned)"));
+         Put_Clipped (1, "============================================================");
+         Put_Clipped (2, " Multi-leg movement: enter FROM loci (outflow), then TO loci (inflow).");
+
+         Put_Clipped (4, " Split Postings (" & Trim (Natural (Intent.Count)'Image, Both) & "):");
+         if Intent.Count = 0 then
+            Put_Clipped (5, "   (no postings entered yet)");
+         else
+            for I in 1 .. Natural (Intent.Count) loop
+               if 4 + I < Max_R - 8 then
+                  declare
+                     Chg     : constant Split_Change := Intent.Changes (I);
+                     Loc     : constant String := Chg.Locus.Token.Value (1 .. Chg.Locus.Token.Length);
+                     Amt     : constant Long_Long_Integer := Long_Long_Integer (Chg.Amount);
+                     Mea     : constant String := Chg.Measure.Token.Value (1 .. Chg.Measure.Token.Length);
+                     Dir_Str : constant String := (if Amt < 0 then "FROM (outflow)" else "TO   (inflow) ");
+                     Amt_Str : constant String :=
+                       (if Amt < 0
+                        then "-" & Format_Quanta_With_Commas (Quanta_Type (-Amt))
+                        else "+" & Format_Quanta_With_Commas (Quanta_Type (Amt)));
+                  begin
+                     Put_Clipped
+                       (4 + I,
+                        "   " & Trim (I'Image, Both) & ". " &
+                        Dir_Str & "  " & Pad_Right (Loc, 16) & "  " &
+                        Pad_Left (Amt_Str, 12) & " " & Mea);
+                  end;
+               end if;
+            end loop;
+         end if;
+
+         --  Running balance calculation
+         declare
+            From_Sum : Long_Long_Integer := 0;
+            To_Sum   : Long_Long_Integer := 0;
+         begin
+            for I in 1 .. Natural (Intent.Count) loop
+               if Intent.Changes (I).Amount < 0 then
+                  From_Sum := From_Sum + Long_Long_Integer (-Intent.Changes (I).Amount);
+               else
+                  To_Sum := To_Sum + Long_Long_Integer (Intent.Changes (I).Amount);
+               end if;
+            end loop;
+
+            declare
+               Bal_Row : constant Natural :=
+                 Natural'Min (Max_R - 6, 6 + Natural (Intent.Count));
+            begin
+               Put_Clipped (Bal_Row - 1, "------------------------------------------------------------");
+               if From_Sum = To_Sum and then From_Sum > 0 then
+                  Put_Clipped
+                    (Bal_Row,
+                     " Balance: Balanced (Total: " & Format_Quanta_With_Commas (Quanta_Type (From_Sum)) & " jpy)");
+               elsif From_Sum /= To_Sum then
+                  declare
+                     Diff : constant Long_Long_Integer := To_Sum - From_Sum;
+                     Diff_Str : constant String :=
+                       (if Diff > 0
+                        then "+" & Format_Quanta_With_Commas (Quanta_Type (Diff)) & " jpy"
+                        else "-" & Format_Quanta_With_Commas (Quanta_Type (-Diff)) & " jpy");
+                  begin
+                     Put_Clipped
+                       (Bal_Row,
+                        " Balance: Unbalanced (FROM: " & Format_Quanta_With_Commas (Quanta_Type (From_Sum)) &
+                        " jpy, TO: " & Format_Quanta_With_Commas (Quanta_Type (To_Sum)) &
+                        " jpy, Diff: " & Diff_Str & ")");
+                  end;
+               else
+                  Put_Clipped (Bal_Row, " Balance: Waiting for postings...");
+               end if;
+
+               --  Available Policy Loci hints
+               if Loci_Count > 0 and then Bal_Row + 2 < Max_R - 2 then
+                  Put_Clipped (Bal_Row + 1, " Available Policy Loci:");
+                  declare
+                     Loci_Line : String (1 .. 256) := [others => ' '];
+                     LLen      : Natural := 0;
+                  begin
+                     for I in 1 .. Natural'Min (6, Loci_Count) loop
+                        declare
+                           Tok   : constant String := Loci (I).Token.Value (1 .. Loci (I).Token.Length);
+                           RName : constant String := Role_Name (Loci (I).Role);
+                           Item  : constant String := Tok & " (" & RName & ")";
+                        begin
+                           if LLen + Item'Length + 2 <= Loci_Line'Length then
+                              if LLen > 0 then
+                                 Loci_Line (LLen + 1 .. LLen + 2) := "  ";
+                                 LLen := LLen + 2;
+                              end if;
+                              Loci_Line (LLen + 1 .. LLen + Item'Length) := Item;
+                              LLen := LLen + Item'Length;
+                           end if;
+                        end;
+                     end loop;
+                     if LLen > 0 then
+                        Put_Clipped (Bal_Row + 2, "   " & Loci_Line (1 .. LLen));
+                     end if;
+                  end;
+               end if;
+            end;
+         end;
+
+         Curses.Refresh;
+      end Draw_Split_Workspace;
+
       --  Collect one side of the movement. Negative = FROM, positive = TO.
       --  A blank locus finishes the side; the first blank aborts outright.
       procedure Collect_Side
@@ -761,6 +1008,7 @@ package body HRA_N.UI.Record_TUI is
       begin
          Finished := False;
          while Natural (Intent.Count) < Max_Split_Changes loop
+            Draw_Split_Workspace;
             declare
                Locus_Text : constant String :=
                  Prompt_For
@@ -771,6 +1019,7 @@ package body HRA_N.UI.Record_TUI is
                   Finished := Natural (Intent.Count) > Side_Start;
                   exit;
                end if;
+               Draw_Split_Workspace;
                declare
                   Amt_Text : constant String :=
                     Prompt_For
@@ -822,6 +1071,23 @@ package body HRA_N.UI.Record_TUI is
       Intent.Count := 0;
       Intent.Valid_On := Selected_Day;
       Intent.Description := Make_Token ("");
+
+      --  Load candidate loci from Policy
+      if Policy.Success then
+         for I in 1 .. Natural (Entry_Count (Policy.Roles)) loop
+            if Loci_Count < Max_Loci then
+               declare
+                  Assign : constant Role_Assignment := Entry_At (Policy.Roles, I);
+               begin
+                  Loci_Count := Loci_Count + 1;
+                  Loci (Loci_Count) :=
+                    (Token => Assign.Locus.Token,
+                     Role  => Assign.Role);
+               end;
+            end if;
+         end loop;
+      end if;
+
       declare
          From_Done : Boolean := False;
          To_Done   : Boolean := False;
@@ -837,6 +1103,7 @@ package body HRA_N.UI.Record_TUI is
          end if;
       end;
 
+      Draw_Split_Workspace;
       declare
          Desc_Text : constant String :=
            Prompt_For (Prompt_Row, "Description (blank for none): ", "", True);
@@ -879,14 +1146,22 @@ package body HRA_N.UI.Record_TUI is
          Curses.Erase;
          Put_Clipped (0, "SPLIT PREVIEW  " & Proposed_Event_Id (Prop_Res.Proposal));
          Put_Clipped (1, "============================================================");
+         Put_Clipped (3, "Date        : " & Format_Iso_Date (Intent.Valid_On));
+         if Intent.Description.Length > 0 then
+            Put_Clipped (4, "Description : " & Intent.Description.Value (1 .. Intent.Description.Length));
+         else
+            Put_Clipped (4, "Description : (none)");
+         end if;
+         Put_Clipped (5, "Snapshot    : " & Snapshot_Id_Str (Paths) & " -> next immutable generation");
+         Put_Clipped (6, "------------------------------------------------------------");
+         Put_Clipped (7, "Postings:");
          for I in 1 .. Natural (Intent.Count) loop
             Put_Clipped
-              (2 + I,
+              (7 + I,
                "  " & Split_Change_Text (Intent.Changes (I)));
          end loop;
-         Put_Clipped
-           (3 + Natural (Intent.Count),
-            "Date       " & Format_Iso_Date (Intent.Valid_On));
+         Put_Clipped (8 + Natural (Intent.Count), "------------------------------------------------------------");
+         Put_Clipped (9 + Natural (Intent.Count), "Ready to commit split movement to authority.");
          if not Confirm (Prompt_Row, "Commit this split movement?") then
             return;
          end if;

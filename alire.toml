@@ -3,7 +3,7 @@ description = "HRA-N: Verified Household Engine inspired by Loam in SPARK/Ada"
 version = "0.1.0-dev"
 authors = ["shumoku88-bit"]
 licenses = "MIT"
-executables = ["hra_n_main"]
+executables = ["hra-n"]
 
 [[depends-on]]
 gnatprove = "~16.1.0"
