@@ -7,6 +7,69 @@ with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 
 package body HRA_N.Application.Policy_Query is
 
+   function Execute_Locus_Query (Paths : Path_Config) return Locus_View is
+      Snap     : constant String := Snapshot_Id_Str (Paths);
+      Snap_Len : constant Natural := Natural'Min (Snap'Length, 64);
+   begin
+      if not Paths.Resolution_Ok or else not Paths.Is_Versioned then
+         declare
+            Res : Locus_View (0);
+         begin
+            Res.Status := Query_Rejected;
+            Res.Diagnostic (1 .. 32) := "Unresolvable snapshot authority ";
+            Res.Diagnostic_Len := 32;
+            return Res;
+         end;
+      end if;
+
+      declare
+         Policy : constant Policy_Result :=
+           Read_Policy_File (Policy_Path_Str (Paths));
+      begin
+         if not Policy.Success then
+            declare
+               Res : Locus_View (0);
+               Len : constant Natural :=
+                 Natural'Min (Policy.Error_Len, Res.Diagnostic'Length);
+            begin
+               Res.Status := Query_Rejected;
+               Res.Diagnostic_Len := Len;
+               if Len > 0 then
+                  Res.Diagnostic (1 .. Len) :=
+                    Policy.Error_Reason (1 .. Len);
+               end if;
+               return Res;
+            end;
+         end if;
+
+         declare
+            Res : Locus_View (Natural (Policy.Loci.Count));
+         begin
+            Res.Snapshot_Len := Snap_Len;
+            Res.Snapshot (1 .. Snap_Len) :=
+              Snap (Snap'First .. Snap'First + Snap_Len - 1);
+            Res.Status := Query_Complete;
+            Res.Row_Count := Natural (Policy.Loci.Count);
+            for I in 1 .. Policy.Loci.Count loop
+               Res.Rows (I) := Policy.Loci.Values (I).Token;
+            end loop;
+            for I in 1 .. Res.Row_Count loop
+               for J in I + 1 .. Res.Row_Count loop
+                  if Token_Less (Res.Rows (J), Res.Rows (I)) then
+                     declare
+                        Temp : constant Token_Text := Res.Rows (I);
+                     begin
+                        Res.Rows (I) := Res.Rows (J);
+                        Res.Rows (J) := Temp;
+                     end;
+                  end if;
+               end loop;
+            end loop;
+            return Res;
+         end;
+      end;
+   end Execute_Locus_Query;
+
    function Execute_Role_Query
      (Paths     : Path_Config;
       As_Of     : Date_Type := (Year => 2026, Month => 1, Day => 1);

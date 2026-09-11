@@ -29,6 +29,7 @@ package body Test_Relation_Command is
       end if;
       Assert (Initialize_Household (Test_Dir).Success,
               "Relation fixture initializes");
+      Append_Initial_Policy (Test_Dir, "LOCUS shop" & ASCII.LF);
 
       --  Two source and settlement events through the shared movement path.
       declare

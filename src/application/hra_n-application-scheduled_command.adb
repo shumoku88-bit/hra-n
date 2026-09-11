@@ -3,6 +3,7 @@ with Ada.Strings; use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with HRA_N.Core.Actual_Routing; use HRA_N.Core.Actual_Routing;
+with HRA_N.Core.Admission; use HRA_N.Core.Admission;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Core.Scheduled; use HRA_N.Core.Scheduled;
 with HRA_N.Storage.Exact_File;
@@ -98,6 +99,10 @@ package body HRA_N.Application.Scheduled_Command is
       Sched  := Read_Scheduled_Journal_File (Scheduled_Path_Str (Paths));
       if not Policy.Success or else not Sched.Success then
          return Fail ("cannot propose from an unadmitted authority snapshot");
+      elsif not Admits_Locus (Policy.Loci, Intent.From_Locus)
+        or else not Admits_Locus (Policy.Loci, Intent.To_Locus)
+      then
+         return Fail ("scheduled declaration uses a Locus not admitted for new writes");
       end if;
 
       declare
@@ -274,6 +279,10 @@ package body HRA_N.Application.Scheduled_Command is
       Sched  := Read_Scheduled_Journal_File (Scheduled_Path_Str (Paths));
       if not Policy.Success or else not Sched.Success then
          return Fail ("cannot propose from an unadmitted authority snapshot");
+      elsif not Admits_Locus (Policy.Loci, Intent.From_Locus)
+        or else not Admits_Locus (Policy.Loci, Intent.To_Locus)
+      then
+         return Fail ("scheduled replacement uses a Locus not admitted for new writes");
       end if;
 
       declare
@@ -394,6 +403,17 @@ package body HRA_N.Application.Scheduled_Command is
             return Fail ("scheduled occurrence not found: " & Target_Str);
          elsif not Is_Current_Open (Sched.Lifecycle, Sched_Id) then
             return Fail ("scheduled occurrence is already completed, retired, or replaced: " & Target_Str);
+         end if;
+
+         if Intent.Existing_Actual_Id.Length = 0 then
+            for I in 1 .. Lookup.Item.Changes.Count loop
+               if not Admits_Locus
+                 (Policy.Loci, Lookup.Item.Changes.Values (I).Locus)
+               then
+                  return Fail
+                    ("scheduled completion uses a Locus not admitted for new writes");
+               end if;
+            end loop;
          end if;
 
          J_Bytes := HRA_N.Storage.Exact_File.Read_All (Journal_Path_Str (Paths));

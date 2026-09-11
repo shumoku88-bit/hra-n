@@ -11,6 +11,8 @@ with HRA_N.Core.Validity;        use HRA_N.Core.Validity;
 
 package HRA_N.Storage.Policy_Writer is
 
+   function Encode_Locus (Locus : String) return String;
+
    function Role_Name (R : Accounting_Role) return String;
 
    function Encode_Role

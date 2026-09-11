@@ -235,6 +235,35 @@ package body HRA_N.Storage.Policy_Reader is
                         end if;
                      end;
 
+                  elsif Tag = "LOCUS" then
+                     --  Explicit add-only new-write admission vocabulary.
+                     --  Historical Events, roles, routing, and display metadata
+                     --  never imply permission for a new quantity Effect.
+                     if Count /= 2 then
+                        Set_Error ("Malformed LOCUS admission declaration");
+                        Ada.Text_IO.Close (File);
+                        return Result;
+                     end if;
+                     declare
+                        Locus_Str : constant String :=
+                          Clean_Token (Slice (Line, Tokens (2)));
+                     begin
+                        if Locus_Str'Length = 0
+                          or else Locus_Str'Length > Max_Token_Length
+                        then
+                           Set_Error ("Invalid admitted Locus identity");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        elsif Result.Loci.Count = Max_Admitted_Loci then
+                           Set_Error ("Exceeded maximum admitted Loci");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        end if;
+                        Result.Loci.Count := Result.Loci.Count + 1;
+                        Result.Loci.Values (Result.Loci.Count) :=
+                          (Token => Make_Token (Locus_Str));
+                     end;
+
                   elsif Tag = "ZERO-ORIGIN" then
                      for T in 2 .. Count loop
                         declare
@@ -901,6 +930,9 @@ package body HRA_N.Storage.Policy_Reader is
          return Result;
       elsif not Coordinates_Are_Unique (Result.Routing) then
          Set_Error ("Duplicate Actual routing effective coordinate");
+         return Result;
+      elsif not Loci_Are_Unique (Result.Loci) then
+         Set_Error ("Duplicate Locus admission identity");
          return Result;
       end if;
 

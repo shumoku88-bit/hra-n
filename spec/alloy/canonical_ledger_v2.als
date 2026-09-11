@@ -79,6 +79,12 @@ sig RelationDischarge extends Record {
 abstract sig Role {}
 one sig Asset, Liability, Equity, Income, Expense extends Role {}
 
+--  Explicit add-only new-write admission vocabulary. Historical Events, roles,
+--  routing, and display metadata never imply permission for a new quantity Effect.
+sig LocusAdmission extends Record {
+    admittedLocus : one Locus
+}
+
 sig RoleAssignment extends Record {
     locus         : one Locus,
     role          : one Role,
@@ -197,6 +203,10 @@ fun DischargesAt[s : Snapshot] : set RelationDischarge {
 
 fun RolesAt[s : Snapshot] : set RoleAssignment {
     RoleAssignment & s.retained
+}
+
+fun LociAt[s : Snapshot] : set LocusAdmission {
+    LocusAdmission & s.retained
 }
 
 fun EffectiveTransactions[s : Snapshot] : set Transaction {
@@ -390,6 +400,7 @@ pred PolicyIsSound[s : Snapshot] {
     all old : RolesAt[s] | lone new : RolesAt[s] | new.replaces = old
     all r : RolesAt[s] | some r.replaces implies r.locus = r.replaces.locus
     all disj left, right : ActiveRoles[s] | left.locus != right.locus
+    all disj left, right : LociAt[s] | left.admittedLocus != right.admittedLocus
     all p : PriceObservation & s.retained | {
         p.base != p.quote
         p.baseAmount > 0
@@ -526,6 +537,11 @@ assert RetainedFactsNeverDisappear {
         s.retained in SnapOrder/next[s].retained
 }
 
+assert AdmittedLociUnique {
+    all s : Snapshot | Admitted[s] implies
+        all disj left, right : LociAt[s] | left.admittedLocus != right.admittedLocus
+}
+
 pred ValidScenario {
     #Snapshot = 3
     Admitted[SnapOrder/last]
@@ -658,6 +674,12 @@ pred RejectedDuplicateDischarge {
     all s : Snapshot | some s.retained implies not Admitted[s]
 }
 
+pred RejectedDuplicateLocus {
+    some s : Snapshot, disj left, right : LociAt[s] |
+        left.admittedLocus = right.admittedLocus
+    all s : Snapshot | some s.retained implies not Admitted[s]
+}
+
 run ValidScenario for 18 but exactly 3 Snapshot, 4 Day, 2 Measure, 5 Int
 run RejectedUnbalancedTransaction for 8 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedScheduledConflict for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
@@ -677,6 +699,7 @@ run RelationScenario for 12 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run SplitScenario for 12 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedDuplicateDischarge for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 run RejectedOverDischarge for 12 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
+run RejectedDuplicateLocus for 10 but exactly 2 Snapshot, 3 Day, 2 Measure, 5 Int
 
 check EffectiveTransactionsHaveNoRetainedSuccessor for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
 check ReversedTargetsRemainEffective for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
@@ -688,3 +711,4 @@ check CompletionIsClosedOverActualAuthority for 8 but 2 Snapshot, 3 Day, 2 Measu
 check EffectivePhysicalMovementsConservePerMeasure for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
 check ActiveRoleIsUnambiguousPerLocus for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
 check RetainedFactsNeverDisappear for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int
+check AdmittedLociUnique for 8 but 2 Snapshot, 3 Day, 2 Measure, 5 Int

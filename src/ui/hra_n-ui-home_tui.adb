@@ -14,6 +14,7 @@ with HRA_N.UI.Attention_TUI;
 with HRA_N.UI.Budget_TUI;
 with HRA_N.UI.Capacity_TUI;
 with HRA_N.UI.Routing_TUI;
+with HRA_N.UI.Locus_TUI;
 with HRA_N.UI.Scheduled_TUI;
 with HRA_N.UI.Balance_TUI;
 with HRA_N.UI.Snapshot_Label;
@@ -84,7 +85,7 @@ package body HRA_N.UI.Home_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "h/l: day  Enter: sel day  a: Actual  s: Sched  i: Attention  b: Balances  e: Capacity  c: Budget  r: Routing  g: today  q: quit");
+            "h/l: day  Enter: sel day  a: Actual  s: Sched  i: Attention  b: Balances  e: Capacity  c: Budget  r: Routing  v: Loci  g: today  q: quit");
       end if;
       Curses.Refresh;
    end Draw;
@@ -159,6 +160,11 @@ package body HRA_N.UI.Home_TUI is
                    (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
             elsif Key = Character'Pos ('i') or else Key = Character'Pos ('I') then
                HRA_N.UI.Attention_TUI.Run (Current_Paths);
+               Current_Paths :=
+                 HRA_N.Application.Path_Resolver.Resolve_Paths
+                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+            elsif Key = Character'Pos ('v') or else Key = Character'Pos ('V') then
+               HRA_N.UI.Locus_TUI.Run (Current_Paths);
                Current_Paths :=
                  HRA_N.Application.Path_Resolver.Resolve_Paths
                    (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));

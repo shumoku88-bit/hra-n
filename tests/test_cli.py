@@ -276,11 +276,17 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("bank", res.stdout)
         self.assertIn("food", res.stdout)
 
+        # 28. Admit the stable identity before assigning independent role policy
+        res = self.run_cmd("locus", "add", "crypto")
+        self.assertEqual(res.returncode, 0, f"crypto admission failed: {res.stderr}")
+        self.assertIn("[OK] Admitted Locus: crypto", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000012")
+
         # 28. Assign new role via generation authority
         res = self.run_cmd("role", "assign", "crypto", "ASSET", "2026-09-01")
         self.assertEqual(res.returncode, 0, f"role assign failed: {res.stderr}")
         self.assertIn("[OK] Committed Role Assignment: r0001", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000012")
+        self.assertEqual(self.current_snapshot(), "g00000013")
 
         # 28b. Inspect assigned role
         res = self.run_cmd("role")
@@ -292,7 +298,7 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("role", "assign", "crypto", "EXPENSE", "2026-10-01", "r0001")
         self.assertEqual(res.returncode, 0, f"role replacement failed: {res.stderr}")
         self.assertIn("[OK] Committed Role Assignment: r0002", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000013")
+        self.assertEqual(self.current_snapshot(), "g00000014")
 
         # 29b. Inspect active role replacement column
         res = self.run_cmd("role")
@@ -319,19 +325,19 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("role", "assign", "crypto", "ASSET", "2026-10-02", "r9999")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("replacement target does not exist", res.stderr + res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000013")
+        self.assertEqual(self.current_snapshot(), "g00000014")
 
         # 30b. Cross-locus replacement
         res = self.run_cmd("role", "assign", "food", "EXPENSE", "2026-10-02", "r0002")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("replacement target locus does not match", res.stderr + res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000013")
+        self.assertEqual(self.current_snapshot(), "g00000014")
 
         # 30c. Duplicate active role without replacement
         res = self.run_cmd("role", "assign", "crypto", "ASSET", "2026-10-02")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("already has an active assigned role", res.stderr + res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000013")
+        self.assertEqual(self.current_snapshot(), "g00000014")
 
         # 31. Window inspection (empty initially)
         res = self.run_cmd("window")
@@ -342,7 +348,7 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("window", "add", "w0001", "2026-09-01", "2026-10-01", "September 2026")
         self.assertEqual(res.returncode, 0, f"window add failed: {res.stderr}")
         self.assertIn("[OK] Added Evaluation Window: w0001", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000014")
+        self.assertEqual(self.current_snapshot(), "g00000015")
 
         # 32b. Inspect added window
         res = self.run_cmd("window")
@@ -355,13 +361,13 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("window", "add", "w0002", "2026-10-01", "2026-09-01", "Reversed")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("strictly before", res.stderr + res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000014")
+        self.assertEqual(self.current_snapshot(), "g00000015")
 
         # 33b. Duplicate window ID
         res = self.run_cmd("window", "add", "w0001", "2026-10-01", "2026-11-01", "Duplicate")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("already exists", res.stderr + res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000014")
+        self.assertEqual(self.current_snapshot(), "g00000015")
 
         # 34. Reverse e0004 via the generation authority. The reversal keeps
         # both endpoints retained: exact inverse effects plus an explicit link.
@@ -369,10 +375,10 @@ class TestHraNCli(unittest.TestCase):
         self.assertEqual(res.returncode, 0, f"revert failed: {res.stderr}")
         self.assertIn("[OK] Committed Reversal: e0006", res.stdout)
         self.assertIn("REVERSED: e0004", res.stdout)
-        self.assertIn("SNAPSHOT: g00000015", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000015")
+        self.assertIn("SNAPSHOT: g00000016", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000016")
         with open(
-            os.path.join(self.test_dir, ".hra", "generations", "g00000015", "journal.hra"),
+            os.path.join(self.test_dir, ".hra", "generations", "g00000016", "journal.hra"),
             "r", encoding="utf-8",
         ) as f:
             journal = f.read()
@@ -382,38 +388,38 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("revert", "e0004", "2026-09-16", "Double void")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("already reversed", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000015")
+        self.assertEqual(self.current_snapshot(), "g00000016")
 
         # 36. Reverse via the 'movement revert' alias
         res = self.run_cmd("movement", "revert", "e0003", "2026-09-16", "Voided update")
         self.assertEqual(res.returncode, 0, f"movement revert failed: {res.stderr}")
         self.assertIn("[OK] Committed Reversal: e0007", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000016")
+        self.assertEqual(self.current_snapshot(), "g00000017")
 
         # 37. Reversal of a superseded target fails closed
         res = self.run_cmd("revert", "e0001", "2026-09-16", "Void superseded")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("already superseded", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000016")
+        self.assertEqual(self.current_snapshot(), "g00000017")
 
         # 38. Reversal of an absent target fails closed
         res = self.run_cmd("revert", "e9999", "2026-09-16", "Void absent")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("does not exist in journal", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000016")
+        self.assertEqual(self.current_snapshot(), "g00000017")
 
         # 39. Capacity readout on empty authority
         res = self.run_cmd("capacity")
         self.assertEqual(res.returncode, 0, f"capacity failed: {res.stderr}")
         self.assertIn("unallocated: 0", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000016")
+        self.assertEqual(self.current_snapshot(), "g00000017")
 
         # 40. Capacity transfer via generation authority
         res = self.run_cmd("capacity", "transfer", "unallocated", "food", "5000", "2026-09-05")
         self.assertEqual(res.returncode, 0, f"capacity transfer failed: {res.stderr}")
         self.assertIn("[OK] Committed Capacity Transfer: cap0001", res.stdout)
-        self.assertIn("SNAPSHOT: g00000017", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000017")
+        self.assertIn("SNAPSHOT: g00000018", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000018")
 
         res = self.run_cmd("capacity")
         self.assertEqual(res.returncode, 0)
@@ -424,7 +430,7 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("capacity", "transfer", "food", "misc", "6000", "2026-09-05")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("would become negative", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000017")
+        self.assertEqual(self.current_snapshot(), "g00000018")
 
         # 42. Capacity rebalance via generation authority
         res = self.run_cmd(
@@ -433,7 +439,7 @@ class TestHraNCli(unittest.TestCase):
         )
         self.assertEqual(res.returncode, 0, f"capacity rebalance failed: {res.stderr}")
         self.assertIn("[OK] Committed Capacity Rebalance: cap0002", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000018")
+        self.assertEqual(self.current_snapshot(), "g00000019")
 
         # 43. Unbalanced rebalance fails closed
         res = self.run_cmd(
@@ -442,24 +448,24 @@ class TestHraNCli(unittest.TestCase):
         )
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("balance to zero", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000018")
+        self.assertEqual(self.current_snapshot(), "g00000019")
 
         # 44. Budget consumption counts the correction frontier only: the
         # superseded original must not contribute alongside its replacement.
         res = self.run_cmd("capacity", "transfer", "unallocated", "Snacks", "2000", "2026-09-07")
         self.assertEqual(res.returncode, 0, f"snacks funding failed: {res.stderr}")
         self.assertIn("[OK] Committed Capacity Transfer: cap0003", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000019")
-        res = self.run_cmd("movement", "cash", "snackshop", "1000", "2026-09-10", "Lunch")
+        self.assertEqual(self.current_snapshot(), "g00000020")
+        res = self.run_cmd("movement", "cash", "misc", "1000", "2026-09-10", "Lunch")
         self.assertEqual(res.returncode, 0)
         self.assertIn("[OK] Committed Movement: e0008", res.stdout)
-        res = self.run_cmd("correct", "e0008", "cash", "snackshop", "1200", "2026-09-10", "Bigger lunch")
+        res = self.run_cmd("correct", "e0008", "cash", "misc", "1200", "2026-09-10", "Bigger lunch")
         self.assertEqual(res.returncode, 0)
         self.assertIn("[OK] Committed Correction: e0009", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000021")
-        gen_policy = os.path.join(self.test_dir, ".hra", "generations", "g00000021", "policy.hra")
+        self.assertEqual(self.current_snapshot(), "g00000022")
+        gen_policy = os.path.join(self.test_dir, ".hra", "generations", "g00000022", "policy.hra")
         with open(gen_policy, "a", encoding="utf-8") as f:
-            f.write("ROUTE snackshop Snacks\n")
+            f.write("ROUTE misc Snacks\n")
         res = self.run_cmd("budget", "2026-09-01", "2026-10-01")
         self.assertEqual(res.returncode, 0, f"budget failed: {res.stderr}")
         snacks_lines = [line for line in res.stdout.splitlines() if "Snacks" in line]
@@ -472,20 +478,20 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("attention")
         self.assertEqual(res.returncode, 0, f"attention failed: {res.stderr}")
         self.assertIn("( 0 open)", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000021")
+        self.assertEqual(self.current_snapshot(), "g00000022")
 
         # 46. Raise attention with each due meaning
         res = self.run_cmd("attention", "raise", "Renew insurance", "2026-10-01")
         self.assertEqual(res.returncode, 0, f"raise failed: {res.stderr}")
         self.assertIn("[OK] Raised Attention: att0001", res.stdout)
-        self.assertIn("SNAPSHOT: g00000022", res.stdout)
+        self.assertIn("SNAPSHOT: g00000023", res.stdout)
         res = self.run_cmd("attention", "raise", "Deep clean", "none")
         self.assertEqual(res.returncode, 0)
         self.assertIn("[OK] Raised Attention: att0002", res.stdout)
         res = self.run_cmd("attention", "raise", "Mystery noise")
         self.assertEqual(res.returncode, 0)
         self.assertIn("[OK] Raised Attention: att0003", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000024")
+        self.assertEqual(self.current_snapshot(), "g00000025")
 
         res = self.run_cmd("attention")
         self.assertEqual(res.returncode, 0)
@@ -498,10 +504,10 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("attention", "resolve", "att0001", "2026-09-20")
         self.assertEqual(res.returncode, 0, f"resolve failed: {res.stderr}")
         self.assertIn("[OK] Closed Attention: att0001", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000025")
+        self.assertEqual(self.current_snapshot(), "g00000026")
         res = self.run_cmd("attention", "drop", "att0002")
         self.assertEqual(res.returncode, 0, f"drop failed: {res.stderr}")
-        self.assertEqual(self.current_snapshot(), "g00000026")
+        self.assertEqual(self.current_snapshot(), "g00000027")
 
         res = self.run_cmd("attention")
         self.assertEqual(res.returncode, 0)
@@ -513,11 +519,11 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("attention", "resolve", "att0001")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("already closed", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000026")
+        self.assertEqual(self.current_snapshot(), "g00000027")
         res = self.run_cmd("attention", "drop", "att0009")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("not retained", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000026")
+        self.assertEqual(self.current_snapshot(), "g00000027")
 
         # 49. Home reports open attention
         res = self.run_cmd("home", "--cli")
@@ -530,16 +536,16 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("( 0 open)", res.stdout)
 
         # 51. Raise a claim through the generation authority
-        res = self.run_cmd("movement", "cash", "depot", "3000", "2026-09-10", "Bike")
+        res = self.run_cmd("movement", "cash", "misc", "3000", "2026-09-10", "Bike")
         self.assertEqual(res.returncode, 0)
         self.assertIn("[OK] Committed Movement: e0010", res.stdout)
         res = self.run_cmd("movement", "bank", "cash", "5000", "2026-09-10", "Pay")
         self.assertEqual(res.returncode, 0)
         self.assertIn("[OK] Committed Movement: e0011", res.stdout)
-        res = self.run_cmd("relation", "raise", "e0010", "household", "depot", "jpy", "3000")
+        res = self.run_cmd("relation", "raise", "e0010", "household", "misc", "jpy", "3000")
         self.assertEqual(res.returncode, 0, f"raise failed: {res.stderr}")
         self.assertIn("[OK] Raised Relation Claim: rel0001", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000029")
+        self.assertEqual(self.current_snapshot(), "g00000030")
 
         res = self.run_cmd("relation")
         self.assertEqual(res.returncode, 0)
@@ -574,10 +580,10 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("split", "2026-09-12", "cash:-1500", "food:1000", "misc:500", "--desc", "Party")
         self.assertEqual(res.returncode, 0, f"split failed: {res.stderr}")
         self.assertIn("[OK] Committed Split: e0013", res.stdout)
-        self.assertIn("SNAPSHOT: g00000033", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000033")
+        self.assertIn("SNAPSHOT: g00000034", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000034")
         with open(
-            os.path.join(self.test_dir, ".hra", "generations", "g00000033", "journal.hra"),
+            os.path.join(self.test_dir, ".hra", "generations", "g00000034", "journal.hra"),
             "r", encoding="utf-8",
         ) as f:
             journal = f.read()
@@ -596,11 +602,11 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("route", "set", "food", "groceries", "initial")
         self.assertEqual(res.returncode, 0, f"route set failed: {res.stderr}")
         self.assertIn("[OK] Committed Actual Routing: food", res.stdout)
-        self.assertIn("SNAPSHOT: g00000034", res.stdout)
+        self.assertIn("SNAPSHOT: g00000035", res.stdout)
         res = self.run_cmd("route", "clear", "food", "2026-09-13")
         self.assertEqual(res.returncode, 0, f"route clear failed: {res.stderr}")
         self.assertIn("EFFECTIVE: 2026-09-13", res.stdout)
-        self.assertEqual(self.current_snapshot(), "g00000035")
+        self.assertEqual(self.current_snapshot(), "g00000036")
 
         res = self.run_cmd("route", "--as-of", "2026-09-12")
         self.assertEqual(res.returncode, 0)
@@ -618,7 +624,35 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("route", "set", "food", "other", "initial")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("coordinate already has retained evidence", res.stdout + res.stderr)
-        self.assertEqual(self.current_snapshot(), "g00000035")
+        self.assertEqual(self.current_snapshot(), "g00000036")
+
+        # 57. New quantity writes require explicit add-only Locus admission
+        res = self.run_cmd(
+            "movement", "cash", "new-place", "100", "2026-09-14", "Unknown locus"
+        )
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("not admitted for new writes", res.stdout + res.stderr)
+        self.assertEqual(self.current_snapshot(), "g00000036")
+
+        res = self.run_cmd("locus", "add", "new-place")
+        self.assertEqual(res.returncode, 0, f"locus add failed: {res.stderr}")
+        self.assertIn("[OK] Admitted Locus: new-place", res.stdout)
+        self.assertIn("SNAPSHOT: g00000037", res.stdout)
+        res = self.run_cmd("locus")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("new-place", res.stdout)
+
+        res = self.run_cmd(
+            "movement", "cash", "new-place", "100", "2026-09-14", "Admitted locus"
+        )
+        self.assertEqual(res.returncode, 0, f"admitted movement failed: {res.stderr}")
+        self.assertIn("[OK] Committed Movement: e0014", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000038")
+
+        res = self.run_cmd("locus", "add", "new-place")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("already admitted", res.stdout + res.stderr)
+        self.assertEqual(self.current_snapshot(), "g00000038")
 
 if __name__ == "__main__":
     unittest.main()

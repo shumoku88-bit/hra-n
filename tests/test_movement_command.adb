@@ -32,6 +32,10 @@ package body Test_Movement_Command is
          Invalid.Description := Make_Token ("bad""description");
          Assert (not Propose (Resolve_Paths (Test_Dir), Invalid).Success,
                  "Unencodable description fails before proposal creation");
+         Invalid := Intent;
+         Invalid.To_Locus := (Token => Make_Token ("observed-only"));
+         Assert (not Propose (Resolve_Paths (Test_Dir), Invalid).Success,
+                 "Unadmitted movement Locus fails closed");
       end;
 
       declare
@@ -355,6 +359,7 @@ package body Test_Movement_Command is
             Unbalanced : Record_Split_Intent := Base;
             Duplicate  : Record_Split_Intent := Base;
             Foreign    : Record_Split_Intent := Base;
+            Unknown    : Record_Split_Intent := Base;
             Single     : Record_Split_Intent := Base;
          begin
             Unbalanced.Changes (3) :=
@@ -375,6 +380,12 @@ package body Test_Movement_Command is
                Amount  => 500);
             Assert (not Propose_Split (Paths, Foreign).Success,
                     "Non-jpy split fails closed with an explicit gate");
+            Unknown.Changes (3) :=
+              (Locus   => (Token => Make_Token ("observed-only")),
+               Measure => (Token => Make_Token ("jpy")),
+               Amount  => 500);
+            Assert (not Propose_Split (Paths, Unknown).Success,
+                    "Split with an unadmitted Locus fails closed");
             Single.Count := 1;
             Assert (not Propose_Split (Paths, Single).Success,
                     "Single-change split fails closed");

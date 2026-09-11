@@ -4,6 +4,7 @@
 -------------------------------------------------------------------------------
 
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with HRA_N.Core.Admission; use HRA_N.Core.Admission;
 with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 with HRA_N.Storage.Policy_Writer; use HRA_N.Storage.Policy_Writer;
@@ -166,6 +167,50 @@ package body HRA_N.Application.Policy_Command is
       return Result;
    end Seal_Policy_Proposal;
 
+   function Propose_Locus
+     (Paths  : Path_Config;
+      Intent : Locus_Intent) return Proposal_Result
+   is
+      Result    : Proposal_Result;
+      Policy    : Policy_Result;
+      Authority : Authority_Bytes;
+
+      function Fail (Message : String) return Proposal_Result is
+      begin
+         return HRA_N.Application.Proposal.Failed (Result, Message);
+      end Fail;
+   begin
+      if not Paths.Resolution_Ok or else not Paths.Is_Versioned then
+         return Fail ("cannot propose Locus admission without selected snapshot authority");
+      elsif not Token_Is_Encodable (Intent.Locus.Token) then
+         return Fail ("Locus identity is empty or unencodable");
+      end if;
+
+      Policy := Read_Policy_File (Policy_Path_Str (Paths));
+      if not Policy.Success then
+         return Fail ("policy authority is not currently admitted");
+      elsif Admits_Locus (Policy.Loci, Intent.Locus) then
+         return Fail ("Locus is already admitted for new writes");
+      elsif Policy.Loci.Count = Max_Admitted_Loci then
+         return Fail ("Locus admission vocabulary is at capacity");
+      end if;
+
+      Authority := Load_Authority (Paths);
+      if not Authority.Success then
+         return Fail ("cannot read exact authority bytes for proposal");
+      end if;
+
+      declare
+         Locus_Str : constant String :=
+           Intent.Locus.Token.Value (1 .. Intent.Locus.Token.Length);
+         New_Policy : Unbounded_String := Authority.Policy;
+      begin
+         Append (New_Policy, Encode_Locus (Locus_Str));
+         return Seal_Policy_Proposal
+           (Paths, Authority, Locus_Str, "", New_Policy);
+      end;
+   end Propose_Locus;
+
    function Propose_Role
      (Paths  : Path_Config;
       Intent : Role_Intent) return Proposal_Result
@@ -194,6 +239,8 @@ package body HRA_N.Application.Policy_Command is
       Policy := Read_Policy_File (Policy_Path_Str (Paths));
       if not Policy.Success then
          return Fail ("policy authority is not currently admitted");
+      elsif not Admits_Locus (Policy.Loci, Intent.Locus) then
+         return Fail ("accounting role locus is not admitted for new writes");
       end if;
 
       if Intent.Has_Replaces then

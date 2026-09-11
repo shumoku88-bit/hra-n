@@ -27,6 +27,11 @@ package body Test_Scheduled_Command is
       end if;
       Assert (Initialize_Household (Test_Dir).Success,
               "Scheduled command fixture initializes");
+      Append_Initial_Policy
+        (Test_Dir,
+         "LOCUS smbc" & ASCII.LF
+         & "LOCUS rent" & ASCII.LF
+         & "LOCUS books" & ASCII.LF);
 
       --  1. Validation failures before proposal
       declare
@@ -45,6 +50,11 @@ package body Test_Scheduled_Command is
          Invalid.From_Locus := (Token => Make_Token ("bad:locus"));
          Assert (not Propose_Create (Resolve_Paths (Test_Dir), Invalid).Success,
                  "Unencodable locus fails before proposal creation");
+
+         Invalid := Create_1;
+         Invalid.To_Locus := (Token => Make_Token ("observed-only"));
+         Assert (not Propose_Create (Resolve_Paths (Test_Dir), Invalid).Success,
+                 "Unadmitted scheduled Locus fails closed");
       end;
 
       --  2. Valid creation and idempotent commit

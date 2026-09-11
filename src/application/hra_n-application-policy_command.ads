@@ -16,6 +16,10 @@ with HRA_N.Core.Validity;             use HRA_N.Core.Validity;
 
 package HRA_N.Application.Policy_Command is
 
+   type Locus_Intent is record
+      Locus : Locus_Id;
+   end record;
+
    type Role_Intent is record
       Id             : Token_Text := (Length => 0, Value => [others => ' ']);
       Locus          : Locus_Id;
@@ -46,6 +50,10 @@ package HRA_N.Application.Policy_Command is
    subtype Policy_Proposal is HRA_N.Application.Proposal.Authority_Proposal;
    subtype Proposal_Result is HRA_N.Application.Proposal.Proposal_Result;
    subtype Policy_Receipt is HRA_N.Application.Proposal.Receipt;
+
+   function Propose_Locus
+     (Paths  : Path_Config;
+      Intent : Locus_Intent) return Proposal_Result;
 
    function Propose_Role
      (Paths  : Path_Config;

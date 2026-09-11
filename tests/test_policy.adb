@@ -283,6 +283,7 @@ package body Test_Policy is
       end if;
 
       Assert (Initialize_Household (Test_Dir).Success, "Fixture initializes");
+      Append_Initial_Policy (Test_Dir, "LOCUS crypto" & ASCII.LF);
       Paths := Resolve_Paths (Test_Dir);
 
       --  1. Propose and commit new role: crypto ASSET
@@ -531,6 +532,55 @@ package body Test_Policy is
                  "Advancing routing proposal commits");
          Assert (not Commit (Stale.Proposal).Success,
                  "Stale routing proposal fails closed");
+      end;
+
+      --  11. Locus admission is add-only, proposal-backed, and independent
+      --  of roles, routing, and historical observations.
+      Paths := Resolve_Paths (Test_Dir);
+      declare
+         Warehouse : constant Locus_Intent :=
+           (Locus => (Token => Make_Token ("warehouse")));
+         Proposed : constant Proposal_Result :=
+           Propose_Locus (Paths, Warehouse);
+      begin
+         Assert (Proposed.Success, "New Locus admission proposes");
+         Assert (Commit (Proposed.Proposal).Success,
+                 "New Locus admission commits");
+         Assert (Commit (Proposed.Proposal).Success,
+                 "Locus admission retry is idempotent");
+      end;
+      Paths := Resolve_Paths (Test_Dir);
+      declare
+         View : constant Locus_View := Execute_Locus_Query (Paths);
+         Found : Boolean := False;
+      begin
+         Assert (View.Status = Query_Complete,
+                 "Locus admission query completes");
+         for I in 1 .. View.Row_Count loop
+            if Equal_Token (View.Rows (I), Make_Token ("warehouse")) then
+               Found := True;
+            end if;
+         end loop;
+         Assert (Found, "Newly admitted Locus is projected");
+         Assert
+           (not Propose_Locus
+              (Paths,
+               (Locus => (Token => Make_Token ("warehouse")))).Success,
+            "Duplicate Locus admission fails closed");
+      end;
+
+      --  An observed or role-like token is not silently admission authority.
+      declare
+         Unadmitted_Role : constant Role_Intent :=
+           (Id             => (Length => 0, Value => [others => ' ']),
+            Locus          => (Token => Make_Token ("not-admitted")),
+            Role           => Role_Asset,
+            Effective_From => Make_Date (2026, 12, 1),
+            Has_Replaces   => False,
+            Replaces_Id    => (Length => 0, Value => [others => ' ']));
+      begin
+         Assert (not Propose_Role (Paths, Unadmitted_Role).Success,
+                 "Role assignment cannot imply Locus admission");
       end;
 
       --  Cleanup

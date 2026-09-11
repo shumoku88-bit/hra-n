@@ -15,6 +15,18 @@ with HRA_N.Core.Types;                 use HRA_N.Core.Types;
 
 package HRA_N.Application.Policy_Query is
 
+   type Locus_Row_Array is array (Positive range <>) of Token_Text;
+
+   type Locus_View (Capacity : Natural) is record
+      Snapshot       : String (1 .. 64) := [others => ' '];
+      Snapshot_Len   : Natural := 0;
+      Status         : Query_Status := Query_Complete;
+      Diagnostic     : String (1 .. 128) := [others => ' '];
+      Diagnostic_Len : Natural := 0;
+      Row_Count      : Natural := 0;
+      Rows           : Locus_Row_Array (1 .. Capacity);
+   end record;
+
    type Role_View_Row is record
       Id             : Token_Text;
       Locus          : Token_Text;
@@ -71,6 +83,8 @@ package HRA_N.Application.Policy_Query is
       Window_Count   : Natural := 0;
       Windows        : Window_Row_Array (1 .. Capacity);
    end record;
+
+   function Execute_Locus_Query (Paths : Path_Config) return Locus_View;
 
    function Execute_Role_Query
      (Paths     : Path_Config;

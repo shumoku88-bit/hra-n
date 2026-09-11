@@ -266,7 +266,26 @@ package body Test_HRA_Storage is
                     "Currency is retained exactly, never silently defaulted");
          end;
 
-         --  7. Test historical Actual routing wire admission.
+         --  7. Test explicit Locus admission wire semantics.
+         Write_Policy
+           ("LOCUS cash" & ASCII.LF & "LOCUS food" & ASCII.LF);
+         declare
+            R : constant Policy_Result := Read_Policy_File (Tmp_Policy);
+         begin
+            Assert (R.Success, "Explicit Locus vocabulary stays admitted");
+            Assert_Equal_Int
+              (2, Long_Long_Integer (R.Loci.Count),
+               "All explicit Locus permissions are retained");
+         end;
+         Write_Policy
+           ("LOCUS cash" & ASCII.LF & "LOCUS cash" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Duplicate Locus admission fails closed");
+         Write_Policy ("LOCUS cash extra" & ASCII.LF);
+         Assert (not Read_Policy_File (Tmp_Policy).Success,
+                 "Malformed Locus admission fails closed");
+
+         --  8. Test historical Actual routing wire admission.
          Write_Policy
            ("ROUTE food INITIAL MANAGED groceries" & ASCII.LF
             & "ROUTE food FROM 2026-10-01 UNMANAGED" & ASCII.LF);
@@ -305,7 +324,7 @@ package body Test_HRA_Storage is
          Assert (not Read_Policy_File (Tmp_Policy).Success,
                  "Unknown routing state fails closed");
 
-         --  8. Test attention wire admission (ATTENTION, ATTENTION-CLOSE)
+         --  9. Test attention wire admission (ATTENTION, ATTENTION-CLOSE)
          Write_Policy
            ("ATTENTION att0001 ""Renew insurance"" due:2026-10-01" & ASCII.LF
             & "ATTENTION att0002 ""Deep clean"" nodue" & ASCII.LF
@@ -352,7 +371,7 @@ package body Test_HRA_Storage is
          Assert (not Read_Policy_File (Tmp_Policy).Success,
                  "Attention with an unknown due word fails closed");
 
-         --  9. Test relation wire admission (RELATION, DISCHARGE)
+         --  10. Test relation wire admission (RELATION, DISCHARGE)
          declare
             Tmp_Rel_Journal : constant String := "/tmp/test_relation_wire.hra";
 

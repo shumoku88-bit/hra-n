@@ -21,6 +21,12 @@ package Test_Support is
       Actual   : Boolean;
       Message  : String);
 
+   --  Extend the freshly initialized g00000001 policy before any proposal.
+   --  This is fixture construction, not a production write path.
+   procedure Append_Initial_Policy
+     (Base_Dir : String;
+      Content  : String);
+
    procedure Report_Summary (Suite_Name : String);
 
    function All_Passed return Boolean;

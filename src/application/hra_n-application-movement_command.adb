@@ -3,6 +3,7 @@ with Ada.Strings; use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with HRA_N.Core.Actual_Routing; use HRA_N.Core.Actual_Routing;
+with HRA_N.Core.Admission; use HRA_N.Core.Admission;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Core.Relation; use HRA_N.Core.Relation;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
@@ -95,6 +96,10 @@ package body HRA_N.Application.Movement_Command is
       Policy := Read_Policy_File (Policy_Path_Str (Paths));
       if not Journal.Success or else not Policy.Success then
          return Fail ("cannot propose from an unadmitted authority snapshot");
+      elsif not Admits_Locus (Policy.Loci, Intent.From_Locus)
+        or else not Admits_Locus (Policy.Loci, Intent.To_Locus)
+      then
+         return Fail ("movement uses a Locus not admitted for new writes");
       end if;
 
       if Is_Correction then
@@ -282,6 +287,8 @@ package body HRA_N.Application.Movement_Command is
       end loop;
       if not Found_Target then
          return Fail ("reversal target event does not exist in journal");
+      elsif not Admits_Effects (Policy.Loci, Effects (Found_Ev)) then
+         return Fail ("reversal uses a Locus not admitted for new writes");
       end if;
 
       declare
@@ -462,6 +469,11 @@ package body HRA_N.Application.Movement_Command is
       if not Journal.Success or else not Policy.Success then
          return Fail ("cannot propose from an unadmitted authority snapshot");
       end if;
+      for I in 1 .. Intent.Count loop
+         if not Admits_Locus (Policy.Loci, Intent.Changes (I).Locus) then
+            return Fail ("split uses a Locus not admitted for new writes");
+         end if;
+      end loop;
 
       J_Bytes := HRA_N.Storage.Exact_File.Read_All (Journal_Path_Str (Paths));
       P_Bytes := HRA_N.Storage.Exact_File.Read_All (Policy_Path_Str (Paths));

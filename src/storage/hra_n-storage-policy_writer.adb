@@ -5,6 +5,9 @@
 
 package body HRA_N.Storage.Policy_Writer is
 
+   function Encode_Locus (Locus : String) return String is
+     ("LOCUS " & Locus & ASCII.LF);
+
    function Role_Name (R : Accounting_Role) return String is
    begin
       return (case R is

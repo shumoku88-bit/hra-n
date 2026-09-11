@@ -8,6 +8,7 @@
 -------------------------------------------------------------------------------
 
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
+with HRA_N.Core.Admission;       use HRA_N.Core.Admission;
 with HRA_N.Core.Attention;         use HRA_N.Core.Attention;
 with HRA_N.Core.Coverage;        use HRA_N.Core.Coverage;
 with HRA_N.Core.Capacity;        use HRA_N.Core.Capacity;
@@ -23,6 +24,7 @@ package HRA_N.Storage.Policy_Reader is
       Roles        : Role_Map;
       Windows      : Window_Memory;
       Coverage     : Zero_Origin_Coverage;
+      Loci         : Locus_Vocabulary;
       Capacities   : Capacity_Memory;
       Routing      : Routing_Map;
       Attention    : Attention_Memory;

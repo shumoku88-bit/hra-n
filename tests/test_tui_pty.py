@@ -40,7 +40,7 @@ def main() -> None:
         with open(os.path.join(gen_dir, "journal.hra"), "w", encoding="utf-8") as stream:
             stream.write(f'TX e0001 {today} cash:-100 food:100 "PTY fixture"\n')
         with open(os.path.join(gen_dir, "policy.hra"), "w", encoding="utf-8") as stream:
-            stream.write("ROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n")
+            stream.write("LOCUS cash\nLOCUS food\nLOCUS misc\nROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n")
             stream.write("CAPACITY food 1000 jpy\n")
             stream.write(f"EFFECTIVE cap0001 {today}\n")
             stream.write("ROUTE food food\n")
@@ -512,6 +512,20 @@ def main() -> None:
             os.kill(pid, signal.SIGWINCH)
             os.write(fd, b"\x0c")
             read_until(fd, output, b"RETAINED HISTORY")
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
+
+            # Admit one stable Locus without creating role/routing metadata
+            os.write(fd, b"v")
+            read_until(fd, output, b"LOCUS NEW-WRITE ADMISSION")
+            os.write(fd, b"n")
+            read_until(fd, output, b"New stable Locus token:")
+            time.sleep(0.05)
+            os.write(fd, b"new-place\n")
+            read_until(fd, output, b"ADMISSION PREVIEW  new-place")
+            assert b"No role, route, label, alias" in output
+            os.write(fd, b"y")
+            read_until(fd, output, b"new-place")
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
         except Exception:

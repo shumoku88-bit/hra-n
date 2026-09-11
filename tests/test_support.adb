@@ -60,6 +60,19 @@ package body Test_Support is
       end if;
    end Assert_Equal_Bool;
 
+   procedure Append_Initial_Policy
+     (Base_Dir : String;
+      Content  : String)
+   is
+      File : Ada.Text_IO.File_Type;
+      Path : constant String :=
+        Base_Dir & "/.hra/generations/g00000001/policy.hra";
+   begin
+      Ada.Text_IO.Open (File, Ada.Text_IO.Append_File, Path);
+      Ada.Text_IO.Put (File, Content);
+      Ada.Text_IO.Close (File);
+   end Append_Initial_Policy;
+
    procedure Report_Summary (Suite_Name : String) is
    begin
       Put_Line ("--- Suite: " & Suite_Name & " ---");

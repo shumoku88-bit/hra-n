@@ -19,6 +19,7 @@ package body Test_Balance_Query is
       end if;
       Assert (Initialize_Household (Test_Dir).Success,
               "Balance query fixture initializes");
+      Append_Initial_Policy (Test_Dir, "LOCUS rent" & ASCII.LF);
 
       --  Initial household has cash & bank in ZERO-ORIGIN, cash & bank & food in ROLES
       declare

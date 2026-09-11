@@ -10,6 +10,11 @@ package body Test_Generation_Transaction is
       Test_Dir : constant String := "/tmp/hra_n_test_generation_transaction";
       Policy : constant String :=
         "# HRA-N Household Policy" & ASCII.LF &
+        "LOCUS cash" & ASCII.LF &
+        "LOCUS bank" & ASCII.LF &
+        "LOCUS food" & ASCII.LF &
+        "LOCUS misc" & ASCII.LF &
+        "LOCUS salary" & ASCII.LF &
         "ROLE cash, bank: ASSET" & ASCII.LF &
         "ROLE food, misc: EXPENSE" & ASCII.LF &
         "ROLE salary: INCOME" & ASCII.LF &

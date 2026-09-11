@@ -30,6 +30,7 @@ with HRA_N.UI.Relation_CLI;
 with HRA_N.UI.Split_CLI;
 with HRA_N.UI.Policy_CLI;
 with HRA_N.UI.Routing_CLI;
+with HRA_N.UI.Locus_CLI;
 with HRA_N.UI.Interactive_Movement;
 
 procedure HRA_N_Main is
@@ -469,6 +470,12 @@ begin
       --  Branch: Accounting roles
       if Command = "role" or else Command = "roles" then
          HRA_N.UI.Policy_CLI.Handle_Role_Command (Paths, Command_Idx + 1);
+         return;
+      end if;
+
+      --  Branch: explicit add-only Locus new-write admission
+      if Command = "locus" or else Command = "loci" then
+         HRA_N.UI.Locus_CLI.Dispatch (Paths, Command_Idx + 1);
          return;
       end if;
 
