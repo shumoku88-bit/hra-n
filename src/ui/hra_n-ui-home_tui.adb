@@ -11,6 +11,7 @@ with HRA_N.Application.Home_Query;
 with HRA_N.Application.Review; use HRA_N.Application.Review;
 with HRA_N.UI.Actual_TUI;
 with HRA_N.UI.Scheduled_TUI;
+with HRA_N.UI.Balance_TUI;
 with HRA_N.UI.Snapshot_Label;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with Terminal_Interface.Curses;
@@ -74,7 +75,7 @@ package body HRA_N.UI.Home_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "h/l: day   Enter: selected day   a: Actual   s: Scheduled   g: today   q: quit");
+            "h/l: day  Enter: sel day  a: Actual  s: Sched  b: Balances  g: today  q: quit");
       end if;
       Curses.Refresh;
    end Draw;
@@ -127,6 +128,13 @@ package body HRA_N.UI.Home_TUI is
                  (Current_Paths,
                   Selected,
                   HRA_N.Application.Scheduled_Query.Scope_Current_Open);
+               Current_Paths :=
+                 HRA_N.Application.Path_Resolver.Resolve_Paths
+                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+            elsif Key = Character'Pos ('b') or else Key = Character'Pos ('B') then
+               HRA_N.UI.Balance_TUI.Run
+                 (Current_Paths,
+                  Selected);
                Current_Paths :=
                  HRA_N.Application.Path_Resolver.Resolve_Paths
                    (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));

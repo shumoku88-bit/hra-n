@@ -23,6 +23,8 @@ with HRA_N.UI.Status_CLI;
 with HRA_N.UI.Statement_Cli;
 with HRA_N.UI.Budget_CLI;
 with HRA_N.UI.Scheduled_Cli;
+with HRA_N.UI.Balance_CLI;
+with HRA_N.UI.Reconciliation_CLI;
 with HRA_N.UI.Interactive_Movement;
 
 procedure HRA_N_Main is
@@ -373,6 +375,34 @@ begin
         or else Command = "complete" or else Command = "retire"
       then
          HRA_N.UI.Scheduled_Cli.Dispatch (Paths, Command, Command_Idx, Rem_Args);
+         return;
+      end if;
+
+      --  Branch: Coordinate balances
+      if Command = "balance" or else Command = "balances" then
+         HRA_N.UI.Balance_CLI.Dispatch (Paths, Command_Idx, Rem_Args, Success);
+         if not Success then
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         end if;
+         return;
+      end if;
+
+      --  Branch: Balance assertion
+      if Command = "assert" then
+         HRA_N.UI.Reconciliation_CLI.Dispatch_Assert
+           (Paths, Command_Idx, Rem_Args, Success);
+         if not Success then
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         end if;
+         return;
+      end if;
+
+      --  Branch: Balance reconciliation
+      if Command = "reconcile" or else Command = "reconciliation" then
+         HRA_N.UI.Reconciliation_CLI.Display_Reconciliation (Paths, Success);
+         if not Success then
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         end if;
          return;
       end if;
 

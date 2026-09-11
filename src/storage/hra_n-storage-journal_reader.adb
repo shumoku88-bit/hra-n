@@ -124,162 +124,275 @@ package body HRA_N.Storage.Journal_Reader is
                declare
                   Tag : constant String := Slice (Line, Tokens (1));
                begin
-                  if Tag /= "TX" then
-                     Set_Error ("Expected 'TX' record header, found: " & Tag);
-                     Ada.Text_IO.Close (File);
-                     return Result;
-                  end if;
-
-                  if Count < 4 then
-                     Set_Error ("Malformed TX record: insufficient tokens");
-                     Ada.Text_IO.Close (File);
-                     return Result;
-                  end if;
-
-                  declare
-                     Ev_Id_Str   : constant String := Slice (Line, Tokens (2));
-                     Date_Str    : constant String := Slice (Line, Tokens (3));
-                     Parsed_Date : Date_Type;
-                     Effects     : Effect_List;
-                     Note_Text   : Description_Text := (Length => 0, Value => [others => ' ']);
-                     Has_Note    : Boolean := False;
-                     Meta        : Transaction_Metadata_Entry := Empty_Entry;
-                  begin
-                     if not Parse_Iso_Date (Date_Str, Parsed_Date) then
-                        Set_Error ("Invalid ISO date in TX record: " & Date_Str);
+                  if Tag = "TX" then
+                     if Count < 4 then
+                        Set_Error ("Malformed TX record: insufficient tokens");
                         Ada.Text_IO.Close (File);
                         return Result;
                      end if;
 
-                     Meta.Event := (Token => Make_Token (Ev_Id_Str));
+                     declare
+                        Ev_Id_Str   : constant String := Slice (Line, Tokens (2));
+                        Date_Str    : constant String := Slice (Line, Tokens (3));
+                        Parsed_Date : Date_Type;
+                        Effects     : Effect_List;
+                        Note_Text   : Description_Text := (Length => 0, Value => [others => ' ']);
+                        Has_Note    : Boolean := False;
+                        Meta        : Transaction_Metadata_Entry := Empty_Entry;
+                     begin
+                        if not Parse_Iso_Date (Date_Str, Parsed_Date) then
+                           Set_Error ("Invalid ISO date in TX record: " & Date_Str);
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        end if;
 
-                     --  Parse flows and optional metadata
-                     for T in 4 .. Count loop
-                        declare
-                           Tok_Str : constant String := Slice (Line, Tokens (T));
-                        begin
-                           if Tokens (T).Kind = Tok_Quoted then
-                              if Has_Note or else Tok_Str'Length > Max_Description_Length then
-                                 Set_Error ("Invalid or duplicate description metadata");
-                                 Ada.Text_IO.Close (File);
-                                 return Result;
-                              end if;
-                              Note_Text := Make_Description (Tok_Str);
-                              Has_Note := True;
-                           elsif Tok_Str'Length > 0 and then Tok_Str (Tok_Str'First) = '@' then
-                              if Meta.Purpose.Present or else Tok_Str'Length = 1
-                                or else Tok_Str'Length - 1 > Max_Token_Length
-                              then
-                                 Set_Error ("Invalid or duplicate purpose metadata");
-                                 Ada.Text_IO.Close (File);
-                                 return Result;
-                              end if;
-                              Meta.Purpose :=
-                                (Present => True,
-                                 Value => Make_Token
-                                   (Tok_Str (Tok_Str'First + 1 .. Tok_Str'Last)));
-                           elsif Tok_Str'Length >= 9 and then Tok_Str (Tok_Str'First .. Tok_Str'First + 8) = "replaces:" then
-                              if Meta.Replaces.Present or else Tok_Str'Length = 9
-                                or else Tok_Str'Length - 9 > Max_Token_Length
-                              then
-                                 Set_Error ("Invalid or duplicate replacement metadata");
-                                 Ada.Text_IO.Close (File);
-                                 return Result;
-                              end if;
-                              Meta.Replaces :=
-                                (Present => True,
-                                 Value => (Token => Make_Token
-                                   (Tok_Str (Tok_Str'First + 9 .. Tok_Str'Last))));
-                           elsif Tok_Str'Length >= 9 and then Tok_Str (Tok_Str'First .. Tok_Str'First + 8) = "relation:" then
-                              if Meta.Relation.Present or else Tok_Str'Length = 9
-                                or else Tok_Str'Length - 9 > Max_Token_Length
-                              then
-                                 Set_Error ("Invalid or duplicate relation metadata");
-                                 Ada.Text_IO.Close (File);
-                                 return Result;
-                              end if;
-                              Meta.Relation :=
-                                (Present => True,
-                                 Value => Make_Token
-                                   (Tok_Str (Tok_Str'First + 9 .. Tok_Str'Last)));
-                           elsif Tok_Str'Length >= 11 and then Tok_Str (Tok_Str'First .. Tok_Str'First + 10) = "discharges:" then
-                              if Meta.Discharge.Present or else Tok_Str'Length = 11
-                                or else Tok_Str'Length - 11 > Max_Token_Length
-                              then
-                                 Set_Error ("Invalid or duplicate discharge metadata");
-                                 Ada.Text_IO.Close (File);
-                                 return Result;
-                              end if;
-                              Meta.Discharge :=
-                                (Present => True,
-                                 Value => Make_Token
-                                   (Tok_Str (Tok_Str'First + 11 .. Tok_Str'Last)));
-                           else
-                              --  Must be a flow
-                              declare
-                                 Locus   : Token_Text;
-                                 Measure : Token_Text;
-                                 Amt     : Quanta_Type;
-                                 Flow_Ok : Boolean;
-                                 Key_Str : constant String := "f" & Natural'Image (Effects.Count + 1);
-                              begin
-                                 Parse_Flow (Tok_Str, Locus, Measure, Amt, Flow_Ok);
-                                 if not Flow_Ok then
-                                    Set_Error ("Malformed flow token: " & Tok_Str);
+                        --  Check collision with assertion IDs
+                        for I in 1 .. Result.Assertions.Count loop
+                           if Equal_Token (Result.Assertions.Values (I).Id.Token, Make_Token (Ev_Id_Str)) then
+                              Set_Error ("Event ID collides with ASSERT ID: " & Ev_Id_Str);
+                              Ada.Text_IO.Close (File);
+                              return Result;
+                           end if;
+                        end loop;
+
+                        Meta.Event := (Token => Make_Token (Ev_Id_Str));
+
+                        --  Parse flows and optional metadata
+                        for T in 4 .. Count loop
+                           declare
+                              Tok_Str : constant String := Slice (Line, Tokens (T));
+                           begin
+                              if Tokens (T).Kind = Tok_Quoted then
+                                 if Has_Note or else Tok_Str'Length > Max_Description_Length then
+                                    Set_Error ("Invalid or duplicate description metadata");
                                     Ada.Text_IO.Close (File);
                                     return Result;
                                  end if;
+                                 Note_Text := Make_Description (Tok_Str);
+                                 Has_Note := True;
+                              elsif Tok_Str'Length > 0 and then Tok_Str (Tok_Str'First) = '@' then
+                                 if Meta.Purpose.Present or else Tok_Str'Length = 1
+                                   or else Tok_Str'Length - 1 > Max_Token_Length
+                                 then
+                                    Set_Error ("Invalid or duplicate purpose metadata");
+                                    Ada.Text_IO.Close (File);
+                                    return Result;
+                                 end if;
+                                 Meta.Purpose :=
+                                   (Present => True,
+                                    Value => Make_Token
+                                      (Tok_Str (Tok_Str'First + 1 .. Tok_Str'Last)));
+                              elsif Tok_Str'Length >= 9 and then Tok_Str (Tok_Str'First .. Tok_Str'First + 8) = "replaces:" then
+                                 if Meta.Replaces.Present or else Tok_Str'Length = 9
+                                   or else Tok_Str'Length - 9 > Max_Token_Length
+                                 then
+                                    Set_Error ("Invalid or duplicate replacement metadata");
+                                    Ada.Text_IO.Close (File);
+                                    return Result;
+                                 end if;
+                                 Meta.Replaces :=
+                                   (Present => True,
+                                    Value => (Token => Make_Token
+                                      (Tok_Str (Tok_Str'First + 9 .. Tok_Str'Last))));
+                              elsif Tok_Str'Length >= 9 and then Tok_Str (Tok_Str'First .. Tok_Str'First + 8) = "relation:" then
+                                 if Meta.Relation.Present or else Tok_Str'Length = 9
+                                   or else Tok_Str'Length - 9 > Max_Token_Length
+                                 then
+                                    Set_Error ("Invalid or duplicate relation metadata");
+                                    Ada.Text_IO.Close (File);
+                                    return Result;
+                                 end if;
+                                 Meta.Relation :=
+                                   (Present => True,
+                                    Value => Make_Token
+                                      (Tok_Str (Tok_Str'First + 9 .. Tok_Str'Last)));
+                              elsif (Tok_Str'Length >= 11 and then Tok_Str (Tok_Str'First .. Tok_Str'First + 10) = "discharges:")
+                                or else (Tok_Str'Length >= 10 and then Tok_Str (Tok_Str'First .. Tok_Str'First + 9) = "discharge:")
+                              then
+                                 declare
+                                    Pref_Len : constant Positive :=
+                                      (if Tok_Str (Tok_Str'First .. Tok_Str'First + 9) = "discharge:" then 10 else 11);
+                                 begin
+                                    if Meta.Discharge.Present or else Tok_Str'Length = Pref_Len
+                                      or else Tok_Str'Length - Pref_Len > Max_Token_Length
+                                    then
+                                       Set_Error ("Invalid or duplicate discharge metadata");
+                                       Ada.Text_IO.Close (File);
+                                       return Result;
+                                    end if;
+                                    Meta.Discharge :=
+                                      (Present => True,
+                                       Value   => Make_Token
+                                         (Tok_Str (Tok_Str'First + Pref_Len .. Tok_Str'Last)));
+                                 end;
+                              elsif Tok_Str'Length >= 11 and then Tok_Str (Tok_Str'First .. Tok_Str'First + 10) = "settlement:" then
+                                 if Meta.Discharge.Present or else Tok_Str'Length = 11
+                                   or else Tok_Str'Length - 11 > Max_Token_Length
+                                 then
+                                    Set_Error ("Invalid or duplicate settlement metadata");
+                                    Ada.Text_IO.Close (File);
+                                    return Result;
+                                 end if;
+                                 Meta.Discharge :=
+                                   (Present => True,
+                                    Value => Make_Token
+                                      (Tok_Str (Tok_Str'First + 11 .. Tok_Str'Last)));
+                              else
+                                 --  Must be a flow
+                                 declare
+                                    Locus   : Token_Text;
+                                    Measure : Token_Text;
+                                    Amt     : Quanta_Type;
+                                    Flow_Ok : Boolean;
+                                    Key_Str : constant String := "f" & Natural'Image (Effects.Count + 1);
+                                 begin
+                                    Parse_Flow (Tok_Str, Locus, Measure, Amt, Flow_Ok);
+                                    if not Flow_Ok then
+                                       Set_Error ("Malformed flow token: " & Tok_Str);
+                                       Ada.Text_IO.Close (File);
+                                       return Result;
+                                    end if;
 
-                                 Effects.Count := Effects.Count + 1;
-                                 Effects.Values (Effects.Count) :=
-                                   (Key     => (Token => Make_Token (Key_Str)),
-                                    Locus   => (Token => Locus),
-                                    Measure => (Token => Measure),
-                                    Amount  => (Quanta => Amt));
-                              end;
-                           end if;
+                                    Effects.Count := Effects.Count + 1;
+                                    Effects.Values (Effects.Count) :=
+                                      (Key     => (Token => Make_Token (Key_Str)),
+                                       Locus   => (Token => Locus),
+                                       Measure => (Token => Measure),
+                                       Amount  => (Quanta => Amt));
+                                 end;
+                              end if;
+                           end;
+                        end loop;
+
+                        if Effects.Count = 0 then
+                           Set_Error ("TX record has no flows");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        end if;
+
+                        --  Construct and append Event
+                        declare
+                           Ev : constant Event := Make_Event
+                             (Id      => (Token => Make_Token (Ev_Id_Str)),
+                              Effects => Effects);
+                        begin
+                           Result.Events.Append (Ev);
                         end;
-                     end loop;
 
-                     if Effects.Count = 0 then
-                        Set_Error ("TX record has no flows");
-                        Ada.Text_IO.Close (File);
-                        return Result;
-                     end if;
-
-                     --  Construct and append Event
-                     declare
-                        Ev : constant Event := Make_Event
-                          (Id      => (Token => Make_Token (Ev_Id_Str)),
-                           Effects => Effects);
-                     begin
-                        Result.Events.Append (Ev);
-                     end;
-
-                     --  Record identity-keyed facts. Every Event receives one
-                     --  metadata row, including an all-absent row.
-                     if Val_List.Count = Max_Validity_Entries
-                       or else Meta_List.Count = Max_Metadata_Entries
-                     then
-                        Set_Error ("Journal exceeds admitted event capacity");
-                        Ada.Text_IO.Close (File);
-                        return Result;
-                     end if;
-                     Val_List.Count := Val_List.Count + 1;
-                     Val_List.Values (Val_List.Count) :=
-                       (Event_Id => (Token => Make_Token (Ev_Id_Str)),
-                        Valid_On => Parsed_Date);
-                     Meta_List.Count := Meta_List.Count + 1;
-                     Meta_List.Values (Meta_List.Count) := Meta;
-
-                     --  Record Description fact
-                     if Has_Note and then Desc_List.Count < Max_Description_Entries then
-                        Desc_List.Count := Desc_List.Count + 1;
-                        Desc_List.Values (Desc_List.Count) :=
+                        --  Record identity-keyed facts. Every Event receives one
+                        --  metadata row, including an all-absent row.
+                        if Val_List.Count = Max_Validity_Entries
+                          or else Meta_List.Count = Max_Metadata_Entries
+                        then
+                           Set_Error ("Journal exceeds admitted event capacity");
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        end if;
+                        Val_List.Count := Val_List.Count + 1;
+                        Val_List.Values (Val_List.Count) :=
                           (Event_Id => (Token => Make_Token (Ev_Id_Str)),
-                           Text     => Note_Text);
+                           Valid_On => Parsed_Date);
+                        Meta_List.Count := Meta_List.Count + 1;
+                        Meta_List.Values (Meta_List.Count) := Meta;
+
+                        --  Record Description fact
+                        if Has_Note and then Desc_List.Count < Max_Description_Entries then
+                           Desc_List.Count := Desc_List.Count + 1;
+                           Desc_List.Values (Desc_List.Count) :=
+                             (Event_Id => (Token => Make_Token (Ev_Id_Str)),
+                              Text     => Note_Text);
+                        end if;
+                     end;
+                  elsif Tag = "ASSERT" then
+                     if Count < 5 then
+                        Set_Error ("Malformed ASSERT record: insufficient tokens");
+                        Ada.Text_IO.Close (File);
+                        return Result;
                      end if;
-                  end;
+
+                     declare
+                        As_Id_Str   : constant String := Slice (Line, Tokens (2));
+                        Date_Str    : constant String := Slice (Line, Tokens (3));
+                        Coord_Str   : constant String := Slice (Line, Tokens (4));
+                        Amt_Str     : constant String := Slice (Line, Tokens (5));
+                        Parsed_Date : Date_Type;
+                        Amt_Val     : Long_Long_Integer;
+                        Loc_Tok     : Token_Text;
+                        Mea_Tok     : Token_Text := Make_Token ("jpy");
+                        Colon_Pos   : Natural := 0;
+                        Desc_Tok    : Token_Text := Make_Token ("");
+                        Add_Ok      : Boolean := False;
+                     begin
+                        if not Parse_Iso_Date (Date_Str, Parsed_Date) then
+                           Set_Error ("Invalid ISO date in ASSERT record: " & Date_Str);
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        end if;
+
+                        if not Parse_Integer (Amt_Str, Amt_Val) then
+                           Set_Error ("Invalid amount in ASSERT record: " & Amt_Str);
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        end if;
+
+                        for I in Coord_Str'Range loop
+                           if Coord_Str (I) = ':' then
+                              Colon_Pos := I;
+                              exit;
+                           end if;
+                        end loop;
+
+                        if Colon_Pos > 0 then
+                           Loc_Tok := Make_Token (Coord_Str (Coord_Str'First .. Colon_Pos - 1));
+                           Mea_Tok := Make_Token (Coord_Str (Colon_Pos + 1 .. Coord_Str'Last));
+                        else
+                           Loc_Tok := Make_Token (Coord_Str);
+                        end if;
+
+                        if Loc_Tok.Length = 0 or else Mea_Tok.Length = 0 then
+                           Set_Error ("Malformed coordinate in ASSERT record: " & Coord_Str);
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        end if;
+
+                        if Count >= 6 and then Tokens (6).Kind = Tok_Quoted then
+                           declare
+                              Desc_Str : constant String := Slice (Line, Tokens (6));
+                           begin
+                              Desc_Tok := Make_Token (Desc_Str);
+                           end;
+                        end if;
+
+                        --  Check collision with event IDs
+                        for E of Result.Events loop
+                           if Equal_Token (Id (E).Token, Make_Token (As_Id_Str)) then
+                              Set_Error ("ASSERT ID collides with Event ID: " & As_Id_Str);
+                              Ada.Text_IO.Close (File);
+                              return Result;
+                           end if;
+                        end loop;
+
+                        Add_Assertion
+                          (Result.Assertions,
+                           (Id          => (Token => Make_Token (As_Id_Str)),
+                            Valid_On    => Parsed_Date,
+                            Coordinate  => (Locus   => (Token => Loc_Tok),
+                                            Measure => (Token => Mea_Tok)),
+                            Amount      => Quanta_Type (Amt_Val),
+                            Description => Desc_Tok),
+                           Add_Ok);
+
+                        if not Add_Ok then
+                           Set_Error ("Duplicate or overflow ASSERT ID: " & As_Id_Str);
+                           Ada.Text_IO.Close (File);
+                           return Result;
+                        end if;
+                     end;
+                  else
+                     Set_Error ("Expected 'TX' or 'ASSERT' record header, found: " & Tag);
+                     Ada.Text_IO.Close (File);
+                     return Result;
+                  end if;
                end;
             end if;
          end;

@@ -24,7 +24,7 @@ def read_until(fd: int, output: bytearray, needle: bytes, timeout: float = 8.0) 
         if ready:
             output.extend(os.read(fd, 4096))
     if needle not in output[start:]:
-        raise AssertionError(f"TUI did not render {needle!r}")
+        raise AssertionError(f"TUI did not render {needle!r}, got: {bytes(output[start:])!r}")
 
 
 def main() -> None:
@@ -180,6 +180,27 @@ def main() -> None:
             # Return to Home
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
+
+            # Open Balances workspace from Home
+            os.write(fd, b"b")
+            read_until(fd, output, b"BALANCES")
+            assert b"KNOWN ZERO" in output
+            assert b"cash" in output
+            time.sleep(0.05)
+
+            # Cycle scope
+            os.write(fd, b"f")
+            read_until(fd, output, b"KNOWN ZERO")
+            time.sleep(0.05)
+
+            # Toggle as-of filter
+            os.write(fd, b"t")
+            read_until(fd, output, b"as-of")
+            time.sleep(0.05)
+
+            # Return to Home
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
         except Exception:
             os.kill(pid, signal.SIGKILL)
             os.waitpid(pid, 0)
@@ -215,7 +236,7 @@ def main() -> None:
         if not os.WIFEXITED(exit_status) or os.WEXITSTATUS(exit_status) != 0:
             raise AssertionError(f"Home TUI exited unsuccessfully: {exit_status}")
 
-        print("TUI PTY: Home, Selected Day, Movement record editor, Actual detail, Scheduled TUI/detail, resize, redraw, and quit passed")
+        print("TUI PTY: Home, Selected Day, Movement record editor, Actual detail, Scheduled TUI/detail, Balances TUI, resize, redraw, and quit passed")
     finally:
         shutil.rmtree(household, ignore_errors=True)
 

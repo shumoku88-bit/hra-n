@@ -107,4 +107,22 @@ package body HRA_N.Storage.Journal_Writer is
          return Result;
    end Append_Transaction;
 
+   function Encode_Assertion
+     (As_Id       : String;
+      Valid_On    : Date_Type;
+      Locus       : String;
+      Measure     : String;
+      Amount      : Quanta_Type;
+      Description : String := "") return String
+   is
+      Amt_Str   : constant String := Trim (Amount'Image, Ada.Strings.Both);
+      Coord_Str : constant String :=
+        (if Measure = "jpy" then Locus else Locus & ":" & Measure);
+      Desc_Part : constant String :=
+        (if Description'Length > 0 then " """ & Description & """" else "");
+   begin
+      return "ASSERT " & As_Id & " " & Format_Iso_Date (Valid_On) & " " &
+             Coord_Str & " " & Amt_Str & Desc_Part;
+   end Encode_Assertion;
+
 end HRA_N.Storage.Journal_Writer;

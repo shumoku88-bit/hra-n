@@ -109,13 +109,18 @@ package body HRA_N.UI.Output is
       Digit_Count : Natural := 0;
    begin
       for I in reverse Raw'Range loop
-         if Digit_Count > 0 and then Digit_Count mod 3 = 0 then
-            Res (Res_Idx) := ',';
-            Res_Idx := Res_Idx - 1;
+         if Raw (I) = '-' then
+            Res (Res_Idx) := '-';
+            Res_Idx       := Res_Idx - 1;
+         else
+            if Digit_Count > 0 and then Digit_Count mod 3 = 0 then
+               Res (Res_Idx) := ',';
+               Res_Idx := Res_Idx - 1;
+            end if;
+            Res (Res_Idx) := Raw (I);
+            Res_Idx       := Res_Idx - 1;
+            Digit_Count   := Digit_Count + 1;
          end if;
-         Res (Res_Idx) := Raw (I);
-         Res_Idx       := Res_Idx - 1;
-         Digit_Count   := Digit_Count + 1;
       end loop;
       return Res (Res_Idx + 1 .. Res'Last);
    end Format_Amount;

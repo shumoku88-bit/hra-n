@@ -4,6 +4,7 @@ set -euo pipefail
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_root"
 
+alr exec -- gprbuild -P hra_n.gpr -p
 alr exec -- gprbuild -P tests/hra_n_tests.gpr -p
 "$project_root/tests/bin/test_runner"
 python3 "$project_root/tests/test_cli.py"

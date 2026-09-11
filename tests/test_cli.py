@@ -195,10 +195,78 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("STATUS:   RETIRED", res.stdout)
 
         # 16a. Retiring already retired s0002 fails closed
-        res = self.run_cmd("scheduled", "retire", "s0002")
+        res = self.run_cmd("retire", "s0002")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("already completed, retired, or replaced", res.stderr + res.stdout)
         self.assertEqual(self.current_snapshot(), "g00000009")
+
+        # 17. Inspect coordinate balances across all loci
+        res = self.run_cmd("balance")
+        self.assertEqual(res.returncode, 0, f"balance failed: {res.stderr}")
+        self.assertIn("HRA-N Coordinate Balances", res.stdout)
+        self.assertIn("KNOWN ZERO", res.stdout)
+        self.assertIn("UNKNOWN", res.stdout)
+        self.assertIn("cash", res.stdout)
+        self.assertIn("bank", res.stdout)
+        self.assertIn("food", res.stdout)
+        self.assertIn("-1,850", res.stdout)
+
+        # 18. Filter known zero-origin balances
+        res = self.run_cmd("balance", "--known")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("cash", res.stdout)
+        self.assertIn("bank", res.stdout)
+        self.assertNotIn("food", res.stdout)
+
+        # 19. Filter unknown origin balances
+        res = self.run_cmd("balance", "--unknown")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("food", res.stdout)
+        self.assertNotIn("bank", res.stdout)
+
+        # 20. Filter balances as of 2026-09-14 (prior to movements)
+        res = self.run_cmd("balance", "--as-of", "2026-09-14")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("As-Of    : 2026-09-14", res.stdout)
+
+        # 20b. Filter balances as of 2026-09-15
+        res = self.run_cmd("balance", "--as-of", "2026-09-15")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("-1,850", res.stdout)
+
+        # 21. Reconcile with no assertions
+        res = self.run_cmd("reconcile")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("No balance assertions recorded", res.stdout)
+
+        # 22. Record matching balance assertion for cash
+        res = self.run_cmd("assert", "cash", "-1850", "2026-09-16", "jpy", "Drawer count")
+        self.assertEqual(res.returncode, 0, f"assert failed: {res.stderr}")
+        self.assertIn("[OK] Admitted Balance Assertion: a0001", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000010")
+
+        # 23. Reconcile matching assertion
+        res = self.run_cmd("reconcile")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("MATCH", res.stdout)
+        self.assertIn("1 matched, 0 mismatched", res.stdout)
+
+        # 24. Record mismatched balance assertion for bank
+        res = self.run_cmd("assert", "bank", "50000", "2026-09-16", "jpy", "Bank statement")
+        self.assertEqual(res.returncode, 0, f"assert failed: {res.stderr}")
+        self.assertIn("[OK] Admitted Balance Assertion: a0002", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000011")
+
+        # 25. Reconcile diagnostics shows mismatch
+        res = self.run_cmd("reconcile")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("MISMATCH", res.stdout)
+        self.assertIn("1 matched, 1 mismatched", res.stdout)
+
+        # 26. Balance query visibly flags CONFLICT
+        res = self.run_cmd("balance")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("CONFLICT", res.stdout)
 
 
 if __name__ == "__main__":

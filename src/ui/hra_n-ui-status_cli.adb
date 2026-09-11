@@ -5,14 +5,13 @@
 
 with Ada.Strings.Fixed;              use Ada.Strings.Fixed;
 with HRA_N.Core.Types;               use HRA_N.Core.Types;
-with HRA_N.Core.Event;               use HRA_N.Core.Event;
 with HRA_N.Core.Scheduled;           use HRA_N.Core.Scheduled;
-with HRA_N.Core.Coverage;            use HRA_N.Core.Coverage;
 with HRA_N.Core.Accounting_Role;     use HRA_N.Core.Accounting_Role;
 with HRA_N.Application.Statement;    use HRA_N.Application.Statement;
 with HRA_N.UI.Output;                use HRA_N.UI.Output;
 with HRA_N.Storage.Policy_Reader;
 with HRA_N.Storage.Scheduled_Journal_Reader;
+with HRA_N.Application.Balance_Query;
 
 package body HRA_N.UI.Status_CLI is
 
@@ -54,34 +53,25 @@ package body HRA_N.UI.Status_CLI is
            Trim (Statement.Unresolved_Count'Image, Ada.Strings.Both));
       end if;
 
-      --  Compute coverage balances directly from events
-      Put_Line ("------------------------------------------------------------");
-      Put_Line ("Canonical Zero-Origin Balances:");
-      for C in 1 .. Coordinate_Count (PR.Coverage) loop
-         declare
-            Coord     : constant Coordinate_Type := Coordinate_At (PR.Coverage, C);
-            Coord_Str : constant String :=
-              Coord.Locus.Token.Value (1 .. Coord.Locus.Token.Length);
-            Bal       : Long_Long_Integer := 0;
-         begin
-            for E of Events loop
-               for I in 1 .. Effect_Count (E) loop
-                  declare
-                     Eff     : constant Effect := Effect_At (E, I);
-                     Loc_Str : constant String :=
-                       Eff.Locus.Token.Value (1 .. Eff.Locus.Token.Length);
-                  begin
-                     if Loc_Str = Coord_Str then
-                        Bal := Bal + Long_Long_Integer (Eff.Amount.Quanta);
-                     end if;
-                  end;
-               end loop;
-            end loop;
-
-            Put_Line ("  " & Pad_Right (Coord_Str, 15) & ": " &
-                      Pad_Left (Format_Amount (Quanta_Type (Bal)), 12) & " jpy");
-         end;
-      end loop;
+      --  Compute coverage balances using shared Balance_Query
+      declare
+         B_View : constant HRA_N.Application.Balance_Query.Balance_View :=
+           HRA_N.Application.Balance_Query.Execute
+             (Paths, (Scope => HRA_N.Application.Balance_Query.Scope_Known_Only, others => <>));
+      begin
+         Put_Line ("------------------------------------------------------------");
+         Put_Line ("Canonical Zero-Origin Balances:");
+         for I in 1 .. B_View.Row_Count loop
+            declare
+               Row     : constant HRA_N.Application.Balance_Query.Balance_Row := B_View.Rows (I);
+               Loc_Str : constant String := Row.Locus.Value (1 .. Row.Locus.Length);
+               Mea_Str : constant String := Row.Measure.Value (1 .. Row.Measure.Length);
+            begin
+               Put_Line ("  " & Pad_Right (Loc_Str, 15) & ": " &
+                         Pad_Left (Format_Amount (Quanta_Type (Row.Amount)), 12) & " " & Mea_Str);
+            end;
+         end loop;
+      end;
 
       --  Count open scheduled items
       declare

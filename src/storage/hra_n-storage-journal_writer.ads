@@ -5,6 +5,7 @@
 --  Atomic append operations for canonical journal.hra files.
 -------------------------------------------------------------------------------
 
+with HRA_N.Core.Types;    use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Event;    use HRA_N.Core.Event;
 
@@ -31,10 +32,18 @@ package HRA_N.Storage.Journal_Writer is
       Tx_Id        : String;
       Valid_On     : Date_Type;
       Effects      : Effect_List;
-      Purpose      : String := "";
-      Description  : String := "";
-      Replaces_Id  : String := "";
-      Relation_Str : String := "";
+      Purpose       : String := "";
+      Description   : String := "";
+      Replaces_Id   : String := "";
+      Relation_Str  : String := "";
       Discharge_Str : String := "") return Append_Result;
+
+   function Encode_Assertion
+     (As_Id       : String;
+      Valid_On    : Date_Type;
+      Locus       : String;
+      Measure     : String;
+      Amount      : Quanta_Type;
+      Description : String := "") return String;
 
 end HRA_N.Storage.Journal_Writer;
