@@ -98,6 +98,44 @@ class TestHraNCli(unittest.TestCase):
         self.assertEqual(res.returncode, 0)
         self.assertIn("g00000005", res.stdout)
 
+        # 11. Scheduled CLI commands (inspection via Scheduled_Query and Scheduled_Detail_Query)
+        # Populate scheduled.hra in current snapshot
+        sched_path = os.path.join(self.test_dir, ".hra", "generations", "g00000005", "scheduled.hra")
+        with open(sched_path, "w", encoding="utf-8") as f:
+            f.write(
+                "SCHED s1 2026-09-15 cash:-1000 food:1000\n"
+                "SCHED s2 2026-09-10 smbc:-50000 rent:50000\n"
+                "COMPLETE s2 e0002\n"
+            )
+
+        # 11a. Default open scheduled lists only s1
+        res = self.run_cmd("scheduled")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("Open Scheduled Obligations (1 pending)", res.stdout)
+        self.assertIn("[s1]", res.stdout)
+        self.assertNotIn("[s2]", res.stdout)
+
+        # 11b. All scheduled lists s1 and s2 (with completion)
+        res = self.run_cmd("scheduled", "--all")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("All Scheduled Obligations (2 items)", res.stdout)
+        self.assertIn("[s1]", res.stdout)
+        self.assertIn("[s2]", res.stdout)
+        self.assertIn("COMPLETED", res.stdout)
+
+        # 11c. Detail query resolves single identity
+        res = self.run_cmd("scheduled", "s2")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("Scheduled Obligation Detail: s2", res.stdout)
+        self.assertIn("COMPLETED (Actual: e0002)", res.stdout)
+        self.assertIn("smbc", res.stdout)
+        self.assertIn("rent", res.stdout)
+
+        # 11d. Detail query on absent identity fails closed
+        res = self.run_cmd("scheduled", "absent")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("scheduled identity not found", res.stderr + res.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

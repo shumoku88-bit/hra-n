@@ -6,13 +6,16 @@
 with Ada.Command_Line;
 with Ada.Strings.Fixed;                     use Ada.Strings.Fixed;
 with HRA_N.Core.Types;                      use HRA_N.Core.Types;
-with HRA_N.Core.Validity;                   use HRA_N.Core.Validity;
 with HRA_N.Core.Scheduled;                  use HRA_N.Core.Scheduled;
 with HRA_N.Core.Event;                      use HRA_N.Core.Event;
 with HRA_N.Storage.Scheduled_Journal_Reader; use HRA_N.Storage.Scheduled_Journal_Reader;
 with HRA_N.Storage.Scheduled_Journal_Writer; use HRA_N.Storage.Scheduled_Journal_Writer;
 with HRA_N.Storage.Journal_Reader;          use HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Journal_Writer;          use HRA_N.Storage.Journal_Writer;
+with HRA_N.Application.Scheduled_Query; use HRA_N.Application.Scheduled_Query;
+with HRA_N.Application.Scheduled_Detail_Query; use HRA_N.Application.Scheduled_Detail_Query;
+with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
+with HRA_N.Application.Review; use HRA_N.Application.Review;
 with HRA_N.UI.Output;                       use HRA_N.UI.Output;
 with HRA_N.UI.Prompt;                       use HRA_N.UI.Prompt;
 
@@ -61,6 +64,135 @@ package body HRA_N.UI.Scheduled_Cli is
                 Right.Id.Token.Value (1 .. Right.Id.Token.Length);
       end if;
    end Occ_Less;
+
+   procedure Display_Scheduled
+     (Paths : Path_Config;
+      Scope : HRA_N.Application.Scheduled_Query.Scheduled_Scope;
+      Day   : Date_Type)
+   is
+      View : constant Scheduled_View :=
+        HRA_N.Application.Scheduled_Query.Execute
+          (Paths,
+           (Scope        => Scope,
+            Selected_Day => Day,
+            Ordering     => Order_Due_Ascending));
+      Title : constant String :=
+        (case Scope is
+           when Scope_Current_Open => "Open Scheduled Obligations (" &
+             Trim (View.Open_Count'Image, Ada.Strings.Both) & " pending)",
+           when Scope_Selected_Day => "Scheduled Obligations for " &
+             Format_Iso_Date (Day) & " (" &
+             Trim (View.Row_Count'Image, Ada.Strings.Both) & " items)",
+           when Scope_All          => "All Scheduled Obligations (" &
+             Trim (View.Total_Count'Image, Ada.Strings.Both) & " items)");
+   begin
+      if View.Status = Query_Rejected then
+         Put_Error_Line ("hra-n: scheduled query failed");
+         if View.Diagnostic_Len > 0 then
+            Put_Error_Line ("       " & View.Diagnostic (1 .. View.Diagnostic_Len));
+         end if;
+         Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         return;
+      end if;
+
+      Put_Line ("============================================================");
+      Put_Line (" HRA-N: " & Title);
+      if View.Snapshot.Kind = Snapshot_Versioned then
+         Put_Line (" Snapshot: " & View.Snapshot.Identity.Value (1 .. View.Snapshot.Identity.Length));
+      end if;
+      Put_Line ("============================================================");
+
+      if View.Row_Count = 0 then
+         Put_Line ("  No matching scheduled obligations found.");
+         Put_Line ("============================================================");
+         return;
+      end if;
+
+      Put_Line ("  DUE DATE    ID              STATUS      FLOW");
+      Put_Line (" ------------------------------------------------------------");
+
+      for I in 1 .. View.Row_Count loop
+         declare
+            Row      : constant Scheduled_Row := View.Rows (I);
+            Id_Str   : constant String := Row.Id.Value (1 .. Row.Id.Length);
+            Date_Str : constant String := Format_Iso_Date (Row.Expected_Day);
+            Stat_Str : constant String :=
+              (case Row.Status is
+                 when Status_Open      => "OPEN     ",
+                 when Status_Completed => "COMPLETED",
+                 when Status_Retired   => "RETIRED  ",
+                 when Status_Replaced  => "REPLACED ");
+            Flow_Str : constant String := Row.Flow_Summary (1 .. Row.Flow_Len);
+            Term_Str : constant String :=
+              (if Row.Terminal_Ref.Length > 0
+               then " (" & Row.Terminal_Ref.Value (1 .. Row.Terminal_Ref.Length) & ")"
+               else "");
+         begin
+            Put_Line ("  " & Date_Str & "  " & Pad_Right ("[" & Id_Str & "]", 16) &
+                      Stat_Str & "  " & Flow_Str & Term_Str);
+         end;
+      end loop;
+      Put_Line ("============================================================");
+   end Display_Scheduled;
+
+   procedure Display_Scheduled
+     (Paths : Path_Config;
+      Scope : HRA_N.Application.Scheduled_Query.Scheduled_Scope :=
+        HRA_N.Application.Scheduled_Query.Scope_Current_Open)
+   is
+   begin
+      Display_Scheduled (Paths, Scope, Get_System_Date);
+   end Display_Scheduled;
+
+   procedure Display_Scheduled_Detail
+     (Paths  : Path_Config;
+      Id_Str : String)
+   is
+      Id_Tok : constant Token_Text := Make_Token (Id_Str);
+      Detail : constant HRA_N.Application.Scheduled_Detail_Query.Scheduled_Detail_View :=
+        HRA_N.Application.Scheduled_Detail_Query.Execute (Paths, Id_Tok);
+   begin
+      if Detail.Status = Query_Rejected then
+         Put_Error_Line ("hra-n: scheduled detail failed for " & Id_Str);
+         if Detail.Diagnostic_Len > 0 then
+            Put_Error_Line ("       " & Detail.Diagnostic (1 .. Detail.Diagnostic_Len));
+         end if;
+         Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         return;
+      end if;
+
+      Put_Line ("============================================================");
+      Put_Line (" Scheduled Obligation Detail: " & Id_Str);
+      if Detail.Snapshot.Kind = Snapshot_Versioned then
+         Put_Line (" Snapshot: " & Detail.Snapshot.Identity.Value (1 .. Detail.Snapshot.Identity.Length));
+      end if;
+      Put_Line ("============================================================");
+      Put_Line ("  DUE DATE: " & Format_Iso_Date (Detail.Expected_Day));
+      Put_Line ("  MEASURE:  " & Detail.Measure.Value (1 .. Detail.Measure.Length));
+      declare
+         Stat_Str : constant String :=
+           (case Detail.Lifecycle_Status is
+              when Status_Open      => "OPEN",
+              when Status_Completed => "COMPLETED (Actual: " & Detail.Terminal_Ref.Value (1 .. Detail.Terminal_Ref.Length) & ")",
+              when Status_Retired   => "RETIRED",
+              when Status_Replaced  => "REPLACED by " & Detail.Terminal_Ref.Value (1 .. Detail.Terminal_Ref.Length));
+      begin
+         Put_Line ("  STATUS:   " & Stat_Str);
+      end;
+      Put_Line ("------------------------------------------------------------");
+      Put_Line ("  LEGS / FLOWS (" & Trim (Detail.Change_Count'Image, Ada.Strings.Both) & "):");
+      for I in 1 .. Detail.Change_Count loop
+         declare
+            Chg : constant Scheduled_Change_View := Detail.Changes (I);
+            Loc : constant String := Chg.Locus.Value (1 .. Chg.Locus.Length);
+            Amt : constant String := Format_Amount (Chg.Amount);
+         begin
+            Put_Line ("    " & Pad_Right (Loc, 20) & " " & Pad_Left (Amt, 14) & " " &
+                      Detail.Measure.Value (1 .. Detail.Measure.Length));
+         end;
+      end loop;
+      Put_Line ("============================================================");
+   end Display_Scheduled_Detail;
 
    procedure Display_Open_Scheduled (Scheduled_Path : String) is
       Read_Res   : constant Scheduled_Journal_Result :=
@@ -529,14 +661,36 @@ package body HRA_N.UI.Scheduled_Cli is
    begin
       if Command = "scheduled" or else Command = "open-scheduled" then
          if Rem_Args = 0 then
-            Display_Open_Scheduled (Sched_Path);
+            Display_Scheduled (Paths, Scope_Current_Open);
             return;
          end if;
 
          declare
             Subcmd : constant String := Ada.Command_Line.Argument (Command_Idx + 1);
          begin
-            if Subcmd = "add" then
+            if Subcmd = "--all" or else Subcmd = "-a" then
+               Display_Scheduled (Paths, Scope_All);
+               return;
+            elsif Subcmd = "--day" or else Subcmd = "-d" then
+               if Rem_Args >= 2 then
+                  declare
+                     D_Str : constant String := Ada.Command_Line.Argument (Command_Idx + 2);
+                     D_Val : Date_Type;
+                  begin
+                     if Parse_Iso_Date (D_Str, D_Val) then
+                        Display_Scheduled (Paths, Scope_Selected_Day, D_Val);
+                        return;
+                     else
+                        Put_Error_Line ("Invalid date format: " & D_Str);
+                        Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                        return;
+                     end if;
+                  end;
+               else
+                  Display_Scheduled (Paths, Scope_Selected_Day, Get_System_Date);
+                  return;
+               end if;
+            elsif Subcmd = "add" then
                if Rem_Args < 4 then
                   Put_Line ("Usage: hra-n scheduled add <FROM> <TO> <AMOUNT> [YYYY-MM-DD]");
                   return;
@@ -564,7 +718,8 @@ package body HRA_N.UI.Scheduled_Cli is
                   Amount_Str     => Ada.Command_Line.Argument (Command_Idx + 5),
                   Date_Str       => (if Rem_Args >= 5 then Ada.Command_Line.Argument (Command_Idx + 6) else ""));
             else
-               Display_Open_Scheduled (Sched_Path);
+               --  Try detail lookup for <id>
+               Display_Scheduled_Detail (Paths, Subcmd);
             end if;
          end;
       elsif Command = "complete" then

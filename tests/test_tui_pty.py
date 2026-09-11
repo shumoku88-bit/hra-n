@@ -42,7 +42,7 @@ def main() -> None:
         with open(os.path.join(gen_dir, "policy.hra"), "w", encoding="utf-8") as stream:
             stream.write("ROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n")
         with open(os.path.join(gen_dir, "scheduled.hra"), "w", encoding="utf-8") as stream:
-            stream.write("# empty scheduled journal\n")
+            stream.write(f"SCHED s0001 {today} cash:-1000 food:1000\n")
 
         pid, fd = pty.fork()
         if pid == 0:
@@ -144,6 +144,28 @@ def main() -> None:
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
             assert b"3 selected / 3 total" in output
+
+            # Test Scheduled TUI navigation from Home
+            os.write(fd, b"s")
+            read_until(fd, output, b"SCHEDULED")
+            assert b"s0001" in output
+            time.sleep(0.05)
+
+            # Open Scheduled detail
+            os.write(fd, b"\n")
+            read_until(fd, output, b"DETAIL")
+            assert b"s0001" in output
+            assert b"OPEN" in output
+            time.sleep(0.05)
+
+            # Return to Scheduled list
+            os.write(fd, b"b")
+            read_until(fd, output, b"CURRENT OPEN")
+            time.sleep(0.05)
+
+            # Return to Home
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
         except Exception:
             os.kill(pid, signal.SIGKILL)
             os.waitpid(pid, 0)
@@ -179,7 +201,7 @@ def main() -> None:
         if not os.WIFEXITED(exit_status) or os.WEXITSTATUS(exit_status) != 0:
             raise AssertionError(f"Home TUI exited unsuccessfully: {exit_status}")
 
-        print("TUI PTY: Home, Selected Day, Movement record editor, Actual detail, resize, redraw, and quit passed")
+        print("TUI PTY: Home, Selected Day, Movement record editor, Actual detail, Scheduled TUI/detail, resize, redraw, and quit passed")
     finally:
         shutil.rmtree(household, ignore_errors=True)
 

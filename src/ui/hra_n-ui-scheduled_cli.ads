@@ -6,7 +6,9 @@
 --  scheduled obligations in canonical scheduled.hra.
 -------------------------------------------------------------------------------
 
+with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
+with HRA_N.Application.Scheduled_Query;
 
 package HRA_N.UI.Scheduled_Cli is
 
@@ -15,6 +17,20 @@ package HRA_N.UI.Scheduled_Cli is
       Command     : String;
       Command_Idx : Positive;
       Rem_Args    : Natural);
+
+   procedure Display_Scheduled
+     (Paths : Path_Config;
+      Scope : HRA_N.Application.Scheduled_Query.Scheduled_Scope :=
+        HRA_N.Application.Scheduled_Query.Scope_Current_Open);
+
+   procedure Display_Scheduled
+     (Paths : Path_Config;
+      Scope : HRA_N.Application.Scheduled_Query.Scheduled_Scope;
+      Day   : Date_Type);
+
+   procedure Display_Scheduled_Detail
+     (Paths  : Path_Config;
+      Id_Str : String);
 
    procedure Display_Open_Scheduled (Scheduled_Path : String);
 

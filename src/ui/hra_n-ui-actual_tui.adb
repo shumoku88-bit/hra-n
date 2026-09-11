@@ -1,9 +1,11 @@
 with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Actual_Query; use HRA_N.Application.Actual_Query;
+with HRA_N.Application.Scheduled_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.UI.Actual_Detail_TUI;
+with HRA_N.UI.Scheduled_TUI;
 with HRA_N.UI.Record_TUI;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with Terminal_Interface.Curses;
@@ -77,7 +79,7 @@ package body HRA_N.UI.Actual_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "j/k: select   Enter: detail   n: record   f: day/all   o: order   b/Esc: home");
+            "j/k: select   Enter: detail   n: record   s: scheduled   f: day/all   o: order   b/Esc: home");
       end if;
       Curses.Refresh;
    end Draw;
@@ -154,6 +156,12 @@ package body HRA_N.UI.Actual_TUI is
                Scope :=
                  (if Scope = Scope_Selected_Day then Scope_All else Scope_Selected_Day);
                Cursor := 1;
+            elsif Key = Character'Pos ('s') or else Key = Character'Pos ('S') then
+               HRA_N.UI.Scheduled_TUI.Run
+                 (Current_Paths,
+                  Selected_Day,
+                  HRA_N.Application.Scheduled_Query.Scope_Selected_Day);
+               Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
             elsif Key = Character'Pos ('o') or else Key = Character'Pos ('O') then
                Ordering :=
                  (if Ordering = Order_Newest_First
