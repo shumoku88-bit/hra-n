@@ -133,11 +133,13 @@ sig CapacityEffective extends Record {
     on       : one Day
 }
 
---  Locus-to-purpose routing evidence. Consumption resolves each posting
---  through the retained routing of the answering snapshot.
+--  Historical Actual routing. No effective day means INITIAL. No purpose
+--  means explicitly UNMANAGED. Coordinate identity is (locus, effective),
+--  so file order carries no authority.
 sig RoutingEntry extends Record {
     routeLocus   : one Locus,
-    routePurpose : one Purpose
+    routeFrom    : lone Day,
+    routePurpose : lone Purpose
 }
 
 --  A budget window is a caller-supplied half-open query coordinate, never a
@@ -267,12 +269,30 @@ fun UnallocatedInWindow[s : Snapshot, q : BudgetQuery, m : Measure] : Int {
 --  a superseded transaction never contributes, even when its day falls in
 --  the window. Missing validity is absent from EffectiveTransactions by
 --  construction of the frontier, never guessed.
+pred RouteApplicable[e : RoutingEntry, d : Day] {
+    no e.routeFrom or DayOrder/lte[e.routeFrom, d]
+}
+
+pred RouteLater[candidate, current : RoutingEntry] {
+    some candidate.routeFrom
+    and (no current.routeFrom
+         or DayOrder/lt[current.routeFrom, candidate.routeFrom])
+}
+
+fun EffectiveRoutes[s : Snapshot, l : Locus, d : Day] : set RoutingEntry {
+    { e : RoutingEntry & s.retained |
+        e.routeLocus = l and RouteApplicable[e, d]
+        and no later : RoutingEntry & s.retained |
+            later.routeLocus = l and RouteApplicable[later, d]
+            and RouteLater[later, e] }
+}
+
 fun Consumption[s : Snapshot, q : BudgetQuery, purp : Purpose, m : Measure] : Int {
     sum t : EffectiveTransactions[s], p : t.postings |
         (InHalfOpen[t.effectiveDay, q.from, q.to]
             and p.coord.measure = m
-            and some e : RoutingEntry & s.retained |
-                e.routeLocus = p.coord.locus and e.routePurpose = purp) =>
+            and some e : EffectiveRoutes[s, p.coord.locus, t.effectiveDay] |
+                e.routePurpose = purp) =>
             p.delta else 0
 }
 
@@ -394,8 +414,10 @@ pred CapacityEffectiveSound[s : Snapshot] {
         lone e : CapacityEffective & s.retained | e.movement = cm
 }
 
-pred RoutingFunctional[s : Snapshot] {
-    all l : Locus | lone e : RoutingEntry & s.retained | e.routeLocus = l
+pred RoutingCoordinatesUnique[s : Snapshot] {
+    all disj left, right : RoutingEntry & s.retained |
+        left.routeLocus = right.routeLocus implies left.routeFrom != right.routeFrom
+    all l : Locus, d : Day | lone EffectiveRoutes[s, l, d]
 }
 
 pred CapPostingOwnershipIsUnique[s : Snapshot] {
@@ -420,7 +442,7 @@ pred Admitted[s : Snapshot] {
     ReversalsAreSound[s]
     CapacityMovementsConserve[s]
     CapacityEffectiveSound[s]
-    RoutingFunctional[s]
+    RoutingCoordinatesUnique[s]
     CapPostingOwnershipIsUnique[s]
     AttentionDueIsCoherent[s]
     AttentionClosuresAreSound[s]

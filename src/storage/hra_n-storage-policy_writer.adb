@@ -50,4 +50,20 @@ package body HRA_N.Storage.Policy_Writer is
       end if;
    end Encode_Window;
 
+   function Encode_Route
+     (Locus          : String;
+      Effective_Kind : Routing_Effective_Kind;
+      Effective_On   : Date_Type;
+      Managed        : Boolean;
+      Purpose        : String := "") return String
+   is
+      Effective : constant String :=
+        (if Effective_Kind = Routing_Initial then "INITIAL"
+         else "FROM " & Format_Iso_Date (Effective_On));
+      Target : constant String :=
+        (if Managed then "MANAGED " & Purpose else "UNMANAGED");
+   begin
+      return "ROUTE " & Locus & " " & Effective & " " & Target & ASCII.LF;
+   end Encode_Route;
+
 end HRA_N.Storage.Policy_Writer;

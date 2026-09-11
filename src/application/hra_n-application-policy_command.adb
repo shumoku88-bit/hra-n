@@ -211,6 +211,100 @@ package body HRA_N.Application.Policy_Command is
       end;
    end Propose_Role;
 
+   function Propose_Routing
+     (Paths  : Path_Config;
+      Intent : Routing_Intent) return Proposal_Result
+   is
+      Result  : Proposal_Result;
+      Policy  : Policy_Result;
+      J_Bytes : HRA_N.Storage.Exact_File.Read_Result;
+      P_Bytes : HRA_N.Storage.Exact_File.Read_Result;
+      S_Bytes : HRA_N.Storage.Exact_File.Read_Result;
+
+      function Fail (Message : String) return Proposal_Result is
+      begin
+         return HRA_N.Application.Proposal.Failed (Result, Message);
+      end Fail;
+   begin
+      if not Paths.Resolution_Ok or else not Paths.Is_Versioned then
+         return Fail ("cannot propose routing without selected snapshot authority");
+      elsif not Token_Is_Encodable (Intent.Locus.Token) then
+         return Fail ("routing locus is empty or unencodable");
+      elsif Intent.Effective_Kind = Routing_From_Date
+        and then not Is_Valid_Date
+          (Intent.Effective_On.Year,
+           Intent.Effective_On.Month,
+           Intent.Effective_On.Day)
+      then
+         return Fail ("routing effective date is invalid");
+      elsif Intent.Managed and then not Token_Is_Encodable (Intent.Purpose) then
+         return Fail ("managed routing purpose is empty or unencodable");
+      elsif not Intent.Managed and then Intent.Purpose.Length > 0 then
+         return Fail ("unmanaged routing must not carry a purpose");
+      end if;
+
+      Policy := Read_Policy_File (Policy_Path_Str (Paths));
+      if not Policy.Success then
+         return Fail ("policy authority is not currently admitted");
+      elsif Policy.Routing.Count = Max_Routing_Entries then
+         return Fail ("routing history is at capacity");
+      end if;
+
+      for I in 1 .. Policy.Routing.Count loop
+         declare
+            Item : Routing_Entry renames Policy.Routing.Entries (I);
+         begin
+            if Equal_Token (Item.Locus.Token, Intent.Locus.Token)
+              and then Item.Effective_Kind = Intent.Effective_Kind
+              and then (Intent.Effective_Kind = Routing_Initial
+                        or else Equal_Date
+                          (Item.Effective_On, Intent.Effective_On))
+            then
+               return Fail
+                 ("routing coordinate already has retained evidence");
+            end if;
+         end;
+      end loop;
+
+      P_Bytes := HRA_N.Storage.Exact_File.Read_All (Policy_Path_Str (Paths));
+      J_Bytes := HRA_N.Storage.Exact_File.Read_All (Journal_Path_Str (Paths));
+      S_Bytes := HRA_N.Storage.Exact_File.Read_All (Scheduled_Path_Str (Paths));
+      if not P_Bytes.Success or else not J_Bytes.Success or else not S_Bytes.Success then
+         return Fail ("cannot read exact authority bytes for proposal");
+      end if;
+
+      declare
+         Locus_Str : constant String :=
+           Intent.Locus.Token.Value (1 .. Intent.Locus.Token.Length);
+         Purpose_Str : constant String :=
+           (if Intent.Managed
+            then Intent.Purpose.Value (1 .. Intent.Purpose.Length) else "");
+         Effective_Str : constant String :=
+           (if Intent.Effective_Kind = Routing_Initial then "initial"
+            else Format_Iso_Date (Intent.Effective_On));
+         New_Policy : Unbounded_String := P_Bytes.Content;
+      begin
+         Append
+           (New_Policy,
+            Encode_Route
+              (Locus          => Locus_Str,
+               Effective_Kind => Intent.Effective_Kind,
+               Effective_On   => Intent.Effective_On,
+               Managed        => Intent.Managed,
+               Purpose        => Purpose_Str));
+         Result.Success := True;
+         Result.Proposal :=
+           HRA_N.Application.Proposal.Seal
+             (Paths        => Paths,
+              Primary_Id   => Locus_Str,
+              Secondary_Id => Effective_Str,
+              Journal      => J_Bytes.Content,
+              Policy       => New_Policy,
+              Scheduled    => S_Bytes.Content);
+         return Result;
+      end;
+   end Propose_Routing;
+
    function Propose_Window
      (Paths  : Path_Config;
       Intent : Window_Intent) return Proposal_Result

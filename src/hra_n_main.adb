@@ -471,6 +471,14 @@ begin
          return;
       end if;
 
+      --  Branch: historical Actual routing
+      if Command = "route" or else Command = "routes"
+        or else Command = "routing"
+      then
+         HRA_N.UI.Policy_CLI.Handle_Routing_Command (Paths, Command_Idx + 1);
+         return;
+      end if;
+
       --  Branch: Evaluation windows
       if Command = "window" or else Command = "windows" then
          HRA_N.UI.Policy_CLI.Handle_Window_Command (Paths, Command_Idx + 1);

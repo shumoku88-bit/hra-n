@@ -148,7 +148,9 @@ package body HRA_N.Application.Movement_Command is
          return Fail ("cannot read exact authority bytes for proposal");
       end if;
 
-      Find_Purpose (Policy.Routing, Intent.To_Locus, Purpose, Has_Purpose);
+      Find_Purpose_As_Of
+        (Policy.Routing, Intent.To_Locus, Intent.Valid_On,
+         Purpose, Has_Purpose);
       Effects.Count := 2;
       Effects.Values (1) :=
         (Key     => (Token => Make_Token ("0")),

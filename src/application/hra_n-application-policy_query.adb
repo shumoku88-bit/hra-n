@@ -111,6 +111,132 @@ package body HRA_N.Application.Policy_Query is
       end;
    end Execute_Role_Query;
 
+   function Execute_Routing_Query
+     (Paths           : Path_Config;
+      As_Of           : Date_Type;
+      Include_History : Boolean := False) return Routing_View
+   is
+      Snap     : constant String := Snapshot_Id_Str (Paths);
+      Snap_Len : constant Natural := Natural'Min (Snap'Length, 64);
+   begin
+      if not Paths.Resolution_Ok or else not Paths.Is_Versioned then
+         declare
+            Res : Routing_View (0);
+         begin
+            Res.Status := Query_Rejected;
+            Res.Diagnostic (1 .. 32) := "Unresolvable snapshot authority ";
+            Res.Diagnostic_Len := 32;
+            return Res;
+         end;
+      end if;
+
+      declare
+         P_Res : constant Policy_Result :=
+           Read_Policy_File (Policy_Path_Str (Paths));
+      begin
+         if not P_Res.Success then
+            declare
+               Res : Routing_View (0);
+               L   : constant Natural :=
+                 Natural'Min (P_Res.Error_Len, Res.Diagnostic'Length);
+            begin
+               Res.Status := Query_Rejected;
+               Res.Diagnostic_Len := L;
+               if L > 0 then
+                  Res.Diagnostic (1 .. L) := P_Res.Error_Reason (1 .. L);
+               end if;
+               return Res;
+            end;
+         end if;
+
+         declare
+            Res : Routing_View (Natural (P_Res.Routing.Count));
+
+            function Applicable (Item : Routing_Entry) return Boolean is
+              (Item.Effective_Kind = Routing_Initial
+               or else Date_Less (Item.Effective_On, As_Of)
+               or else Equal_Date (Item.Effective_On, As_Of));
+
+            function Later
+              (Candidate, Current : Routing_Entry) return Boolean is
+              ((Current.Effective_Kind = Routing_Initial
+                and then Candidate.Effective_Kind = Routing_From_Date)
+               or else (Current.Effective_Kind = Routing_From_Date
+                         and then Candidate.Effective_Kind = Routing_From_Date
+                         and then Date_Less
+                           (Current.Effective_On, Candidate.Effective_On)));
+
+            procedure Add (Item : Routing_Entry) is
+            begin
+               Res.Row_Count := Res.Row_Count + 1;
+               Res.Rows (Res.Row_Count) :=
+                 (Locus          => Item.Locus.Token,
+                  Effective_Kind => Item.Effective_Kind,
+                  Effective_On   => Item.Effective_On,
+                  Managed        => Item.Managed,
+                  Purpose        => Item.Purpose);
+            end Add;
+         begin
+            Res.Snapshot_Len := Snap_Len;
+            Res.Snapshot (1 .. Snap_Len) :=
+              Snap (Snap'First .. Snap'First + Snap_Len - 1);
+            Res.Status := Query_Complete;
+            Res.As_Of_Date := As_Of;
+            Res.Includes_History := Include_History;
+
+            for I in 1 .. P_Res.Routing.Count loop
+               declare
+                  Item      : Routing_Entry renames P_Res.Routing.Entries (I);
+                  Superseded : Boolean := False;
+               begin
+                  if Include_History then
+                     Add (Item);
+                  elsif Applicable (Item) then
+                     for J in 1 .. P_Res.Routing.Count loop
+                        if J /= I
+                          and then Applicable (P_Res.Routing.Entries (J))
+                          and then Equal_Token
+                            (Item.Locus.Token,
+                             P_Res.Routing.Entries (J).Locus.Token)
+                          and then Later (P_Res.Routing.Entries (J), Item)
+                        then
+                           Superseded := True;
+                           exit;
+                        end if;
+                     end loop;
+                     if not Superseded then
+                        Add (Item);
+                     end if;
+                  end if;
+               end;
+            end loop;
+
+            for I in 1 .. Res.Row_Count loop
+               for J in I + 1 .. Res.Row_Count loop
+                  if Token_Less (Res.Rows (J).Locus, Res.Rows (I).Locus)
+                    or else
+                      (Equal_Token (Res.Rows (J).Locus, Res.Rows (I).Locus)
+                       and then Res.Rows (I).Effective_Kind = Routing_From_Date
+                       and then
+                         (Res.Rows (J).Effective_Kind = Routing_Initial
+                          or else Date_Less
+                            (Res.Rows (J).Effective_On,
+                             Res.Rows (I).Effective_On)))
+                  then
+                     declare
+                        Tmp : constant Routing_View_Row := Res.Rows (I);
+                     begin
+                        Res.Rows (I) := Res.Rows (J);
+                        Res.Rows (J) := Tmp;
+                     end;
+                  end if;
+               end loop;
+            end loop;
+            return Res;
+         end;
+      end;
+   end Execute_Routing_Query;
+
    function Execute_Window_Query
      (Paths : Path_Config) return Window_View
    is

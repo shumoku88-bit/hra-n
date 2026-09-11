@@ -17,4 +17,8 @@ package HRA_N.UI.Policy_CLI is
      (Paths     : Path_Config;
       Start_Arg : Positive);
 
+   procedure Handle_Routing_Command
+     (Paths     : Path_Config;
+      Start_Arg : Positive);
+
 end HRA_N.UI.Policy_CLI;

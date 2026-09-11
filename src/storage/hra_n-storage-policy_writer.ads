@@ -6,6 +6,7 @@
 -------------------------------------------------------------------------------
 
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
+with HRA_N.Core.Actual_Routing;  use HRA_N.Core.Actual_Routing;
 with HRA_N.Core.Validity;        use HRA_N.Core.Validity;
 
 package HRA_N.Storage.Policy_Writer is
@@ -24,5 +25,12 @@ package HRA_N.Storage.Policy_Writer is
       Start_Date : Date_Type;
       End_Date   : Date_Type;
       Name       : String := "") return String;
+
+   function Encode_Route
+     (Locus          : String;
+      Effective_Kind : Routing_Effective_Kind;
+      Effective_On   : Date_Type;
+      Managed        : Boolean;
+      Purpose        : String := "") return String;
 
 end HRA_N.Storage.Policy_Writer;

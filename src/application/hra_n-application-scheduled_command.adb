@@ -475,7 +475,9 @@ package body HRA_N.Application.Scheduled_Command is
                            Measure => Lookup.Item.Measure,
                            Amount  => (Quanta => Chg.Amount));
                         if Chg.Amount > 0 and then not Has_Purp then
-                           Find_Purpose (Policy.Routing, Chg.Locus, Purpose, Has_Purp);
+                           Find_Purpose_As_Of
+                             (Policy.Routing, Chg.Locus, Date,
+                              Purpose, Has_Purp);
                         end if;
                      end;
                   end loop;

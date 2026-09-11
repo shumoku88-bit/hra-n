@@ -8,6 +8,7 @@
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;  use HRA_N.Application.Path_Resolver;
 with HRA_N.Core.Accounting_Role;       use HRA_N.Core.Accounting_Role;
+with HRA_N.Core.Actual_Routing;        use HRA_N.Core.Actual_Routing;
 with HRA_N.Core.Window_Policy;         use HRA_N.Core.Window_Policy;
 with HRA_N.Core.Validity;              use HRA_N.Core.Validity;
 with HRA_N.Core.Types;                 use HRA_N.Core.Types;
@@ -37,6 +38,28 @@ package HRA_N.Application.Policy_Query is
       Rows           : Role_Row_Array (1 .. Capacity);
    end record;
 
+   type Routing_View_Row is record
+      Locus          : Token_Text;
+      Effective_Kind : Routing_Effective_Kind;
+      Effective_On   : Date_Type;
+      Managed        : Boolean;
+      Purpose        : Token_Text;
+   end record;
+
+   type Routing_Row_Array is array (Positive range <>) of Routing_View_Row;
+
+   type Routing_View (Capacity : Natural) is record
+      Snapshot       : String (1 .. 64) := [others => ' '];
+      Snapshot_Len   : Natural := 0;
+      Status         : Query_Status := Query_Complete;
+      Diagnostic     : String (1 .. 128) := [others => ' '];
+      Diagnostic_Len : Natural := 0;
+      As_Of_Date     : Date_Type := (Year => 2026, Month => 1, Day => 1);
+      Includes_History : Boolean := False;
+      Row_Count      : Natural := 0;
+      Rows           : Routing_Row_Array (1 .. Capacity);
+   end record;
+
    type Window_Row_Array is array (Positive range <>) of Window_Definition;
 
    type Window_View (Capacity : Natural) is record
@@ -53,6 +76,11 @@ package HRA_N.Application.Policy_Query is
      (Paths     : Path_Config;
       As_Of     : Date_Type := (Year => 2026, Month => 1, Day => 1);
       Has_As_Of : Boolean := False) return Role_View;
+
+   function Execute_Routing_Query
+     (Paths           : Path_Config;
+      As_Of           : Date_Type;
+      Include_History : Boolean := False) return Routing_View;
 
    function Execute_Window_Query
      (Paths : Path_Config) return Window_View;

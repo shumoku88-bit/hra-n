@@ -592,5 +592,33 @@ class TestHraNCli(unittest.TestCase):
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("jpy only", res.stdout)
 
+        # 56. Historical Actual routing is managed without policy hand edits
+        res = self.run_cmd("route", "set", "food", "groceries", "initial")
+        self.assertEqual(res.returncode, 0, f"route set failed: {res.stderr}")
+        self.assertIn("[OK] Committed Actual Routing: food", res.stdout)
+        self.assertIn("SNAPSHOT: g00000034", res.stdout)
+        res = self.run_cmd("route", "clear", "food", "2026-09-13")
+        self.assertEqual(res.returncode, 0, f"route clear failed: {res.stderr}")
+        self.assertIn("EFFECTIVE: 2026-09-13", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000035")
+
+        res = self.run_cmd("route", "--as-of", "2026-09-12")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("food", res.stdout)
+        self.assertIn("groceries", res.stdout)
+        res = self.run_cmd("route", "--as-of", "2026-09-13")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("UNMANAGED", res.stdout)
+        res = self.run_cmd("route", "--history")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("initial", res.stdout)
+        self.assertIn("2026-09-13", res.stdout)
+
+        # Duplicate (locus, effective) evidence fails closed
+        res = self.run_cmd("route", "set", "food", "other", "initial")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("coordinate already has retained evidence", res.stdout + res.stderr)
+        self.assertEqual(self.current_snapshot(), "g00000035")
+
 if __name__ == "__main__":
     unittest.main()

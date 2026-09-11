@@ -175,7 +175,9 @@ package body HRA_N.Application.Budget_Window is
                            Target_Purp : Token_Text;
                            Found_Purp  : Boolean;
                         begin
-                           Find_Purpose (Routing, Eff.Locus, Target_Purp, Found_Purp);
+                           Find_Purpose_As_Of
+                             (Routing, Eff.Locus, Val_Date,
+                              Target_Purp, Found_Purp);
                            if Found_Purp then
                               for P in 1 .. Report.Row_Count loop
                                  if Equal_Token (Report.Rows (P).Purpose, Target_Purp) then

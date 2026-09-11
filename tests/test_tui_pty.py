@@ -482,6 +482,29 @@ def main() -> None:
             # Return to Home
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
+
+            # Manage dated Actual routing through the shared policy boundary
+            os.write(fd, b"r")
+            read_until(fd, output, b"ACTUAL ROUTING")
+            time.sleep(0.05)
+            os.write(fd, b"n")
+            read_until(fd, output, b"Locus:")
+            time.sleep(0.05)
+            os.write(fd, b"\n")  # selected food row seeds the locus
+            read_until(fd, output, b"Purpose:")
+            time.sleep(0.05)
+            os.write(fd, b"groceries\n")
+            read_until(fd, output, b"Effective (initial or YYYY-MM-DD")
+            time.sleep(0.05)
+            os.write(fd, b"\n")
+            read_until(fd, output, b"PREVIEW  food")
+            assert b"groceries" in output
+            os.write(fd, b"y")
+            read_until(fd, output, b"AS OF")
+            os.write(fd, b"h")
+            read_until(fd, output, b"RETAINED HISTORY")
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
         except Exception:
             os.kill(pid, signal.SIGKILL)
             os.waitpid(pid, 0)
@@ -517,7 +540,7 @@ def main() -> None:
         if not os.WIFEXITED(exit_status) or os.WEXITSTATUS(exit_status) != 0:
             raise AssertionError(f"Home TUI exited unsuccessfully: {exit_status}")
 
-        print("TUI PTY: Home, Selected Day, Movement/split record editors, Actual detail+relations, Scheduled TUI/detail, Balances TUI, Capacity TUI/editors, Budget surface/grant, Attention workspace/editors, resize, redraw, and quit passed")
+        print("TUI PTY: Home, Selected Day, Movement/split editors, Actual detail+relations, Scheduled, Balances, Capacity, Budget, Attention, Actual routing/history, resize, redraw, and quit passed")
     finally:
         shutil.rmtree(household, ignore_errors=True)
 

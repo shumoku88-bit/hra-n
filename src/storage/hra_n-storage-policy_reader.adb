@@ -673,6 +673,13 @@ package body HRA_N.Storage.Policy_Reader is
                      end;
 
                   elsif Tag = "ROUTE" then
+                     --  Historical form:
+                     --    ROUTE <locus> INITIAL MANAGED <purpose>
+                     --    ROUTE <locus> INITIAL UNMANAGED
+                     --    ROUTE <locus> FROM <date> MANAGED <purpose>
+                     --    ROUTE <locus> FROM <date> UNMANAGED
+                     --  Legacy grouped ROUTE loci... purpose rows remain
+                     --  initial managed assertions for compatibility.
                      if Count < 3 then
                         Set_Error ("Malformed ROUTE declaration");
                         Ada.Text_IO.Close (File);
@@ -680,26 +687,126 @@ package body HRA_N.Storage.Policy_Reader is
                      end if;
 
                      declare
-                        Purp_Str : constant String := Clean_Token (Slice (Line, Tokens (Count)));
+                        Form : constant String := Slice (Line, Tokens (3));
                      begin
-                        for T in 2 .. Count - 1 loop
+                        if Form = "INITIAL" or else Form = "FROM" then
                            declare
-                              Locus_Str : constant String := Clean_Token (Slice (Line, Tokens (T)));
+                              Is_Initial : constant Boolean := Form = "INITIAL";
+                              State_Idx  : constant Positive :=
+                                (if Is_Initial then 4 else 5);
+                              Purpose_Idx : constant Positive := State_Idx + 1;
+                              Locus_Str : constant String :=
+                                Clean_Token (Slice (Line, Tokens (2)));
+                              State_Str : constant String :=
+                                (if Count >= State_Idx
+                                 then Slice (Line, Tokens (State_Idx)) else "");
+                              Date_Val : Date_Type :=
+                                (Year => 1900, Month => 1, Day => 1);
+                              Managed : constant Boolean := State_Str = "MANAGED";
+                              Purpose : Token_Text :=
+                                (Length => 0, Value => [others => ' ']);
                            begin
-                              if Locus_Str'Length > 0 then
-                                 if Result.Routing.Count = Max_Routing_Entries then
-                                    Set_Error ("Exceeded maximum routing entries");
-                                    Ada.Text_IO.Close (File);
-                                    return Result;
-                                 end if;
-
-                                 Result.Routing.Count := Result.Routing.Count + 1;
-                                 Result.Routing.Entries (Result.Routing.Count) :=
-                                   (Locus   => (Token => Make_Token (Locus_Str)),
-                                    Purpose => Make_Token (Purp_Str));
+                              if (Is_Initial
+                                  and then Count not in 4 .. 5)
+                                or else ((not Is_Initial)
+                                         and then Count not in 5 .. 6)
+                                or else (State_Str /= "MANAGED"
+                                         and then State_Str /= "UNMANAGED")
+                                or else (Managed and then Count /= Purpose_Idx)
+                                or else ((not Managed) and then Count /= State_Idx)
+                              then
+                                 Set_Error ("Malformed historical ROUTE declaration");
+                                 Ada.Text_IO.Close (File);
+                                 return Result;
+                              elsif Locus_Str'Length = 0
+                                or else Locus_Str'Length > Max_Token_Length
+                              then
+                                 Set_Error ("Invalid ROUTE locus");
+                                 Ada.Text_IO.Close (File);
+                                 return Result;
+                              elsif not Is_Initial
+                                and then not Parse_Iso_Date
+                                  (Slice (Line, Tokens (4)), Date_Val)
+                              then
+                                 Set_Error ("Invalid ROUTE effective date");
+                                 Ada.Text_IO.Close (File);
+                                 return Result;
                               end if;
+
+                              if Managed then
+                                 declare
+                                    Purp_Str : constant String :=
+                                      Clean_Token
+                                        (Slice (Line, Tokens (Purpose_Idx)));
+                                 begin
+                                    if Purp_Str'Length = 0
+                                      or else Purp_Str'Length > Max_Token_Length
+                                    then
+                                       Set_Error ("Invalid ROUTE purpose");
+                                       Ada.Text_IO.Close (File);
+                                       return Result;
+                                    end if;
+                                    Purpose := Make_Token (Purp_Str);
+                                 end;
+                              end if;
+
+                              if Result.Routing.Count = Max_Routing_Entries then
+                                 Set_Error ("Exceeded maximum routing entries");
+                                 Ada.Text_IO.Close (File);
+                                 return Result;
+                              end if;
+                              Result.Routing.Count := Result.Routing.Count + 1;
+                              Result.Routing.Entries (Result.Routing.Count) :=
+                                (Locus          => (Token => Make_Token (Locus_Str)),
+                                 Effective_Kind =>
+                                   (if Is_Initial then Routing_Initial
+                                    else Routing_From_Date),
+                                 Effective_On   => Date_Val,
+                                 Managed        => Managed,
+                                 Purpose        => Purpose);
                            end;
-                        end loop;
+                        else
+                           declare
+                              Purp_Str : constant String :=
+                                Clean_Token (Slice (Line, Tokens (Count)));
+                           begin
+                              if Purp_Str'Length = 0
+                                or else Purp_Str'Length > Max_Token_Length
+                              then
+                                 Set_Error ("Invalid legacy ROUTE purpose");
+                                 Ada.Text_IO.Close (File);
+                                 return Result;
+                              end if;
+                              for T in 2 .. Count - 1 loop
+                                 declare
+                                    Locus_Str : constant String :=
+                                      Clean_Token (Slice (Line, Tokens (T)));
+                                 begin
+                                    if Locus_Str'Length > 0 then
+                                       if Locus_Str'Length > Max_Token_Length
+                                         or else Result.Routing.Count =
+                                           Max_Routing_Entries
+                                       then
+                                          Set_Error ("Invalid or excessive ROUTE locus");
+                                          Ada.Text_IO.Close (File);
+                                          return Result;
+                                       end if;
+                                       Result.Routing.Count :=
+                                         Result.Routing.Count + 1;
+                                       Result.Routing.Entries
+                                         (Result.Routing.Count) :=
+                                         (Locus          =>
+                                            (Token => Make_Token (Locus_Str)),
+                                          Effective_Kind => Routing_Initial,
+                                          Effective_On   =>
+                                            (Year => 1900, Month => 1, Day => 1),
+                                          Managed        => True,
+                                          Purpose        => Make_Token (Purp_Str));
+                                    end if;
+                                 end;
+                              end loop;
+                           end;
+                        end if;
                      end;
 
                   elsif Tag = "WINDOW" then
@@ -791,6 +898,9 @@ package body HRA_N.Storage.Policy_Reader is
          return Result;
       elsif not Closures_Are_One_To_One (Result.Attention) then
          Set_Error ("Duplicate attention closure");
+         return Result;
+      elsif not Coordinates_Are_Unique (Result.Routing) then
+         Set_Error ("Duplicate Actual routing effective coordinate");
          return Result;
       end if;
 

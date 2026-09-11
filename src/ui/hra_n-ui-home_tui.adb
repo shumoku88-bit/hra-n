@@ -13,6 +13,7 @@ with HRA_N.UI.Actual_TUI;
 with HRA_N.UI.Attention_TUI;
 with HRA_N.UI.Budget_TUI;
 with HRA_N.UI.Capacity_TUI;
+with HRA_N.UI.Routing_TUI;
 with HRA_N.UI.Scheduled_TUI;
 with HRA_N.UI.Balance_TUI;
 with HRA_N.UI.Snapshot_Label;
@@ -83,7 +84,7 @@ package body HRA_N.UI.Home_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "h/l: day  Enter: sel day  a: Actual  s: Sched  i: Attention  b: Balances  e: Capacity  c: Budget  g: today  q: quit");
+            "h/l: day  Enter: sel day  a: Actual  s: Sched  i: Attention  b: Balances  e: Capacity  c: Budget  r: Routing  g: today  q: quit");
       end if;
       Curses.Refresh;
    end Draw;
@@ -161,6 +162,11 @@ package body HRA_N.UI.Home_TUI is
                Current_Paths :=
                  HRA_N.Application.Path_Resolver.Resolve_Paths
                    (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+            elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R') then
+               HRA_N.UI.Routing_TUI.Run (Current_Paths, Selected);
+               Current_Paths :=
+                 HRA_N.Application.Path_Resolver.Resolve_Paths
+                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
             elsif Key = Character'Pos ('h') or else Key = Integer (Curses.KEY_LEFT) then
                if Selected.Year > Year_Type'First
                  or else Selected.Month > Month_Type'First
@@ -177,8 +183,7 @@ package body HRA_N.UI.Home_TUI is
                end if;
             elsif Key = Character'Pos ('g') or else Key = Character'Pos ('G') then
                Selected := Get_System_Date;
-            elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R')
-              or else Key = Ctrl_L or else Key = Integer (Curses.Key_Resize)
+            elsif Key = Ctrl_L or else Key = Integer (Curses.Key_Resize)
             then
                null;
             end if;

@@ -8,6 +8,7 @@ with Test_Support; use Test_Support;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
+with HRA_N.Core.Actual_Routing; use HRA_N.Core.Actual_Routing;
 with HRA_N.Core.Window_Policy; use HRA_N.Core.Window_Policy;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Initializer; use HRA_N.Application.Initializer;
@@ -239,6 +240,41 @@ package body Test_Policy is
       end;
    end Test_Window_Laws;
 
+   procedure Test_Routing_Laws is
+      Map     : Routing_Map;
+      Purpose : Token_Text;
+      Found   : Boolean;
+   begin
+      Map.Count := 2;
+      Map.Entries (1) :=
+        (Locus          => (Token => Make_Token ("food")),
+         Effective_Kind => Routing_Initial,
+         Effective_On   => Make_Date (1900, 1, 1),
+         Managed        => True,
+         Purpose        => Make_Token ("groceries"));
+      Map.Entries (2) :=
+        (Locus          => (Token => Make_Token ("food")),
+         Effective_Kind => Routing_From_Date,
+         Effective_On   => Make_Date (2026, 10, 1),
+         Managed        => False,
+         Purpose        => (Length => 0, Value => [others => ' ']));
+      Assert (Coordinates_Are_Unique (Map),
+              "Distinct routing effective coordinates are sound");
+      Find_Purpose_As_Of
+        (Map, (Token => Make_Token ("food")), Make_Date (2026, 9, 30),
+         Purpose, Found);
+      Assert (Found and then Equal_Token (Purpose, Make_Token ("groceries")),
+              "Initial managed route resolves before transition");
+      Find_Purpose_As_Of
+        (Map, (Token => Make_Token ("food")), Make_Date (2026, 10, 1),
+         Purpose, Found);
+      Assert (not Found,
+              "Dated unmanaged route suppresses prior managed route");
+      Map.Entries (2).Effective_Kind := Routing_Initial;
+      Assert (not Coordinates_Are_Unique (Map),
+              "Duplicate routing effective coordinate fails closed");
+   end Test_Routing_Laws;
+
    procedure Test_Commands is
       Paths : Path_Config;
    begin
@@ -401,6 +437,102 @@ package body Test_Policy is
          Assert (not Prop.Success, "Duplicate window ID fails closed");
       end;
 
+      --  10. Historical Actual routing is proposal-backed and date-aware.
+      declare
+         Intent : constant Routing_Intent :=
+           (Locus          => (Token => Make_Token ("food")),
+            Effective_Kind => Routing_Initial,
+            Effective_On   => Make_Date (1900, 1, 1),
+            Managed        => True,
+            Purpose        => Make_Token ("groceries"));
+         Prop : constant Proposal_Result := Propose_Routing (Paths, Intent);
+         Rec  : Policy_Receipt;
+      begin
+         Assert (Prop.Success, "Initial managed routing proposes");
+         Rec := Commit (Prop.Proposal);
+         Assert (Rec.Success, "Initial managed routing commits");
+         Assert (Rec.Snapshot_Id (1 .. Rec.Snapshot_Len) = "g00000005",
+                 "Routing commit advances snapshot");
+         Assert (Commit (Prop.Proposal).Success,
+                 "Routing commit retry is idempotent");
+      end;
+      Paths := Resolve_Paths (Test_Dir);
+
+      declare
+         Intent : constant Routing_Intent :=
+           (Locus          => (Token => Make_Token ("food")),
+            Effective_Kind => Routing_From_Date,
+            Effective_On   => Make_Date (2026, 10, 1),
+            Managed        => False,
+            Purpose        => (Length => 0, Value => [others => ' ']));
+         Prop : constant Proposal_Result := Propose_Routing (Paths, Intent);
+      begin
+         Assert (Prop.Success, "Dated unmanaged routing proposes");
+         Assert (Commit (Prop.Proposal).Success,
+                 "Dated unmanaged routing commits");
+      end;
+      Paths := Resolve_Paths (Test_Dir);
+
+      declare
+         Sep : constant Routing_View :=
+           Execute_Routing_Query (Paths, Make_Date (2026, 9, 30));
+         Oct : constant Routing_View :=
+           Execute_Routing_Query (Paths, Make_Date (2026, 10, 1));
+         Hist : constant Routing_View :=
+           Execute_Routing_Query
+             (Paths, Make_Date (2026, 10, 1), Include_History => True);
+      begin
+         Assert (Sep.Status = Query_Complete and then Sep.Row_Count = 1,
+                 "Routing query returns September projection");
+         Assert (Sep.Rows (1).Managed
+                 and then Equal_Token
+                   (Sep.Rows (1).Purpose, Make_Token ("groceries")),
+                 "Initial route is effective before dated assertion");
+         Assert (Oct.Row_Count = 1 and then not Oct.Rows (1).Managed,
+                 "Explicit unmanaged assertion is effective on its date");
+         Assert (Hist.Row_Count = 2,
+                 "Routing history retains both assertions");
+      end;
+
+      --  Duplicate coordinates and stale proposals fail closed.
+      declare
+         Duplicate : constant Routing_Intent :=
+           (Locus          => (Token => Make_Token ("food")),
+            Effective_Kind => Routing_Initial,
+            Effective_On   => Make_Date (1900, 1, 1),
+            Managed        => True,
+            Purpose        => Make_Token ("other"));
+      begin
+         Assert (not Propose_Routing (Paths, Duplicate).Success,
+                 "Duplicate routing coordinate fails closed");
+      end;
+
+      declare
+         Stale_Intent : constant Routing_Intent :=
+           (Locus          => (Token => Make_Token ("food")),
+            Effective_Kind => Routing_From_Date,
+            Effective_On   => Make_Date (2026, 11, 1),
+            Managed        => True,
+            Purpose        => Make_Token ("future"));
+         Advance_Intent : constant Routing_Intent :=
+           (Locus          => (Token => Make_Token ("misc")),
+            Effective_Kind => Routing_Initial,
+            Effective_On   => Make_Date (1900, 1, 1),
+            Managed        => True,
+            Purpose        => Make_Token ("other"));
+         Stale : constant Proposal_Result :=
+           Propose_Routing (Paths, Stale_Intent);
+         Advance : constant Proposal_Result :=
+           Propose_Routing (Paths, Advance_Intent);
+      begin
+         Assert (Stale.Success and then Advance.Success,
+                 "Concurrent routing proposals are constructed");
+         Assert (Commit (Advance.Proposal).Success,
+                 "Advancing routing proposal commits");
+         Assert (not Commit (Stale.Proposal).Success,
+                 "Stale routing proposal fails closed");
+      end;
+
       --  Cleanup
       if Ada.Directories.Exists (Test_Dir) then
          Ada.Directories.Delete_Tree (Test_Dir);
@@ -411,6 +543,7 @@ package body Test_Policy is
    begin
       Test_Role_Laws;
       Test_Window_Laws;
+      Test_Routing_Laws;
       Test_Commands;
    end Run;
 
