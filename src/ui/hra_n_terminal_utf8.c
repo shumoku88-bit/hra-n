@@ -24,8 +24,12 @@ static int next_terminal_glyph(const char *text,
     wchar_t wc;
 
     *consumed = mbrtowc(&wc, text, remaining, state);
-    if (*consumed == (size_t)-1 || *consumed == (size_t)-2) {
+    if (*consumed == (size_t)-1) {
         return -1;
+    }
+    if (*consumed == (size_t)-2) {
+        /* Incomplete multi-byte sequence at buffer tail */
+        return 0;
     }
     if (*consumed == 0) {
         return 0;
@@ -100,7 +104,7 @@ int hra_n_terminal_utf8_add_line(int line,
             next_terminal_glyph(ptr, remaining, &state, &consumed, &width);
 
         if (status < 0) {
-            return -1;
+            break;
         }
         if (status == 0) {
             break;

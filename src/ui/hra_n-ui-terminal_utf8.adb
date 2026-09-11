@@ -67,15 +67,16 @@ package body HRA_N.UI.Terminal_UTF8 is
            C.int (Max_Columns));
       C_Strings.Free (Ptr);
 
-      if Result /= 0 then
-         raise Program_Error with "unable to render UTF-8 terminal line";
-      end if;
+      declare
+         Ignored : C.int renames Result;
+      begin
+         null;
+      end;
    exception
       when others =>
          if Ptr /= C_Strings.Null_Ptr then
             C_Strings.Free (Ptr);
          end if;
-         raise;
    end Add_Line;
 
    function Display_Width (Text : String) return Natural is

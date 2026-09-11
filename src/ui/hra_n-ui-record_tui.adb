@@ -14,6 +14,7 @@ with HRA_N.UI.Capacity_CLI;
 with HRA_N.UI.Line_Edit; use HRA_N.UI.Line_Edit;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
+with HRA_N.UI.Terminal_UTF8;
 with Terminal_Interface.Curses;
 
 package body HRA_N.UI.Record_TUI is
@@ -37,6 +38,7 @@ package body HRA_N.UI.Record_TUI is
       Role  : Accounting_Role;
    end record;
    type Locus_Array is array (1 .. Max_Loci) of Locus_Entry;
+   type Filtered_Array is array (1 .. Max_Loci) of Positive;
 
    procedure Run_Internal
      (Paths         : HRA_N.Application.Path_Resolver.Path_Config;
@@ -65,7 +67,7 @@ package body HRA_N.UI.Record_TUI is
       Amt_Str   : String (1 .. 18) := [others => ' '];
       Amt_Len   : Natural := 0;
 
-      Desc_Str  : String (1 .. 64) := [others => ' '];
+      Desc_Str  : String (1 .. 128) := [others => ' '];
       Desc_Len  : Natural := 0;
 
       Notice     : String (1 .. 160) := [others => ' '];
@@ -76,8 +78,10 @@ package body HRA_N.UI.Record_TUI is
       Policy     : constant Policy_Result := Read_Policy_File (Policy_Path_Str (Paths));
       Loci       : Locus_Array;
       Loci_Count : Natural := 0;
-      From_Idx   : Natural := 0;
-      To_Idx     : Natural := 0;
+
+      Filtered_Loci  : Filtered_Array;
+      Filtered_Count : Natural := 0;
+      Cand_Idx       : Positive := 1;
 
       procedure Set_Notice (Msg : String) is
          L : constant Natural := Natural'Min (Msg'Length, Notice'Length);
@@ -86,25 +90,60 @@ package body HRA_N.UI.Record_TUI is
          Notice (1 .. L) := Msg (Msg'First .. Msg'First + L - 1);
       end Set_Notice;
 
+      procedure Update_Candidates (Pattern : String) is
+      begin
+         Filtered_Count := 0;
+         Cand_Idx := 1;
+         for I in 1 .. Loci_Count loop
+            declare
+               Tok : constant String := Loci (I).Token.Value (1 .. Loci (I).Token.Length);
+            begin
+               if Pattern'Length = 0 then
+                  Filtered_Count := Filtered_Count + 1;
+                  Filtered_Loci (Filtered_Count) := I;
+               elsif Pattern'Length <= Tok'Length
+                 and then Tok (Tok'First .. Tok'First + Pattern'Length - 1) = Pattern
+               then
+                  Filtered_Count := Filtered_Count + 1;
+                  Filtered_Loci (Filtered_Count) := I;
+               end if;
+            end;
+         end loop;
+      end Update_Candidates;
+
       procedure Next_Field is
       begin
          case Focus is
-            when Field_Date        => Focus := Field_From;
-            when Field_From        => Focus := Field_To;
-            when Field_To          => Focus := Field_Amount;
-            when Field_Amount      => Focus := Field_Description;
-            when Field_Description => Focus := Field_Date;
+            when Field_Date =>
+               Focus := Field_From;
+               Update_Candidates (From_Str (1 .. From_Len));
+            when Field_From =>
+               Focus := Field_To;
+               Update_Candidates (To_Str (1 .. To_Len));
+            when Field_To =>
+               Focus := Field_Amount;
+            when Field_Amount =>
+               Focus := Field_Description;
+            when Field_Description =>
+               Focus := Field_Date;
          end case;
       end Next_Field;
 
       procedure Prev_Field is
       begin
          case Focus is
-            when Field_Date        => Focus := Field_Description;
-            when Field_From        => Focus := Field_Date;
-            when Field_To          => Focus := Field_From;
-            when Field_Amount      => Focus := Field_To;
-            when Field_Description => Focus := Field_Amount;
+            when Field_Date =>
+               Focus := Field_Description;
+            when Field_From =>
+               Focus := Field_Date;
+            when Field_To =>
+               Focus := Field_From;
+               Update_Candidates (From_Str (1 .. From_Len));
+            when Field_Amount =>
+               Focus := Field_To;
+               Update_Candidates (To_Str (1 .. To_Len));
+            when Field_Description =>
+               Focus := Field_Amount;
          end case;
       end Prev_Field;
 
@@ -118,16 +157,16 @@ package body HRA_N.UI.Record_TUI is
                   Date_Str (Date_Len) := C;
                end if;
             when Field_From =>
-               if From_Len < From_Str'Length then
+               if From_Len < From_Str'Length and then (Character'Pos (C) in 32 .. 126) then
                   From_Len := From_Len + 1;
                   From_Str (From_Len) := C;
-                  From_Idx := 0;
+                  Update_Candidates (From_Str (1 .. From_Len));
                end if;
             when Field_To =>
-               if To_Len < To_Str'Length then
+               if To_Len < To_Str'Length and then (Character'Pos (C) in 32 .. 126) then
                   To_Len := To_Len + 1;
                   To_Str (To_Len) := C;
-                  To_Idx := 0;
+                  Update_Candidates (To_Str (1 .. To_Len));
                end if;
             when Field_Amount =>
                if C in '0' .. '9' and then Amt_Len < Amt_Str'Length then
@@ -150,52 +189,54 @@ package body HRA_N.UI.Record_TUI is
                Date_Len := Natural'Max (0, Date_Len - 1);
             when Field_From =>
                From_Len := Natural'Max (0, From_Len - 1);
-               From_Idx := 0;
+               Update_Candidates (From_Str (1 .. From_Len));
             when Field_To =>
                To_Len := Natural'Max (0, To_Len - 1);
-               To_Idx := 0;
+               Update_Candidates (To_Str (1 .. To_Len));
             when Field_Amount =>
                Amt_Len := Natural'Max (0, Amt_Len - 1);
             when Field_Description =>
-               Desc_Len := Natural'Max (0, Desc_Len - 1);
+               if Desc_Len > 0 then
+                  declare
+                     Dropped : constant String :=
+                       HRA_N.UI.Terminal_UTF8.Drop_Last_Code_Point (Desc_Str (1 .. Desc_Len));
+                  begin
+                     Desc_Len := Dropped'Length;
+                     if Desc_Len > 0 then
+                        Desc_Str (1 .. Desc_Len) := Dropped;
+                     end if;
+                  end;
+               end if;
          end case;
       end Delete_Char;
 
-      procedure Cycle_Locus (Forward : Boolean) is
+      procedure Accept_Candidate_And_Advance is
       begin
-         if Loci_Count = 0 then
-            return;
-         end if;
-         Notice_Len := 0;
-
          if Focus = Field_From then
-            if Forward then
-               From_Idx := (if From_Idx >= Loci_Count then 1 else From_Idx + 1);
-            else
-               From_Idx := (if From_Idx <= 1 then Loci_Count else From_Idx - 1);
+            if Filtered_Count > 0 and then Cand_Idx <= Filtered_Count then
+               declare
+                  Chosen_Locus : constant Locus_Entry := Loci (Filtered_Loci (Cand_Idx));
+                  Tok : constant String := Chosen_Locus.Token.Value (1 .. Chosen_Locus.Token.Length);
+               begin
+                  From_Len := Tok'Length;
+                  From_Str (1 .. From_Len) := Tok;
+               end;
             end if;
-            declare
-               Tok : constant String :=
-                 Loci (From_Idx).Token.Value (1 .. Loci (From_Idx).Token.Length);
-            begin
-               From_Len := Tok'Length;
-               From_Str (1 .. From_Len) := Tok;
-            end;
+            Focus := Field_To;
+            Update_Candidates (To_Str (1 .. To_Len));
          elsif Focus = Field_To then
-            if Forward then
-               To_Idx := (if To_Idx >= Loci_Count then 1 else To_Idx + 1);
-            else
-               To_Idx := (if To_Idx <= 1 then Loci_Count else To_Idx - 1);
+            if Filtered_Count > 0 and then Cand_Idx <= Filtered_Count then
+               declare
+                  Chosen_Locus : constant Locus_Entry := Loci (Filtered_Loci (Cand_Idx));
+                  Tok : constant String := Chosen_Locus.Token.Value (1 .. Chosen_Locus.Token.Length);
+               begin
+                  To_Len := Tok'Length;
+                  To_Str (1 .. To_Len) := Tok;
+               end;
             end if;
-            declare
-               Tok : constant String :=
-                 Loci (To_Idx).Token.Value (1 .. Loci (To_Idx).Token.Length);
-            begin
-               To_Len := Tok'Length;
-               To_Str (1 .. To_Len) := Tok;
-            end;
+            Focus := Field_Amount;
          end if;
-      end Cycle_Locus;
+      end Accept_Candidate_And_Advance;
 
       procedure Try_Propose is
          Parsed_Date : Date_Type;
@@ -214,18 +255,21 @@ package body HRA_N.UI.Record_TUI is
          if From_Len = 0 then
             Set_Notice ("Source (FROM) locus cannot be empty");
             Focus := Field_From;
+            Update_Candidates (From_Str (1 .. From_Len));
             return;
          end if;
 
          if To_Len = 0 then
             Set_Notice ("Destination (TO) locus cannot be empty");
             Focus := Field_To;
+            Update_Candidates (To_Str (1 .. To_Len));
             return;
          end if;
 
          if From_Str (1 .. From_Len) = To_Str (1 .. To_Len) then
             Set_Notice ("FROM and TO loci must be distinct");
             Focus := Field_To;
+            Update_Candidates (To_Str (1 .. To_Len));
             return;
          end if;
 
@@ -284,6 +328,24 @@ package body HRA_N.UI.Record_TUI is
          end if;
       end Try_Propose;
 
+      procedure Handle_Enter is
+      begin
+         Notice_Len := 0;
+         case Focus is
+            when Field_Date =>
+               Focus := Field_From;
+               Update_Candidates (From_Str (1 .. From_Len));
+            when Field_From =>
+               Accept_Candidate_And_Advance;
+            when Field_To =>
+               Accept_Candidate_And_Advance;
+            when Field_Amount =>
+               Try_Propose;
+            when Field_Description =>
+               Try_Propose;
+         end case;
+      end Handle_Enter;
+
       procedure Draw_Editing is
       begin
          Curses.Erase;
@@ -333,8 +395,37 @@ package body HRA_N.UI.Record_TUI is
             "]");
 
          Put_Clipped (9, "------------------------------------------------------------");
-         if Loci_Count > 0 then
-            Put_Clipped (10, "Available loci (Left/Right to select when on From/To):");
+
+         --  Candidate listing with active selection highlight
+         if Focus in Field_From | Field_To and then Filtered_Count > 0 then
+            Put_Clipped (10, "Candidates (Up/Down: pick, Enter/Right: accept):");
+            declare
+               Line_Text : String (1 .. 256) := [others => ' '];
+               Line_Len  : Natural := 0;
+            begin
+               for I in 1 .. Natural'Min (8, Filtered_Count) loop
+                  declare
+                     L_Idx   : constant Positive := Filtered_Loci (I);
+                     Tok     : constant String := Loci (L_Idx).Token.Value (1 .. Loci (L_Idx).Token.Length);
+                     Is_Sel  : constant Boolean := (I = Cand_Idx);
+                     Item_Str : constant String := (if Is_Sel then "[" & Tok & "]*" else " " & Tok & " ");
+                  begin
+                     if Line_Len + Item_Str'Length + 2 <= Line_Text'Length then
+                        if Line_Len > 0 then
+                           Line_Text (Line_Len + 1 .. Line_Len + 2) := "  ";
+                           Line_Len := Line_Len + 2;
+                        end if;
+                        Line_Text (Line_Len + 1 .. Line_Len + Item_Str'Length) := Item_Str;
+                        Line_Len := Line_Len + Item_Str'Length;
+                     end if;
+                  end;
+               end loop;
+               if Line_Len > 0 then
+                  Put_Clipped (11, "  " & Line_Text (1 .. Line_Len));
+               end if;
+            end;
+         elsif Loci_Count > 0 then
+            Put_Clipped (10, "All Available Loci:");
             declare
                Line_Text : String (1 .. 256) := [others => ' '];
                Line_Len  : Natural := 0;
@@ -351,7 +442,7 @@ package body HRA_N.UI.Record_TUI is
                   end if;
                end Append_Item;
             begin
-               for I in 1 .. Loci_Count loop
+               for I in 1 .. Natural'Min (6, Loci_Count) loop
                   declare
                      Tok : constant String :=
                        Loci (I).Token.Value (1 .. Loci (I).Token.Length);
@@ -373,13 +464,13 @@ package body HRA_N.UI.Record_TUI is
          end if;
 
          if Notice_Len > 0 then
-            Put_Clipped (13, "Notice: " & Notice (1 .. Notice_Len));
+            Put_Clipped (13, "! " & Notice (1 .. Notice_Len));
          end if;
 
          if Rows > 2 then
             Put_Clipped
               (Rows - 2,
-               "Tab/Down: next   Shift-Tab/Up: prev   Enter: preview   Esc: cancel");
+               "Enter: next/propose   Tab/Shift-Tab: nav   Up/Down: candidates   Esc: cancel");
          end if;
          Curses.Refresh;
       end Draw_Editing;
@@ -490,18 +581,14 @@ package body HRA_N.UI.Record_TUI is
                     and then Assign.Locus.Token.Length = From_Len
                     and then Assign.Locus.Token.Value (1 .. From_Len) = From_Str (1 .. From_Len)
                   then
-                     From_Idx := Loci_Count;
-                  end if;
-                  if To_Len > 0
-                    and then Assign.Locus.Token.Length = To_Len
-                    and then Assign.Locus.Token.Value (1 .. To_Len) = To_Str (1 .. To_Len)
-                  then
-                     To_Idx := Loci_Count;
+                     Cand_Idx := Loci_Count;
                   end if;
                end;
             end if;
          end loop;
       end if;
+
+      Update_Candidates (From_Str (1 .. From_Len));
 
       while Running loop
          if Mode = Mode_Editing then
@@ -518,7 +605,7 @@ package body HRA_N.UI.Record_TUI is
                   --  Cancel: discard draft without modifying authority
                   Running := False;
                elsif Key = 9 then
-                  --  Tab
+                  --  Tab: advance field
                   Next_Field;
                elsif Key = Integer (Curses.KEY_BTAB)
                  or else Key = Integer (Curses.Key_Back_Tab)
@@ -526,20 +613,32 @@ package body HRA_N.UI.Record_TUI is
                   --  BackTab / Shift-Tab
                   Prev_Field;
                elsif Key = Integer (Curses.KEY_DOWN) then
-                  Next_Field;
+                  if Focus in Field_From | Field_To and then Filtered_Count > 1 then
+                     Cand_Idx := (if Cand_Idx < Filtered_Count then Cand_Idx + 1 else 1);
+                  else
+                     Next_Field;
+                  end if;
                elsif Key = Integer (Curses.KEY_UP) then
-                  Prev_Field;
-               elsif Key = Integer (Curses.KEY_LEFT)
-                 or else Key = Integer (Curses.Key_Cursor_Left)
-               then
-                  if Focus in Field_From | Field_To then
-                     Cycle_Locus (False);
+                  if Focus in Field_From | Field_To and then Filtered_Count > 1 then
+                     Cand_Idx := (if Cand_Idx > 1 then Cand_Idx - 1 else Filtered_Count);
+                  else
+                     Prev_Field;
                   end if;
                elsif Key = Integer (Curses.KEY_RIGHT)
                  or else Key = Integer (Curses.Key_Cursor_Right)
                then
                   if Focus in Field_From | Field_To then
-                     Cycle_Locus (True);
+                     Accept_Candidate_And_Advance;
+                  else
+                     Next_Field;
+                  end if;
+               elsif Key = Integer (Curses.KEY_LEFT)
+                 or else Key = Integer (Curses.Key_Cursor_Left)
+               then
+                  if Focus in Field_From | Field_To and then Filtered_Count > 1 then
+                     Cand_Idx := (if Cand_Idx > 1 then Cand_Idx - 1 else Filtered_Count);
+                  else
+                     Prev_Field;
                   end if;
                elsif Key = Integer (Curses.KEY_BACKSPACE)
                  or else Key = Integer (Curses.Key_Backspace)
@@ -552,8 +651,8 @@ package body HRA_N.UI.Record_TUI is
                  or else Key = 10
                  or else Key = 13
                then
-                  Try_Propose;
-               elsif Key in 32 .. 126 then
+                  Handle_Enter;
+               elsif Key in 32 .. 126 | 128 .. 255 then
                   Append_Char (Character'Val (Key));
                elsif Key = Ctrl_L or else Key = Integer (Curses.Key_Resize) then
                   null;
@@ -610,17 +709,17 @@ package body HRA_N.UI.Record_TUI is
          Description => (Length => 0, Value => [others => ' ']));
    begin
       Run_Internal
-        (Paths         => Paths,
-         Is_Correction => False,
-         Init          => Init,
-         New_Event_Id  => Dummy_Id,
-         Committed     => Committed);
+         (Paths         => Paths,
+          Is_Correction => False,
+          Init          => Init,
+          New_Event_Id  => Dummy_Id,
+          Committed     => Committed);
    end Run;
 
    procedure Run_Correction
      (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
       Init         : Movement_Initial_Values;
-      New_Event_Id : out HRA_N.Core.Types.Token_Text;
+      New_Event_Id : out Token_Text;
       Committed    : out Boolean)
    is
    begin

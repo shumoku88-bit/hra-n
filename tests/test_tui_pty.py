@@ -557,6 +557,36 @@ def main() -> None:
             # Return to Home
             os.write(fd, b"q")
             read_until(fd, output, b"Evidence")
+
+            # Test ergonomic fast-recording with Enter progression, inline Locus picker, and UTF-8
+            os.write(fd, b"\n")
+            read_until(fd, output, b"SELECTED DAY")
+            os.write(fd, b"n")
+            read_until(fd, output, b"RECORD MOVEMENT")
+            time.sleep(0.05)
+            # Date: press Enter directly to accept default day and advance to From
+            os.write(fd, b"\n")
+            time.sleep(0.05)
+            # From: candidates should be visible; press Enter to accept first candidate (cash) and advance to To
+            read_until(fd, output, b"Candidates (Up/Down: pick, Enter/Right: accept):")
+            os.write(fd, b"\n")
+            time.sleep(0.05)
+            # To: type 'f' then press Enter to accept 'food' and advance to Amount
+            os.write(fd, b"f\n")
+            time.sleep(0.05)
+            # Amount: type 100 then press Tab to Description
+            os.write(fd, b"100\t")
+            time.sleep(0.05)
+            # Description: write UTF-8 note and press Enter to propose
+            os.write(fd, "昼食\n".encode("utf-8"))
+            read_until(fd, output, b"ADMISSION PREVIEW")
+            assert "昼食".encode("utf-8") in output
+            # Commit
+            os.write(fd, b"\n")
+            read_until(fd, output, "昼食".encode("utf-8"))
+            # Return to Home
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
         except Exception:
             os.kill(pid, signal.SIGKILL)
             os.waitpid(pid, 0)
