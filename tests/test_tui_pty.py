@@ -528,6 +528,28 @@ def main() -> None:
             read_until(fd, output, b"new-place")
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
+
+            # Open Reports workspace with 'p'
+            os.write(fd, b"p")
+            read_until(fd, output, b"HRA-N FINANCIAL REPORT WORKSPACE")
+            assert b"Statement (B/S & P/L)" in output
+            # Switch to Tab 2: Budget Envelopes
+            os.write(fd, b"2")
+            read_until(fd, output, b"BUDGET & ENVELOPE PROJECTION")
+            # Switch to Tab 3: Balances
+            os.write(fd, b"3")
+            read_until(fd, output, b"COORDINATE BALANCES")
+            # Test tab key cycling
+            os.write(fd, b"\t")
+            read_until(fd, output, b"BALANCE SHEET (B/S)")
+            # Test prev month '[' and next month ']'
+            os.write(fd, b"[")
+            read_until(fd, output, b"August")
+            os.write(fd, b"]")
+            read_until(fd, output, b"September")
+            # Return to Home
+            os.write(fd, b"q")
+            read_until(fd, output, b"Evidence")
         except Exception:
             os.kill(pid, signal.SIGKILL)
             os.waitpid(pid, 0)
@@ -570,7 +592,7 @@ def main() -> None:
         if not os.WIFEXITED(exit_status) or os.WEXITSTATUS(exit_status) != 0:
             raise AssertionError(f"Home TUI exited unsuccessfully: {exit_status}")
 
-        print("TUI PTY: Home, Selected Day, Movement/split editors, Actual detail+relations, Scheduled, Balances, Capacity, Budget, Attention, Actual routing/history, resize, redraw, and quit passed")
+        print("TUI PTY: Home, Selected Day, Movement/split editors, Actual detail+relations, Scheduled, Balances, Capacity, Budget, Attention, Actual routing/history, Reports, resize, redraw, and quit passed")
     finally:
         shutil.rmtree(household, ignore_errors=True)
 

@@ -26,6 +26,7 @@ with HRA_N.UI.Locus_TUI;
 with HRA_N.UI.Scheduled_TUI;
 with HRA_N.UI.Balance_TUI;
 with HRA_N.UI.Record_TUI;
+with HRA_N.UI.Report_TUI;
 with HRA_N.UI.Snapshot_Label;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with Terminal_Interface.Curses;
@@ -284,14 +285,14 @@ package body HRA_N.UI.Home_TUI is
       if Rows > 3 and then Columns < 120 then
          Put_Clipped
            (Rows - 3,
-            "h/l: day  k/j: week  g: today  Enter: sel day  n: record  a: Actual  s/p: Sched");
+            "h/l: day  k/j: week  g: today  Enter: sel day  n: record  a: Actual  s: Sched");
          Put_Clipped
            (Rows - 2,
-            "b: Balances  c: Budget  e: Capacity  r/u: Route  v: Loci  i: Attention  q: quit");
+            "b: Balances  c: Budget  e: Capacity  p: Reports  r/u: Route  v: Loci  i: Attention  q: quit");
       elsif Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "h/l: day  k/j: week  g: today  Enter: sel day  n: record  a: Actual  s/p: Sched  b: Balances  c: Budget  e: Capacity  r/u: Route  v: Loci  i: Attention  q: quit");
+            "h/l: day  k/j: week  g: today  Enter: sel day  n: record  a: Actual  s: Sched  b: Balances  c: Budget  e: Capacity  p: Reports  r/u: Route  v: Loci  i: Attention  q: quit");
       end if;
       Curses.Refresh;
    end Draw;
@@ -341,8 +342,13 @@ package body HRA_N.UI.Home_TUI is
                Current_Paths :=
                  HRA_N.Application.Path_Resolver.Resolve_Paths
                    (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+            elsif Key = Character'Pos ('p') or else Key = Character'Pos ('P') then
+               HRA_N.UI.Report_TUI.Run (Current_Paths, Selected);
+               Current_Paths :=
+                 HRA_N.Application.Path_Resolver.Resolve_Paths
+                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
             elsif Key = Character'Pos ('s') or else Key = Character'Pos ('S')
-              or else Key = Character'Pos ('p') or else Key = Character'Pos ('P')
+              or else Key = 9  --  Tab
             then
                HRA_N.UI.Scheduled_TUI.Run
                  (Current_Paths,
