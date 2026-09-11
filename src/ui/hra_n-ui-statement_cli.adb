@@ -3,8 +3,13 @@
 --  Package body: HRA_N.UI.Statement_Cli
 -------------------------------------------------------------------------------
 
-with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
-with HRA_N.UI.Output;            use HRA_N.UI.Output;
+with Ada.Command_Line;
+with Ada.Strings;       use Ada.Strings;
+with Ada.Strings.Fixed; use Ada.Strings.Fixed;
+with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
+with HRA_N.Core.Accounting_Role;       use HRA_N.Core.Accounting_Role;
+with HRA_N.Core.Validity;              use HRA_N.Core.Validity;
+with HRA_N.UI.Output;                  use HRA_N.UI.Output;
 
 package body HRA_N.UI.Statement_Cli is
 
@@ -105,9 +110,32 @@ package body HRA_N.UI.Statement_Cli is
       S        : Financial_Summary renames Report.Summary;
       Complete : constant Boolean := Is_Complete (S);
    begin
+      if Report.Status = Query_Rejected then
+         Put_Error_Line ("[ERROR] Statement query rejected: " &
+                         Report.Diagnostic (1 .. Report.Diagnostic_Len));
+         return;
+      end if;
+
       Put_Line ("================================================================================");
       Put_Line (" HRA-N Financial Statement Report (B/S & P/L Projection)");
       Put_Line ("================================================================================");
+
+      if Report.Is_Versioned and then Report.Snapshot.Length > 0 then
+         Put_Line ("  Snapshot            : " &
+                   Report.Snapshot.Value (1 .. Report.Snapshot.Length));
+      end if;
+
+      if Report.Has_As_Of then
+         declare
+            Y_Str : constant String := Trim (Natural'Image (Report.As_Of_Date.Year), Both);
+            M_Str : constant String := Trim (Natural'Image (Report.As_Of_Date.Month), Both);
+            D_Str : constant String := Trim (Natural'Image (Report.As_Of_Date.Day), Both);
+            Pad_M : constant String := (if M_Str'Length = 1 then "0" & M_Str else M_Str);
+            Pad_D : constant String := (if D_Str'Length = 1 then "0" & D_Str else D_Str);
+         begin
+            Put_Line ("  As-Of Date          : " & Y_Str & "-" & Pad_M & "-" & Pad_D);
+         end;
+      end if;
 
       if Complete then
          Put_Line ("  Status              : COMPLETE FINANCIAL STATEMENT");
@@ -240,5 +268,52 @@ package body HRA_N.UI.Statement_Cli is
 
       Put_Line ("================================================================================");
    end Display_Statement;
+
+   procedure Dispatch (Paths : Path_Config; Start_Arg : Positive) is
+      Total     : constant Natural := Ada.Command_Line.Argument_Count;
+      Arg_Idx   : Positive := Start_Arg;
+      As_Of_Val : Date_Type := (Year => 2026, Month => 1, Day => 1);
+      Has_As_Of : Boolean := False;
+   begin
+      while Arg_Idx <= Total loop
+         declare
+            Arg : constant String := Ada.Command_Line.Argument (Arg_Idx);
+         begin
+            if Arg = "--as-of" or else Arg = "-a" then
+               if Arg_Idx = Total then
+                  Put_Error_Line ("hra-n statement: --as-of requires a YYYY-MM-DD date argument");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  return;
+               end if;
+               Arg_Idx := Arg_Idx + 1;
+               declare
+                  Date_Str : constant String := Ada.Command_Line.Argument (Arg_Idx);
+               begin
+                  if not Parse_Iso_Date (Date_Str, As_Of_Val) then
+                     Put_Error_Line ("hra-n statement: invalid --as-of date '" & Date_Str & "' (expected YYYY-MM-DD)");
+                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                     return;
+                  end if;
+                  Has_As_Of := True;
+               end;
+            else
+               Put_Error_Line ("hra-n statement: unrecognized argument '" & Arg & "'");
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               return;
+            end if;
+         end;
+         Arg_Idx := Arg_Idx + 1;
+      end loop;
+
+      declare
+         Report : constant Statement_Report :=
+           Execute_Statement_Query (Paths, As_Of_Val, Has_As_Of);
+      begin
+         Display_Statement (Report);
+         if Report.Status = Query_Rejected then
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         end if;
+      end;
+   end Dispatch;
 
 end HRA_N.UI.Statement_Cli;

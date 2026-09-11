@@ -29,6 +29,7 @@ with Test_Assertion;
 with Test_Attention_Command;
 with Test_Capacity_Command;
 with Test_Policy;
+with Test_Statement;
 
 procedure Test_Runner is
 begin
@@ -104,6 +105,9 @@ begin
 
    Put_Line ("--> Running Test_Policy...");
    Test_Policy.Run;
+
+   Put_Line ("--> Running Test_Statement...");
+   Test_Statement.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");

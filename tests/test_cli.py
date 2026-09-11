@@ -654,5 +654,22 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("already admitted", res.stdout + res.stderr)
         self.assertEqual(self.current_snapshot(), "g00000038")
 
+        # 58. V2 Financial Statement reporting with snapshot and as-of
+        res = self.run_cmd("statement")
+        self.assertEqual(res.returncode, 0, f"statement failed: {res.stderr}")
+        self.assertIn("HRA-N Financial Statement Report", res.stdout)
+        self.assertIn("g00000038", res.stdout)
+        self.assertIn("Classified ASSETS", res.stdout)
+        self.assertIn("Classified EXPENSE", res.stdout)
+        self.assertIn("Universal Conservation : [PASS]", res.stdout)
+
+        res = self.run_cmd("statement", "--as-of", "2026-09-10")
+        self.assertEqual(res.returncode, 0, f"statement as-of failed: {res.stderr}")
+        self.assertIn("2026-09-10", res.stdout)
+
+        res = self.run_cmd("statement", "--as-of", "not-a-date")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("invalid --as-of date", res.stdout + res.stderr)
+
 if __name__ == "__main__":
     unittest.main()

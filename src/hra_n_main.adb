@@ -12,7 +12,6 @@ with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Initializer;   use HRA_N.Application.Initializer;
 with HRA_N.Application.Doctor;        use HRA_N.Application.Doctor;
 with HRA_N.Application.Movement_Command; use HRA_N.Application.Movement_Command;
-with HRA_N.Application.Statement;     use HRA_N.Application.Statement;
 with HRA_N.Application.Budget_Window; use HRA_N.Application.Budget_Window;
 with HRA_N.Application.Review;        use HRA_N.Application.Review;
 with HRA_N.UI.Output;                 use HRA_N.UI.Output;
@@ -511,6 +510,12 @@ begin
          return;
       end if;
 
+      --  Branch: Statement (Balance Sheet and Profit & Loss)
+      if Command = "statement" or else Command = "report" then
+         HRA_N.UI.Statement_Cli.Dispatch (Paths, Command_Idx + 1);
+         return;
+      end if;
+
       --  Load Journal & Policy for reporting commands
       declare
          J_Res : constant Journal_Result := Read_Journal_File (J_Path);
@@ -523,24 +528,15 @@ begin
             return;
          end if;
 
-      --  Branch: Statement (Balance Sheet and Profit & Loss)
-      if Command = "statement" or else Command = "report" then
-         declare
-            Rep : Statement_Report;
-         begin
-            Generate_Report (J_Res.Events, P_Res.Roles, Rep);
-            HRA_N.UI.Statement_Cli.Display_Statement (Rep);
-            return;
-         end;
-      elsif Command = "budget" then
-         declare
-            SY, SM, SD  : Natural := 0;
-            EY, EM, ED  : Natural := 0;
-            Preset_Name : String (1 .. 64) := [others => ' '];
-            P_Name_Len  : Natural := 0;
-            Report      : Budget_Window_Report;
-         begin
-            if Rem_Args >= 2 then
+         if Command = "budget" then
+            declare
+               SY, SM, SD  : Natural := 0;
+               EY, EM, ED  : Natural := 0;
+               Preset_Name : String (1 .. 64) := [others => ' '];
+               P_Name_Len  : Natural := 0;
+               Report      : Budget_Window_Report;
+            begin
+               if Rem_Args >= 2 then
                declare
                   S_Str : constant String := Ada.Command_Line.Argument (Command_Idx + 1);
                   E_Str : constant String := Ada.Command_Line.Argument (Command_Idx + 2);
