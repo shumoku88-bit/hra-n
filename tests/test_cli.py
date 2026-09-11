@@ -136,6 +136,70 @@ class TestHraNCli(unittest.TestCase):
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("scheduled identity not found", res.stderr + res.stdout)
 
+        # 12. Complete scheduled obligation via generation authority
+        res = self.run_cmd("complete", "s1", "2026-09-15", "Completed groceries")
+        self.assertEqual(res.returncode, 0, f"complete failed: {res.stderr}")
+        self.assertIn("[OK] Completed scheduled obligation: s1", res.stdout)
+        self.assertIn("Recorded actual receipt: e0005", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000006")
+
+        # 12a. Verify s1 is now completed and open list is empty
+        res = self.run_cmd("scheduled")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("No matching scheduled obligations found", res.stdout)
+
+        res = self.run_cmd("scheduled", "s1")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("COMPLETED (Actual: e0005)", res.stdout)
+
+        # 13. Completing already completed s1 fails closed
+        res = self.run_cmd("complete", "s1")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("already completed", res.stderr + res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000006")
+
+        # 14. Add scheduled obligation via generation authority
+        res = self.run_cmd("scheduled", "add", "cash", "food", "2000", "2026-10-01")
+        self.assertEqual(res.returncode, 0, f"scheduled add failed: {res.stderr}")
+        self.assertIn("[OK] Added scheduled obligation: s0001", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000007")
+
+        res = self.run_cmd("scheduled", "s0001")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("STATUS:   OPEN", res.stdout)
+        self.assertIn("2,000", res.stdout)
+
+        # 15. Replace scheduled obligation via generation authority
+        res = self.run_cmd("scheduled", "replace", "s0001", "cash", "food", "2500", "2026-10-05")
+        self.assertEqual(res.returncode, 0, f"scheduled replace failed: {res.stderr}")
+        self.assertIn("[OK] Replaced scheduled obligation s0001 with s0002", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000008")
+
+        res = self.run_cmd("scheduled", "s0001")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("STATUS:   REPLACED by s0002", res.stdout)
+
+        res = self.run_cmd("scheduled", "s0002")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("STATUS:   OPEN", res.stdout)
+        self.assertIn("2,500", res.stdout)
+
+        # 16. Retire scheduled obligation via generation authority
+        res = self.run_cmd("scheduled", "retire", "s0002")
+        self.assertEqual(res.returncode, 0, f"scheduled retire failed: {res.stderr}")
+        self.assertIn("[OK] Retired scheduled obligation: s0002", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000009")
+
+        res = self.run_cmd("scheduled", "s0002")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("STATUS:   RETIRED", res.stdout)
+
+        # 16a. Retiring already retired s0002 fails closed
+        res = self.run_cmd("scheduled", "retire", "s0002")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("already completed, retired, or replaced", res.stderr + res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000009")
+
 
 if __name__ == "__main__":
     unittest.main()

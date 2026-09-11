@@ -3,6 +3,7 @@ with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Scheduled_Query; use HRA_N.Application.Scheduled_Query;
 with HRA_N.Application.Scheduled_Detail_Query; use HRA_N.Application.Scheduled_Detail_Query;
+with HRA_N.Application.Scheduled_Command; use HRA_N.Application.Scheduled_Command;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.UI.Snapshot_Label;
@@ -26,7 +27,7 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
       Scheduled_Id : HRA_N.Core.Types.Token_Text)
    is
       Current_Paths : Path_Config := Paths;
-      Current_Id    : constant Token_Text := Scheduled_Id;
+      Current_Id    : Token_Text := Scheduled_Id;
       Running       : Boolean := True;
    begin
       while Running loop
@@ -79,7 +80,11 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
             end if;
 
             if Rows > 2 then
-               Put_Clipped (Rows - 2, "r: reload   b/Esc: Scheduled");
+               if View.Lifecycle_Status = Status_Open and then View.Status /= Query_Rejected then
+                  Put_Clipped (Rows - 2, "c: complete   x: retire   r: replace   L: reload   b/Esc: Scheduled");
+               else
+                  Put_Clipped (Rows - 2, "r/L: reload   b/Esc: Scheduled");
+               end if;
             end if;
             Curses.Refresh;
 
@@ -90,12 +95,138 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                  or else Key = 27
                then
                   Running := False;
-               elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R')
+               elsif Key = Character'Pos ('l') or else Key = Character'Pos ('L')
                  or else Key = Ctrl_L or else Key = Integer (Curses.Key_Resize)
                then
                   Current_Paths :=
                     HRA_N.Application.Path_Resolver.Resolve_Paths
                       (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+               elsif (Key = Character'Pos ('r') or else Key = Character'Pos ('R'))
+                 and then (View.Lifecycle_Status /= Status_Open or else View.Status = Query_Rejected)
+               then
+                  Current_Paths :=
+                    HRA_N.Application.Path_Resolver.Resolve_Paths
+                      (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+               elsif (Key = Character'Pos ('c') or else Key = Character'Pos ('C'))
+                 and then View.Lifecycle_Status = Status_Open
+                 and then View.Status /= Query_Rejected
+               then
+                  Put_Clipped (Rows - 1, "Complete obligation and record Actual movement? (y/n): ");
+                  Curses.Refresh;
+                  declare
+                     Confirm : constant Integer := Integer (Curses.Get_Keystroke);
+                  begin
+                     if Confirm = Character'Pos ('y') or else Confirm = Character'Pos ('Y') then
+                        declare
+                           Prop : constant Proposal_Result :=
+                             Propose_Completion
+                               (Current_Paths,
+                                (Target_Id          => Current_Id,
+                                 Has_Execution_Date => False,
+                                 Execution_Date     => View.Expected_Day,
+                                 Description        => (0, [others => ' ']),
+                                 Existing_Actual_Id => (0, [others => ' '])));
+                        begin
+                           if Prop.Success then
+                              declare
+                                 Rec : constant Scheduled_Receipt := Commit (Prop.Proposal);
+                              begin
+                                 if Rec.Success then
+                                    Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+                                 end if;
+                              end;
+                           end if;
+                        end;
+                     end if;
+                  end;
+               elsif (Key = Character'Pos ('x') or else Key = Character'Pos ('X'))
+                 and then View.Lifecycle_Status = Status_Open
+                 and then View.Status /= Query_Rejected
+               then
+                  Put_Clipped (Rows - 1, "Retire scheduled obligation? (y/n): ");
+                  Curses.Refresh;
+                  declare
+                     Confirm : constant Integer := Integer (Curses.Get_Keystroke);
+                  begin
+                     if Confirm = Character'Pos ('y') or else Confirm = Character'Pos ('Y') then
+                        declare
+                           Prop : constant Proposal_Result :=
+                             Propose_Retirement
+                               (Current_Paths,
+                                (Target_Id => Current_Id));
+                        begin
+                           if Prop.Success then
+                              declare
+                                 Rec : constant Scheduled_Receipt := Commit (Prop.Proposal);
+                              begin
+                                 if Rec.Success then
+                                    Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+                                 end if;
+                              end;
+                           end if;
+                        end;
+                     end if;
+                  end;
+               elsif (Key = Character'Pos ('r') or else Key = Character'Pos ('R'))
+                 and then View.Lifecycle_Status = Status_Open
+                 and then View.Status /= Query_Rejected
+               then
+                  Put_Clipped (Rows - 1, "Replace obligation (advances 1 month)? (y/n): ");
+                  Curses.Refresh;
+                  declare
+                     Confirm : constant Integer := Integer (Curses.Get_Keystroke);
+                  begin
+                     if Confirm = Character'Pos ('y') or else Confirm = Character'Pos ('Y') then
+                        declare
+                           From_Tok   : Token_Text := (0, [others => ' ']);
+                           To_Tok     : Token_Text := (0, [others => ' ']);
+                           Amt        : Quanta_Type := 0;
+                           Next_Year  : Year_Type := View.Expected_Day.Year;
+                           Next_Month : Month_Type := View.Expected_Day.Month;
+                           Next_Day   : Day_Type := View.Expected_Day.Day;
+                        begin
+                           for Index in 1 .. View.Change_Count loop
+                              if View.Changes (Index).Amount < 0 then
+                                 From_Tok := View.Changes (Index).Locus;
+                              elsif View.Changes (Index).Amount > 0 then
+                                 To_Tok := View.Changes (Index).Locus;
+                                 Amt := View.Changes (Index).Amount;
+                              end if;
+                           end loop;
+                           if Next_Month = 12 then
+                              Next_Year := Next_Year + 1;
+                              Next_Month := 1;
+                           else
+                              Next_Month := Next_Month + 1;
+                           end if;
+                           Next_Day := Day_Type'Min (Next_Day, Days_In_Month (Next_Year, Next_Month));
+
+                           declare
+                              Prop : constant Proposal_Result :=
+                                Propose_Replacement
+                                  (Current_Paths,
+                                   (Target_Id    => Current_Id,
+                                    New_Id       => (0, [others => ' ']),
+                                    Expected_Day => Make_Date (Next_Year, Next_Month, Next_Day),
+                                    From_Locus   => (Token => From_Tok),
+                                    To_Locus     => (Token => To_Tok),
+                                    Measure      => (Token => View.Measure),
+                                    Amount       => Amt));
+                           begin
+                              if Prop.Success then
+                                 declare
+                                    Rec : constant Scheduled_Receipt := Commit (Prop.Proposal);
+                                 begin
+                                    if Rec.Success then
+                                       Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+                                       Current_Id := Make_Token (Rec.Secondary_Id (1 .. Rec.Secondary_Id_Len));
+                                    end if;
+                                 end;
+                              end if;
+                           end;
+                        end;
+                     end if;
+                  end;
                end if;
             end;
          end;

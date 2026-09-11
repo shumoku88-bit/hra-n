@@ -153,14 +153,28 @@ def main() -> None:
 
             # Open Scheduled detail
             os.write(fd, b"\n")
-            read_until(fd, output, b"DETAIL")
+            read_until(fd, output, b"c: complete")
             assert b"s0001" in output
             assert b"OPEN" in output
             time.sleep(0.05)
 
-            # Return to Scheduled list
+            # Test completing s0001 from detail
+            os.write(fd, b"c")
+            read_until(fd, output, b"Complete obligation")
+            os.write(fd, b"y")
+            read_until(fd, output, b"COMPLETED (Actual: e0004)")
+
+            # Return to Scheduled list (now 0 open items)
             os.write(fd, b"b")
-            read_until(fd, output, b"CURRENT OPEN")
+            read_until(fd, output, b"No Scheduled obligations in this scope.")
+            time.sleep(0.05)
+
+            # Cycle scope to all recognized to verify completed item
+            os.write(fd, b"f")  # to selected day
+            time.sleep(0.05)
+            os.write(fd, b"f")  # to all recognized
+            read_until(fd, output, b"ALL RECOGNIZED")
+            assert b"COMPLETED" in output
             time.sleep(0.05)
 
             # Return to Home

@@ -32,34 +32,36 @@ package HRA_N.UI.Scheduled_Cli is
      (Paths  : Path_Config;
       Id_Str : String);
 
-   procedure Display_Open_Scheduled (Scheduled_Path : String);
+   procedure Display_Open_Scheduled (Paths : Path_Config);
 
    procedure Complete_Scheduled
-     (Journal_Path    : String;
-      Scheduled_Path  : String;
-      Target_Str      : String := "";
-      Date_Str        : String := "";
-      Description_Str : String := "");
+     (Paths               : Path_Config;
+      Target_Str          : String := "";
+      Date_Str            : String := "";
+      Description_Str     : String := "";
+      Existing_Actual_Str : String := "");
 
    procedure Retire_Scheduled
-     (Scheduled_Path : String;
-      Target_Str     : String := "");
+     (Paths      : Path_Config;
+      Target_Str : String := "");
 
    procedure Add_Scheduled
-     (Scheduled_Path : String;
-      From_Locus     : String := "";
-      To_Locus       : String := "";
-      Amount_Str     : String := "";
-      Date_Str       : String := "";
-      Measure_Str    : String := "jpy");
+     (Paths       : Path_Config;
+      From_Locus  : String := "";
+      To_Locus    : String := "";
+      Amount_Str  : String := "";
+      Date_Str    : String := "";
+      Measure_Str : String := "jpy";
+      Custom_Id   : String := "");
 
    procedure Replace_Scheduled
-     (Scheduled_Path : String;
-      Target_Str     : String := "";
-      From_Locus     : String := "";
-      To_Locus       : String := "";
-      Amount_Str     : String := "";
-      Date_Str       : String := "";
-      Measure_Str    : String := "jpy");
+     (Paths       : Path_Config;
+      Target_Str  : String := "";
+      From_Locus  : String := "";
+      To_Locus    : String := "";
+      Amount_Str  : String := "";
+      Date_Str    : String := "";
+      Measure_Str : String := "jpy";
+      New_Id_Str  : String := "");
 
 end HRA_N.UI.Scheduled_Cli;

@@ -22,6 +22,7 @@ with Test_Movement_Command;
 with Test_Transaction_Metadata;
 with Test_Scheduled_Facts;
 with Test_Scheduled_Query;
+with Test_Scheduled_Command;
 
 procedure Test_Runner is
 begin
@@ -76,6 +77,9 @@ begin
 
    Put_Line ("--> Running Test_Scheduled_Query...");
    Test_Scheduled_Query.Run;
+
+   Put_Line ("--> Running Test_Scheduled_Command...");
+   Test_Scheduled_Command.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");
