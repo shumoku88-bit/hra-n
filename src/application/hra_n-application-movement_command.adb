@@ -6,23 +6,11 @@ with HRA_N.Core.Actual_Routing; use HRA_N.Core.Actual_Routing;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 with HRA_N.Storage.Exact_File;
-with HRA_N.Storage.Generation_Transaction;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Journal_Writer; use HRA_N.Storage.Journal_Writer;
 with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 
 package body HRA_N.Application.Movement_Command is
-
-   function Proposed_Event_Id (Proposal : Movement_Proposal) return String is
-     (Proposal.Event_Id (1 .. Proposal.Event_Len));
-
-   function Expected_Snapshot (Proposal : Movement_Proposal) return String is
-     (Proposal.Expected_Id (1 .. Proposal.Expected_Len));
-
-   function Replaced_Target_Id (Proposal : Movement_Proposal) return String is
-     (if Proposal.Target_Len > 0
-      then Proposal.Target_Id (1 .. Proposal.Target_Len)
-      else "");
 
    function Format_Event_Id (Number : Positive) return String is
       Image_Text : constant String := Trim (Number'Image, Both);
@@ -72,12 +60,8 @@ package body HRA_N.Application.Movement_Command is
       Has_Purpose : Boolean := False;
 
       function Fail (Message : String) return Proposal_Result is
-         Len : constant Natural := Natural'Min (Message'Length, Result.Error'Length);
       begin
-         Result.Success := False;
-         Result.Error_Len := Len;
-         Result.Error (1 .. Len) := Message (Message'First .. Message'First + Len - 1);
-         return Result;
+         return HRA_N.Application.Proposal.Failed (Result, Message);
       end Fail;
    begin
       if not Paths.Resolution_Ok or else not Paths.Is_Versioned then
@@ -195,23 +179,18 @@ package body HRA_N.Application.Movement_Command is
               Replaces_Id => Target_Str);
          Existing : constant String := To_String (J_Bytes.Content);
       begin
-         if Existing'Length > 0 and then Existing (Existing'Last) /= ASCII.LF then
+         if not HRA_N.Application.Proposal.Ends_With_Newline (J_Bytes.Content) then
             return Fail ("journal must end with a newline before proposal append");
          end if;
-         Result.Proposal.Valid := True;
-         Result.Proposal.Base_Len := Paths.Data_Len;
-         Result.Proposal.Base_Dir (1 .. Paths.Data_Len) := Data_Dir_Str (Paths);
-         Result.Proposal.Expected_Len := Paths.Snapshot_Len;
-         Result.Proposal.Expected_Id (1 .. Paths.Snapshot_Len) := Snapshot_Id_Str (Paths);
-         Result.Proposal.Event_Len := Event_Id'Length;
-         Result.Proposal.Event_Id (1 .. Event_Id'Length) := Event_Id;
-         if Is_Correction then
-            Result.Proposal.Target_Len := Target_Str'Length;
-            Result.Proposal.Target_Id (1 .. Target_Str'Length) := Target_Str;
-         end if;
-         Result.Proposal.Journal := To_Unbounded_String (Existing & Line & ASCII.LF);
-         Result.Proposal.Policy := P_Bytes.Content;
-         Result.Proposal.Scheduled := S_Bytes.Content;
+         Result.Proposal :=
+           HRA_N.Application.Proposal.Seal
+             (Paths        => Paths,
+              Primary_Id   => Event_Id,
+              Secondary_Id => (if Is_Correction then Target_Str else ""),
+              Journal      =>
+                To_Unbounded_String (Existing & Line & ASCII.LF),
+              Policy       => P_Bytes.Content,
+              Scheduled    => S_Bytes.Content);
       end;
       Result.Success := True;
       return Result;
@@ -267,12 +246,8 @@ package body HRA_N.Application.Movement_Command is
       Found_Target : Boolean := False;
 
       function Fail (Message : String) return Proposal_Result is
-         Len : constant Natural := Natural'Min (Message'Length, Result.Error'Length);
       begin
-         Result.Success := False;
-         Result.Error_Len := Len;
-         Result.Error (1 .. Len) := Message (Message'First .. Message'First + Len - 1);
-         return Result;
+         return HRA_N.Application.Proposal.Failed (Result, Message);
       end Fail;
    begin
       if not Paths.Resolution_Ok or else not Paths.Is_Versioned then
@@ -379,21 +354,18 @@ package body HRA_N.Application.Movement_Command is
                Reverses_Id => Target_Str);
             Existing : constant String := To_String (J_Bytes.Content);
          begin
-            if Existing'Length > 0 and then Existing (Existing'Last) /= ASCII.LF then
+            if not HRA_N.Application.Proposal.Ends_With_Newline (J_Bytes.Content) then
                return Fail ("journal must end with a newline before proposal append");
             end if;
-            Result.Proposal.Valid := True;
-            Result.Proposal.Base_Len := Paths.Data_Len;
-            Result.Proposal.Base_Dir (1 .. Paths.Data_Len) := Data_Dir_Str (Paths);
-            Result.Proposal.Expected_Len := Paths.Snapshot_Len;
-            Result.Proposal.Expected_Id (1 .. Paths.Snapshot_Len) := Snapshot_Id_Str (Paths);
-            Result.Proposal.Event_Len := Event_Id'Length;
-            Result.Proposal.Event_Id (1 .. Event_Id'Length) := Event_Id;
-            Result.Proposal.Target_Len := Target_Str'Length;
-            Result.Proposal.Target_Id (1 .. Target_Str'Length) := Target_Str;
-            Result.Proposal.Journal := To_Unbounded_String (Existing & Encoded & ASCII.LF);
-            Result.Proposal.Policy := P_Bytes.Content;
-            Result.Proposal.Scheduled := S_Bytes.Content;
+            Result.Proposal :=
+              HRA_N.Application.Proposal.Seal
+                (Paths        => Paths,
+                 Primary_Id   => Event_Id,
+                 Secondary_Id => Target_Str,
+                 Journal      =>
+                   To_Unbounded_String (Existing & Encoded & ASCII.LF),
+                 Policy       => P_Bytes.Content,
+                 Scheduled    => S_Bytes.Content);
          end;
       end;
       Result.Success := True;
@@ -404,43 +376,6 @@ package body HRA_N.Application.Movement_Command is
            ("unexpected reversal proposal failure: " & Ada.Exceptions.Exception_Message (E));
    end Propose_Reversal;
 
-   function Commit (Proposal : Movement_Proposal) return Movement_Receipt is
-      Receipt : Movement_Receipt;
-   begin
-      if not Proposal.Valid then
-         declare
-            Message : constant String := "invalid movement proposal";
-         begin
-            Receipt.Error_Len := Message'Length;
-            Receipt.Error (1 .. Receipt.Error_Len) := Message;
-         end;
-         return Receipt;
-      end if;
 
-      declare
-         Committed : constant HRA_N.Storage.Generation_Transaction.Commit_Result :=
-           HRA_N.Storage.Generation_Transaction.Commit
-             (Base_Dir          => Proposal.Base_Dir (1 .. Proposal.Base_Len),
-              Expected_Snapshot => Proposal.Expected_Id (1 .. Proposal.Expected_Len),
-              Journal_Content   => To_String (Proposal.Journal),
-              Policy_Content    => To_String (Proposal.Policy),
-              Scheduled_Content => To_String (Proposal.Scheduled));
-      begin
-         Receipt.Success := Committed.Success;
-         if Committed.Success then
-            Receipt.Event_Id_Len := Proposal.Event_Len;
-            Receipt.Event_Id (1 .. Proposal.Event_Len) :=
-              Proposal.Event_Id (1 .. Proposal.Event_Len);
-            Receipt.Snapshot_Len := Committed.Snapshot_Len;
-            Receipt.Snapshot_Id (1 .. Committed.Snapshot_Len) :=
-              Committed.Snapshot_Id (1 .. Committed.Snapshot_Len);
-         else
-            Receipt.Error_Len := Committed.Error_Len;
-            Receipt.Error (1 .. Committed.Error_Len) :=
-              Committed.Error (1 .. Committed.Error_Len);
-         end if;
-      end;
-      return Receipt;
-   end Commit;
 
 end HRA_N.Application.Movement_Command;

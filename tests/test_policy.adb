@@ -265,7 +265,7 @@ package body Test_Policy is
          Rec := Commit (Prop.Proposal);
          Assert (Rec.Success, "Role commit succeeds");
          Assert (Rec.Snapshot_Id (1 .. Rec.Snapshot_Len) = "g00000002", "Snapshot advances to g00000002");
-         Assert (Rec.Allocated_Id (1 .. Rec.Allocated_Len) = "r0001", "Allocated role ID is r0001");
+         Assert (Rec.Primary_Id (1 .. Rec.Primary_Len) = "r0001", "Allocated role ID is r0001");
       end;
 
       --  Reload paths
@@ -306,7 +306,7 @@ package body Test_Policy is
          Rec := Commit (Prop.Proposal);
          Assert (Rec.Success, "Role replacement commit succeeds");
          Assert (Rec.Snapshot_Id (1 .. Rec.Snapshot_Len) = "g00000003", "Snapshot advances to g00000003");
-         Assert (Rec.Allocated_Id (1 .. Rec.Allocated_Len) = "r0002", "Allocated role ID is r0002");
+         Assert (Rec.Primary_Id (1 .. Rec.Primary_Len) = "r0002", "Allocated role ID is r0002");
       end;
 
       --  Reload paths
@@ -374,7 +374,7 @@ package body Test_Policy is
          Rec := Commit (Prop.Proposal);
          Assert (Rec.Success, "Window commit succeeds");
          Assert (Rec.Snapshot_Id (1 .. Rec.Snapshot_Len) = "g00000004", "Snapshot advances to g00000004");
-         Assert (Rec.Allocated_Id (1 .. Rec.Allocated_Len) = "w0001", "Allocated window ID is w0001");
+         Assert (Rec.Primary_Id (1 .. Rec.Primary_Len) = "w0001", "Allocated window ID is w0001");
       end;
 
       --  Reload paths

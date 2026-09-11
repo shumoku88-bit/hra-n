@@ -6,27 +6,12 @@ with HRA_N.Core.Actual_Routing; use HRA_N.Core.Actual_Routing;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Core.Scheduled; use HRA_N.Core.Scheduled;
 with HRA_N.Storage.Exact_File;
-with HRA_N.Storage.Generation_Transaction;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Journal_Writer; use HRA_N.Storage.Journal_Writer;
 with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 with HRA_N.Storage.Scheduled_Journal_Reader; use HRA_N.Storage.Scheduled_Journal_Reader;
 
 package body HRA_N.Application.Scheduled_Command is
-
-   function Proposed_Kind (Proposal : Scheduled_Proposal) return Mutation_Kind is
-     (Proposal.Kind);
-
-   function Proposed_Scheduled_Id (Proposal : Scheduled_Proposal) return String is
-     (Proposal.Sched_Id (1 .. Proposal.Sched_Len));
-
-   function Proposed_Secondary_Id (Proposal : Scheduled_Proposal) return String is
-     (if Proposal.Second_Len > 0
-      then Proposal.Second_Id (1 .. Proposal.Second_Len)
-      else "");
-
-   function Expected_Snapshot (Proposal : Scheduled_Proposal) return String is
-     (Proposal.Expected_Id (1 .. Proposal.Expected_Len));
 
    function Format_Event_Id (Number : Positive) return String is
       Image_Text : constant String := Trim (Number'Image, Both);
@@ -88,12 +73,8 @@ package body HRA_N.Application.Scheduled_Command is
       S_Bytes : HRA_N.Storage.Exact_File.Read_Result;
 
       function Fail (Message : String) return Proposal_Result is
-         Len : constant Natural := Natural'Min (Message'Length, Result.Error'Length);
       begin
-         Result.Success := False;
-         Result.Error_Len := Len;
-         Result.Error (1 .. Len) := Message (Message'First .. Message'First + Len - 1);
-         return Result;
+         return HRA_N.Application.Proposal.Failed (Result, Message);
       end Fail;
    begin
       if not Paths.Resolution_Ok or else not Paths.Is_Versioned then
@@ -167,17 +148,15 @@ package body HRA_N.Application.Scheduled_Command is
             if Existing_Sched'Length > 0 and then Existing_Sched (Existing_Sched'Last) /= ASCII.LF then
                return Fail ("scheduled journal must end with a newline before proposal append");
             end if;
-            Result.Proposal.Valid := True;
-            Result.Proposal.Kind := Mutation_Create;
-            Result.Proposal.Base_Len := Paths.Data_Len;
-            Result.Proposal.Base_Dir (1 .. Paths.Data_Len) := Data_Dir_Str (Paths);
-            Result.Proposal.Expected_Len := Paths.Snapshot_Len;
-            Result.Proposal.Expected_Id (1 .. Paths.Snapshot_Len) := Snapshot_Id_Str (Paths);
-            Result.Proposal.Sched_Len := Alloc_Len;
-            Result.Proposal.Sched_Id (1 .. Alloc_Len) := Alloc_Id (1 .. Alloc_Len);
-            Result.Proposal.Journal := J_Bytes.Content;
-            Result.Proposal.Policy := P_Bytes.Content;
-            Result.Proposal.Scheduled := To_Unbounded_String (Existing_Sched & Line & ASCII.LF);
+            Result.Proposal :=
+              HRA_N.Application.Proposal.Seal
+                (Paths        => Paths,
+                 Primary_Id   => Alloc_Id (1 .. Alloc_Len),
+                 Secondary_Id => "",
+                 Journal      => J_Bytes.Content,
+                 Policy       => P_Bytes.Content,
+                 Scheduled    =>
+                   To_Unbounded_String (Existing_Sched & Line & ASCII.LF));
             Result.Success := True;
             return Result;
          end;
@@ -198,12 +177,8 @@ package body HRA_N.Application.Scheduled_Command is
       S_Bytes : HRA_N.Storage.Exact_File.Read_Result;
 
       function Fail (Message : String) return Proposal_Result is
-         Len : constant Natural := Natural'Min (Message'Length, Result.Error'Length);
       begin
-         Result.Success := False;
-         Result.Error_Len := Len;
-         Result.Error (1 .. Len) := Message (Message'First .. Message'First + Len - 1);
-         return Result;
+         return HRA_N.Application.Proposal.Failed (Result, Message);
       end Fail;
    begin
       if not Paths.Resolution_Ok or else not Paths.Is_Versioned then
@@ -242,17 +217,15 @@ package body HRA_N.Application.Scheduled_Command is
             if Existing_Sched'Length > 0 and then Existing_Sched (Existing_Sched'Last) /= ASCII.LF then
                return Fail ("scheduled journal must end with a newline before proposal append");
             end if;
-            Result.Proposal.Valid := True;
-            Result.Proposal.Kind := Mutation_Retire;
-            Result.Proposal.Base_Len := Paths.Data_Len;
-            Result.Proposal.Base_Dir (1 .. Paths.Data_Len) := Data_Dir_Str (Paths);
-            Result.Proposal.Expected_Len := Paths.Snapshot_Len;
-            Result.Proposal.Expected_Id (1 .. Paths.Snapshot_Len) := Snapshot_Id_Str (Paths);
-            Result.Proposal.Sched_Len := Target_Str'Length;
-            Result.Proposal.Sched_Id (1 .. Target_Str'Length) := Target_Str;
-            Result.Proposal.Journal := J_Bytes.Content;
-            Result.Proposal.Policy := P_Bytes.Content;
-            Result.Proposal.Scheduled := To_Unbounded_String (Existing_Sched & Line & ASCII.LF);
+            Result.Proposal :=
+              HRA_N.Application.Proposal.Seal
+                (Paths        => Paths,
+                 Primary_Id   => Target_Str,
+                 Secondary_Id => "",
+                 Journal      => J_Bytes.Content,
+                 Policy       => P_Bytes.Content,
+                 Scheduled    =>
+                   To_Unbounded_String (Existing_Sched & Line & ASCII.LF));
             Result.Success := True;
             return Result;
          end;
@@ -274,12 +247,8 @@ package body HRA_N.Application.Scheduled_Command is
       S_Bytes : HRA_N.Storage.Exact_File.Read_Result;
 
       function Fail (Message : String) return Proposal_Result is
-         Len : constant Natural := Natural'Min (Message'Length, Result.Error'Length);
       begin
-         Result.Success := False;
-         Result.Error_Len := Len;
-         Result.Error (1 .. Len) := Message (Message'First .. Message'First + Len - 1);
-         return Result;
+         return HRA_N.Application.Proposal.Failed (Result, Message);
       end Fail;
    begin
       if not Paths.Resolution_Ok or else not Paths.Is_Versioned then
@@ -367,20 +336,16 @@ package body HRA_N.Application.Scheduled_Command is
             if Existing_Sched'Length > 0 and then Existing_Sched (Existing_Sched'Last) /= ASCII.LF then
                return Fail ("scheduled journal must end with a newline before proposal append");
             end if;
-            Result.Proposal.Valid := True;
-            Result.Proposal.Kind := Mutation_Replace;
-            Result.Proposal.Base_Len := Paths.Data_Len;
-            Result.Proposal.Base_Dir (1 .. Paths.Data_Len) := Data_Dir_Str (Paths);
-            Result.Proposal.Expected_Len := Paths.Snapshot_Len;
-            Result.Proposal.Expected_Id (1 .. Paths.Snapshot_Len) := Snapshot_Id_Str (Paths);
-            Result.Proposal.Sched_Len := Target_Str'Length;
-            Result.Proposal.Sched_Id (1 .. Target_Str'Length) := Target_Str;
-            Result.Proposal.Second_Len := New_Len;
-            Result.Proposal.Second_Id (1 .. New_Len) := New_Id (1 .. New_Len);
-            Result.Proposal.Journal := J_Bytes.Content;
-            Result.Proposal.Policy := P_Bytes.Content;
-            Result.Proposal.Scheduled := To_Unbounded_String
-              (Existing_Sched & Sched_Line & ASCII.LF & Repl_Line & ASCII.LF);
+            Result.Proposal :=
+              HRA_N.Application.Proposal.Seal
+                (Paths        => Paths,
+                 Primary_Id   => Target_Str,
+                 Secondary_Id => New_Id (1 .. New_Len),
+                 Journal      => J_Bytes.Content,
+                 Policy       => P_Bytes.Content,
+                 Scheduled    =>
+                   To_Unbounded_String
+                     (Existing_Sched & Sched_Line & ASCII.LF & Repl_Line & ASCII.LF));
             Result.Success := True;
             return Result;
          end;
@@ -403,12 +368,8 @@ package body HRA_N.Application.Scheduled_Command is
       S_Bytes : HRA_N.Storage.Exact_File.Read_Result;
 
       function Fail (Message : String) return Proposal_Result is
-         Len : constant Natural := Natural'Min (Message'Length, Result.Error'Length);
       begin
-         Result.Success := False;
-         Result.Error_Len := Len;
-         Result.Error (1 .. Len) := Message (Message'First .. Message'First + Len - 1);
-         return Result;
+         return HRA_N.Application.Proposal.Failed (Result, Message);
       end Fail;
    begin
       if not Paths.Resolution_Ok or else not Paths.Is_Versioned then
@@ -541,19 +502,15 @@ package body HRA_N.Application.Scheduled_Command is
                Fact_Line : constant String :=
                  "COMPLETE " & Target_Str & " " & Actual_Id_Str (1 .. Actual_Id_Len);
             begin
-               Result.Proposal.Valid := True;
-               Result.Proposal.Kind := Mutation_Complete;
-               Result.Proposal.Base_Len := Paths.Data_Len;
-               Result.Proposal.Base_Dir (1 .. Paths.Data_Len) := Data_Dir_Str (Paths);
-               Result.Proposal.Expected_Len := Paths.Snapshot_Len;
-               Result.Proposal.Expected_Id (1 .. Paths.Snapshot_Len) := Snapshot_Id_Str (Paths);
-               Result.Proposal.Sched_Len := Target_Str'Length;
-               Result.Proposal.Sched_Id (1 .. Target_Str'Length) := Target_Str;
-               Result.Proposal.Second_Len := Actual_Id_Len;
-               Result.Proposal.Second_Id (1 .. Actual_Id_Len) := Actual_Id_Str (1 .. Actual_Id_Len);
-               Result.Proposal.Journal := New_Journal;
-               Result.Proposal.Policy := P_Bytes.Content;
-               Result.Proposal.Scheduled := To_Unbounded_String (Existing_Sched & Fact_Line & ASCII.LF);
+               Result.Proposal :=
+                 HRA_N.Application.Proposal.Seal
+                   (Paths        => Paths,
+                    Primary_Id   => Target_Str,
+                    Secondary_Id => Actual_Id_Str (1 .. Actual_Id_Len),
+                    Journal      => New_Journal,
+                    Policy       => P_Bytes.Content,
+                    Scheduled    =>
+                      To_Unbounded_String (Existing_Sched & Fact_Line & ASCII.LF));
                Result.Success := True;
                return Result;
             end;
@@ -564,47 +521,6 @@ package body HRA_N.Application.Scheduled_Command is
          return Fail ("unexpected completion proposal failure: " & Ada.Exceptions.Exception_Message (E));
    end Propose_Completion;
 
-   function Commit (Proposal : Scheduled_Proposal) return Scheduled_Receipt is
-      Receipt : Scheduled_Receipt;
-   begin
-      if not Proposal.Valid then
-         declare
-            Message : constant String := "invalid scheduled proposal";
-         begin
-            Receipt.Error_Len := Message'Length;
-            Receipt.Error (1 .. Receipt.Error_Len) := Message;
-         end;
-         return Receipt;
-      end if;
 
-      declare
-         Committed : constant HRA_N.Storage.Generation_Transaction.Commit_Result :=
-           HRA_N.Storage.Generation_Transaction.Commit
-             (Base_Dir          => Proposal.Base_Dir (1 .. Proposal.Base_Len),
-              Expected_Snapshot => Proposal.Expected_Id (1 .. Proposal.Expected_Len),
-              Journal_Content   => To_String (Proposal.Journal),
-              Policy_Content    => To_String (Proposal.Policy),
-              Scheduled_Content => To_String (Proposal.Scheduled));
-      begin
-         Receipt.Success := Committed.Success;
-         Receipt.Kind := Proposal.Kind;
-         if Committed.Success then
-            Receipt.Scheduled_Id_Len := Proposal.Sched_Len;
-            Receipt.Scheduled_Id (1 .. Proposal.Sched_Len) :=
-              Proposal.Sched_Id (1 .. Proposal.Sched_Len);
-            Receipt.Secondary_Id_Len := Proposal.Second_Len;
-            Receipt.Secondary_Id (1 .. Proposal.Second_Len) :=
-              Proposal.Second_Id (1 .. Proposal.Second_Len);
-            Receipt.Snapshot_Len := Committed.Snapshot_Len;
-            Receipt.Snapshot_Id (1 .. Committed.Snapshot_Len) :=
-              Committed.Snapshot_Id (1 .. Committed.Snapshot_Len);
-         else
-            Receipt.Error_Len := Committed.Error_Len;
-            Receipt.Error (1 .. Committed.Error_Len) :=
-              Committed.Error (1 .. Committed.Error_Len);
-         end if;
-      end;
-      return Receipt;
-   end Commit;
 
 end HRA_N.Application.Scheduled_Command;

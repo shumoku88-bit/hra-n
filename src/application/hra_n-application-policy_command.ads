@@ -7,15 +7,13 @@
 --  generation transactions.
 -------------------------------------------------------------------------------
 
-private with Ada.Strings.Unbounded;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
+with HRA_N.Application.Proposal;
 with HRA_N.Core.Accounting_Role;      use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Types;                use HRA_N.Core.Types;
 with HRA_N.Core.Validity;             use HRA_N.Core.Validity;
 
 package HRA_N.Application.Policy_Command is
-
-   type Mutation_Kind is (Mutation_Role, Mutation_Window);
 
    type Role_Intent is record
       Id             : Token_Text := (Length => 0, Value => [others => ' ']);
@@ -33,25 +31,12 @@ package HRA_N.Application.Policy_Command is
       Name       : Token_Text := (Length => 0, Value => [others => ' ']);
    end record;
 
-   type Policy_Proposal is private;
-
-   type Proposal_Result is record
-      Success   : Boolean := False;
-      Proposal  : Policy_Proposal;
-      Error     : String (1 .. 160) := [others => ' '];
-      Error_Len : Natural := 0;
-   end record;
-
-   type Policy_Receipt is record
-      Success        : Boolean := False;
-      Kind           : Mutation_Kind := Mutation_Role;
-      Allocated_Id   : String (1 .. 64) := [others => ' '];
-      Allocated_Len  : Natural := 0;
-      Snapshot_Id    : String (1 .. 64) := [others => ' '];
-      Snapshot_Len   : Natural := 0;
-      Error          : String (1 .. 160) := [others => ' '];
-      Error_Len      : Natural := 0;
-   end record;
+   --  Shared snapshot-bound proposal vocabulary: the allocated role or
+   --  window identity is the primary identity. Callers know their mutation
+   --  kind from the intent they proposed, so no kind travels along.
+   subtype Policy_Proposal is HRA_N.Application.Proposal.Authority_Proposal;
+   subtype Proposal_Result is HRA_N.Application.Proposal.Proposal_Result;
+   subtype Policy_Receipt is HRA_N.Application.Proposal.Receipt;
 
    function Propose_Role
      (Paths  : Path_Config;
@@ -61,22 +46,9 @@ package HRA_N.Application.Policy_Command is
      (Paths  : Path_Config;
       Intent : Window_Intent) return Proposal_Result;
 
-   function Commit (Proposal : Policy_Proposal) return Policy_Receipt;
+   function Commit (Proposal : Policy_Proposal) return Policy_Receipt
+     renames HRA_N.Application.Proposal.Commit;
 
-private
 
-   type Policy_Proposal is record
-      Valid        : Boolean := False;
-      Kind         : Mutation_Kind := Mutation_Role;
-      Base_Dir     : String (1 .. Max_Path_Length) := [others => ' '];
-      Base_Len     : Natural := 0;
-      Expected_Id  : String (1 .. 64) := [others => ' '];
-      Expected_Len : Natural := 0;
-      Alloc_Id     : String (1 .. 64) := [others => ' '];
-      Alloc_Len    : Natural := 0;
-      Journal      : Ada.Strings.Unbounded.Unbounded_String;
-      Policy       : Ada.Strings.Unbounded.Unbounded_String;
-      Scheduled    : Ada.Strings.Unbounded.Unbounded_String;
-   end record;
 
 end HRA_N.Application.Policy_Command;

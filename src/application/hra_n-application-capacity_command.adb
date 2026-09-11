@@ -8,17 +8,10 @@ with Ada.Strings; use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with HRA_N.Storage.Exact_File;
-with HRA_N.Storage.Generation_Transaction;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 
 package body HRA_N.Application.Capacity_Command is
-
-   function Proposed_Movement_Id (Proposal : Capacity_Proposal) return String is
-     (Proposal.Movement_Id (1 .. Proposal.Movement_Len));
-
-   function Expected_Snapshot (Proposal : Capacity_Proposal) return String is
-     (Proposal.Expected_Id (1 .. Proposal.Expected_Len));
 
    function Format_Cap_Id (Number : Positive) return String is
       Image_Text : constant String := Trim (Number'Image, Both);
@@ -65,12 +58,8 @@ package body HRA_N.Application.Capacity_Command is
       Total  : Long_Long_Integer := 0;
 
       function Fail (Message : String) return Proposal_Result is
-         Len : constant Natural := Natural'Min (Message'Length, Result.Error'Length);
       begin
-         Result.Success := False;
-         Result.Error_Len := Len;
-         Result.Error (1 .. Len) := Message (Message'First .. Message'First + Len - 1);
-         return Result;
+         return HRA_N.Application.Proposal.Failed (Result, Message);
       end Fail;
    begin
       if not Paths.Resolution_Ok or else not Paths.Is_Versioned then
@@ -166,17 +155,15 @@ package body HRA_N.Application.Capacity_Command is
                Append (Line, Trim (Changes (I).Amount'Image, Both));
             end loop;
          end if;
-         Result.Proposal.Valid := True;
-         Result.Proposal.Base_Len := Paths.Data_Len;
-         Result.Proposal.Base_Dir (1 .. Paths.Data_Len) := Data_Dir_Str (Paths);
-         Result.Proposal.Expected_Len := Paths.Snapshot_Len;
-         Result.Proposal.Expected_Id (1 .. Paths.Snapshot_Len) := Snapshot_Id_Str (Paths);
-         Result.Proposal.Movement_Len := Movement_Id'Length;
-         Result.Proposal.Movement_Id (1 .. Movement_Id'Length) := Movement_Id;
-         Result.Proposal.Journal := J_Bytes.Content;
-         Result.Proposal.Policy :=
-           To_Unbounded_String (Existing & To_String (Line) & ASCII.LF);
-         Result.Proposal.Scheduled := S_Bytes.Content;
+         Result.Proposal :=
+           HRA_N.Application.Proposal.Seal
+             (Paths        => Paths,
+              Primary_Id   => Movement_Id,
+              Secondary_Id => "",
+              Journal      => J_Bytes.Content,
+              Policy       =>
+                To_Unbounded_String (Existing & To_String (Line) & ASCII.LF),
+              Scheduled    => S_Bytes.Content);
       end;
       Result.Success := True;
       return Result;
@@ -236,43 +223,6 @@ package body HRA_N.Application.Capacity_Command is
          Effective_On => Intent.Effective_On);
    end Propose_Rebalance;
 
-   function Commit (Proposal : Capacity_Proposal) return Capacity_Receipt is
-      Receipt : Capacity_Receipt;
-   begin
-      if not Proposal.Valid then
-         declare
-            Message : constant String := "invalid capacity proposal";
-         begin
-            Receipt.Error_Len := Message'Length;
-            Receipt.Error (1 .. Receipt.Error_Len) := Message;
-         end;
-         return Receipt;
-      end if;
 
-      declare
-         Committed : constant HRA_N.Storage.Generation_Transaction.Commit_Result :=
-           HRA_N.Storage.Generation_Transaction.Commit
-             (Base_Dir           => Proposal.Base_Dir (1 .. Proposal.Base_Len),
-              Expected_Snapshot  => Proposal.Expected_Id (1 .. Proposal.Expected_Len),
-              Journal_Content    => To_String (Proposal.Journal),
-              Policy_Content     => To_String (Proposal.Policy),
-              Scheduled_Content  => To_String (Proposal.Scheduled));
-      begin
-         Receipt.Success := Committed.Success;
-         if Committed.Success then
-            Receipt.Movement_Len := Proposal.Movement_Len;
-            Receipt.Movement_Id (1 .. Proposal.Movement_Len) :=
-              Proposal.Movement_Id (1 .. Proposal.Movement_Len);
-            Receipt.Snapshot_Len := Committed.Snapshot_Len;
-            Receipt.Snapshot_Id (1 .. Committed.Snapshot_Len) :=
-              Committed.Snapshot_Id (1 .. Committed.Snapshot_Len);
-         else
-            Receipt.Error_Len := Committed.Error_Len;
-            Receipt.Error (1 .. Committed.Error_Len) :=
-              Committed.Error (1 .. Committed.Error_Len);
-         end if;
-      end;
-      return Receipt;
-   end Commit;
 
 end HRA_N.Application.Capacity_Command;

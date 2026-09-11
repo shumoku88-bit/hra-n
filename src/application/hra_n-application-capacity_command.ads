@@ -1,19 +1,8 @@
--------------------------------------------------------------------------------
---  HRA-N: Verified Household Engine
---  Package: HRA_N.Application.Capacity_Command
---
---  Typed capacity transfer and rebalance intents over one shared proposal
---  and generation-transaction commit path. No operation kind is stored:
---  grant, transfer, and return are readings of the retained endpoints.
---  The practical entrance admits jpy only; other currencies fail closed.
--------------------------------------------------------------------------------
-
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
+with HRA_N.Application.Proposal;
 with HRA_N.Core.Capacity; use HRA_N.Core.Capacity;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
-
-private with Ada.Strings.Unbounded;
 
 package HRA_N.Application.Capacity_Command is
 
@@ -40,24 +29,12 @@ package HRA_N.Application.Capacity_Command is
       Effective_On : Date_Type;
    end record;
 
-   type Capacity_Proposal is private;
-
-   type Proposal_Result is record
-      Success   : Boolean := False;
-      Proposal  : Capacity_Proposal;
-      Error     : String (1 .. 160) := [others => ' '];
-      Error_Len : Natural := 0;
-   end record;
-
-   type Capacity_Receipt is record
-      Success      : Boolean := False;
-      Movement_Id  : String (1 .. 64) := [others => ' '];
-      Movement_Len : Natural := 0;
-      Snapshot_Id  : String (1 .. 64) := [others => ' '];
-      Snapshot_Len : Natural := 0;
-      Error        : String (1 .. 160) := [others => ' '];
-      Error_Len    : Natural := 0;
-   end record;
+   --  Shared snapshot-bound proposal vocabulary: the new movement is the
+   --  primary identity; capacity movements link nothing, so the secondary
+   --  stays empty.
+   subtype Capacity_Proposal is HRA_N.Application.Proposal.Authority_Proposal;
+   subtype Proposal_Result is HRA_N.Application.Proposal.Proposal_Result;
+   subtype Capacity_Receipt is HRA_N.Application.Proposal.Receipt;
 
    function Propose_Transfer
      (Paths  : Path_Config;
@@ -67,23 +44,12 @@ package HRA_N.Application.Capacity_Command is
      (Paths  : Path_Config;
       Intent : Rebalance_Intent) return Proposal_Result;
 
-   function Commit (Proposal : Capacity_Proposal) return Capacity_Receipt;
+   function Commit (Proposal : Capacity_Proposal) return Capacity_Receipt
+     renames HRA_N.Application.Proposal.Commit;
 
-   function Proposed_Movement_Id (Proposal : Capacity_Proposal) return String;
-   function Expected_Snapshot (Proposal : Capacity_Proposal) return String;
-
-private
-   type Capacity_Proposal is record
-      Valid        : Boolean := False;
-      Base_Dir     : String (1 .. Max_Path_Length) := [others => ' '];
-      Base_Len     : Natural := 0;
-      Expected_Id  : String (1 .. Max_Snapshot_Id_Length) := [others => ' '];
-      Expected_Len : Natural := 0;
-      Movement_Id  : String (1 .. 64) := [others => ' '];
-      Movement_Len : Natural := 0;
-      Journal      : Ada.Strings.Unbounded.Unbounded_String;
-      Policy       : Ada.Strings.Unbounded.Unbounded_String;
-      Scheduled    : Ada.Strings.Unbounded.Unbounded_String;
-   end record;
+   function Proposed_Movement_Id (Proposal : Capacity_Proposal) return String
+     renames HRA_N.Application.Proposal.Primary_Id;
+   function Expected_Snapshot (Proposal : Capacity_Proposal) return String
+     renames HRA_N.Application.Proposal.Expected_Snapshot;
 
 end HRA_N.Application.Capacity_Command;

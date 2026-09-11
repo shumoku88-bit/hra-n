@@ -181,7 +181,7 @@ package body HRA_N.UI.Actual_Detail_TUI is
                                  if Rec.Success then
                                     Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
                                     Current_Event_Id :=
-                                      Make_Token (Rec.Event_Id (1 .. Rec.Event_Id_Len));
+                                      Make_Token (Rec.Primary_Id (1 .. Rec.Primary_Len));
                                  end if;
                               end;
                            end if;

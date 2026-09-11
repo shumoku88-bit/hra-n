@@ -163,7 +163,7 @@ package body HRA_N.UI.Capacity_CLI is
                      if Receipt.Success then
                         Put_Line ("============================================================");
                         Put_Line (" [OK] Committed Capacity Transfer: " &
-                                  Receipt.Movement_Id (1 .. Receipt.Movement_Len));
+                                  Receipt.Primary_Id (1 .. Receipt.Primary_Len));
                         Put_Line ("      SNAPSHOT: " &
                                   Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
                         Put_Line ("      FLOW:     " & From_Str & " (-" &
@@ -250,7 +250,7 @@ package body HRA_N.UI.Capacity_CLI is
                      if Receipt.Success then
                         Put_Line ("============================================================");
                         Put_Line (" [OK] Committed Capacity Rebalance: " &
-                                  Receipt.Movement_Id (1 .. Receipt.Movement_Len));
+                                  Receipt.Primary_Id (1 .. Receipt.Primary_Len));
                         Put_Line ("      SNAPSHOT: " &
                                   Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
                         Put_Line ("      EFFECTIVE: " & Format_Iso_Date (Date_Val));

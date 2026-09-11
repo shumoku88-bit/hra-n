@@ -65,7 +65,7 @@ package body Test_Scheduled_Command is
             Assert (Receipt.Success, "Create proposal commits");
             Assert (Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len) = "g00000002",
                     "Receipt identifies activated snapshot");
-            Assert (Receipt.Scheduled_Id (1 .. Receipt.Scheduled_Id_Len) = "s0001",
+            Assert (Receipt.Primary_Id (1 .. Receipt.Primary_Len) = "s0001",
                     "Receipt identifies allocated scheduled id");
             Assert (Retried.Success, "Create proposal retry is idempotent");
             Assert (Retried.Snapshot_Id (1 .. Retried.Snapshot_Len) = "g00000002",
@@ -115,9 +115,9 @@ package body Test_Scheduled_Command is
             Assert (Receipt.Success, "Completion proposal commits");
             Assert (Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len) = "g00000003",
                     "Receipt identifies generation g00000003");
-            Assert (Receipt.Scheduled_Id (1 .. Receipt.Scheduled_Id_Len) = "s0001",
+            Assert (Receipt.Primary_Id (1 .. Receipt.Primary_Len) = "s0001",
                     "Receipt identifies s0001");
-            Assert (Receipt.Secondary_Id (1 .. Receipt.Secondary_Id_Len) = "e0001",
+            Assert (Receipt.Secondary_Id (1 .. Receipt.Secondary_Len) = "e0001",
                     "Receipt identifies created actual e0001");
          end;
 
@@ -165,7 +165,7 @@ package body Test_Scheduled_Command is
          declare
             Rec : constant Scheduled_Receipt := Commit (Prop_Create.Proposal);
          begin
-            Assert (Rec.Success and then Rec.Scheduled_Id (1 .. Rec.Scheduled_Id_Len) = "s0002",
+            Assert (Rec.Success and then Rec.Primary_Id (1 .. Rec.Primary_Len) = "s0002",
                     "s0002 created in snapshot g00000004");
          end;
 
@@ -212,7 +212,7 @@ package body Test_Scheduled_Command is
          declare
             Rec : constant Scheduled_Receipt := Commit (Prop_Create.Proposal);
          begin
-            Assert (Rec.Success and then Rec.Scheduled_Id (1 .. Rec.Scheduled_Id_Len) = "s0003",
+            Assert (Rec.Success and then Rec.Primary_Id (1 .. Rec.Primary_Len) = "s0003",
                     "s0003 created in snapshot g00000006");
          end;
 
@@ -238,9 +238,9 @@ package body Test_Scheduled_Command is
                Assert (Rec.Success, "Replacement commits");
                Assert (Rec.Snapshot_Id (1 .. Rec.Snapshot_Len) = "g00000007",
                        "Replacement activates g00000007");
-               Assert (Rec.Scheduled_Id (1 .. Rec.Scheduled_Id_Len) = "s0003",
+               Assert (Rec.Primary_Id (1 .. Rec.Primary_Len) = "s0003",
                        "Receipt original id is s0003");
-               Assert (Rec.Secondary_Id (1 .. Rec.Secondary_Id_Len) = "s0004",
+               Assert (Rec.Secondary_Id (1 .. Rec.Secondary_Len) = "s0004",
                        "Receipt new id is s0004");
             end;
 
@@ -280,7 +280,7 @@ package body Test_Scheduled_Command is
          declare
             Rec : constant Scheduled_Receipt := Commit (Prop_Create.Proposal);
          begin
-            Assert (Rec.Success and then Rec.Scheduled_Id (1 .. Rec.Scheduled_Id_Len) = "s0005",
+            Assert (Rec.Success and then Rec.Primary_Id (1 .. Rec.Primary_Len) = "s0005",
                     "s0005 created in snapshot g00000008");
          end;
 

@@ -208,7 +208,7 @@ package body HRA_N.UI.Interactive_Movement is
                   if Receipt.Success then
                      Put_Line ("============================================================");
                      Put_Line (" [OK] Committed Movement: " &
-                               Receipt.Event_Id (1 .. Receipt.Event_Id_Len));
+                               Receipt.Primary_Id (1 .. Receipt.Primary_Len));
                      Put_Line ("      SNAPSHOT: " &
                                Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
                      Put_Line ("============================================================");

@@ -227,9 +227,9 @@ package body HRA_N.UI.Scheduled_Cli is
 
             Put_Line ("============================================================");
             Put_Line (" [OK] Completed scheduled obligation: " &
-                      Receipt.Scheduled_Id (1 .. Receipt.Scheduled_Id_Len));
+                      Receipt.Primary_Id (1 .. Receipt.Primary_Len));
             Put_Line ("      Recorded actual receipt: " &
-                      Receipt.Secondary_Id (1 .. Receipt.Secondary_Id_Len));
+                      Receipt.Secondary_Id (1 .. Receipt.Secondary_Len));
             Put_Line ("      Activated snapshot: " &
                       Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
             Put_Line ("============================================================");
@@ -284,7 +284,7 @@ package body HRA_N.UI.Scheduled_Cli is
 
             Put_Line ("============================================================");
             Put_Line (" [OK] Retired scheduled obligation: " &
-                      Receipt.Scheduled_Id (1 .. Receipt.Scheduled_Id_Len));
+                      Receipt.Primary_Id (1 .. Receipt.Primary_Len));
             Put_Line ("      Activated snapshot: " &
                       Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
             Put_Line ("============================================================");
@@ -356,7 +356,7 @@ package body HRA_N.UI.Scheduled_Cli is
 
             Put_Line ("============================================================");
             Put_Line (" [OK] Added scheduled obligation: " &
-                      Receipt.Scheduled_Id (1 .. Receipt.Scheduled_Id_Len));
+                      Receipt.Primary_Id (1 .. Receipt.Primary_Len));
             Put_Line ("      Activated snapshot: " &
                       Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
             Put_Line ("============================================================");
@@ -430,8 +430,8 @@ package body HRA_N.UI.Scheduled_Cli is
 
             Put_Line ("============================================================");
             Put_Line (" [OK] Replaced scheduled obligation " &
-                      Receipt.Scheduled_Id (1 .. Receipt.Scheduled_Id_Len) &
-                      " with " & Receipt.Secondary_Id (1 .. Receipt.Secondary_Id_Len));
+                      Receipt.Primary_Id (1 .. Receipt.Primary_Len) &
+                      " with " & Receipt.Secondary_Id (1 .. Receipt.Secondary_Len));
             Put_Line ("      Activated snapshot: " &
                       Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
             Put_Line ("============================================================");

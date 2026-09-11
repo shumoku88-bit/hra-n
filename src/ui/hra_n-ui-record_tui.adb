@@ -569,7 +569,7 @@ package body HRA_N.UI.Record_TUI is
                      if Receipt.Success then
                         Committed := True;
                         New_Event_Id :=
-                          Make_Token (Receipt.Event_Id (1 .. Receipt.Event_Id_Len));
+                          Make_Token (Receipt.Primary_Id (1 .. Receipt.Primary_Len));
                         Running := False;
                      else
                         Set_Notice

@@ -1,15 +1,9 @@
-private with Ada.Strings.Unbounded;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
+with HRA_N.Application.Proposal;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 
 package HRA_N.Application.Scheduled_Command is
-
-   type Mutation_Kind is
-     (Mutation_Create,
-      Mutation_Complete,
-      Mutation_Retire,
-      Mutation_Replace);
 
    type Create_Intent is record
       Id           : Token_Text;
@@ -42,27 +36,13 @@ package HRA_N.Application.Scheduled_Command is
       Amount       : Quanta_Type := 0;
    end record;
 
-   type Scheduled_Proposal is private;
-
-   type Proposal_Result is record
-      Success   : Boolean := False;
-      Proposal  : Scheduled_Proposal;
-      Error     : String (1 .. 160) := [others => ' '];
-      Error_Len : Natural := 0;
-   end record;
-
-   type Scheduled_Receipt is record
-      Success          : Boolean := False;
-      Kind             : Mutation_Kind := Mutation_Create;
-      Scheduled_Id     : String (1 .. 64) := [others => ' '];
-      Scheduled_Id_Len : Natural := 0;
-      Secondary_Id     : String (1 .. 64) := [others => ' '];
-      Secondary_Id_Len : Natural := 0;
-      Snapshot_Id      : String (1 .. 64) := [others => ' '];
-      Snapshot_Len     : Natural := 0;
-      Error            : String (1 .. 160) := [others => ' '];
-      Error_Len        : Natural := 0;
-   end record;
+   --  Shared snapshot-bound proposal vocabulary: the scheduled obligation
+   --  is the primary identity and the generated actual or replacement the
+   --  secondary. Callers know their mutation kind from the intent they
+   --  proposed, so no kind travels with the proposal.
+   subtype Scheduled_Proposal is HRA_N.Application.Proposal.Authority_Proposal;
+   subtype Proposal_Result is HRA_N.Application.Proposal.Proposal_Result;
+   subtype Scheduled_Receipt is HRA_N.Application.Proposal.Receipt;
 
    function Propose_Create
      (Paths  : Path_Config;
@@ -80,29 +60,14 @@ package HRA_N.Application.Scheduled_Command is
      (Paths  : Path_Config;
       Intent : Replace_Intent) return Proposal_Result;
 
-   function Commit (Proposal : Scheduled_Proposal) return Scheduled_Receipt;
+   function Commit (Proposal : Scheduled_Proposal) return Scheduled_Receipt
+     renames HRA_N.Application.Proposal.Commit;
 
-   function Proposed_Kind (Proposal : Scheduled_Proposal) return Mutation_Kind;
-   function Proposed_Scheduled_Id (Proposal : Scheduled_Proposal) return String;
-   function Proposed_Secondary_Id (Proposal : Scheduled_Proposal) return String;
-   function Expected_Snapshot (Proposal : Scheduled_Proposal) return String;
-
-private
-
-   type Scheduled_Proposal is record
-      Valid        : Boolean := False;
-      Kind         : Mutation_Kind := Mutation_Create;
-      Base_Dir     : String (1 .. Max_Path_Length) := [others => ' '];
-      Base_Len     : Natural := 0;
-      Expected_Id  : String (1 .. Max_Snapshot_Id_Length) := [others => ' '];
-      Expected_Len : Natural := 0;
-      Sched_Id     : String (1 .. 64) := [others => ' '];
-      Sched_Len    : Natural := 0;
-      Second_Id    : String (1 .. 64) := [others => ' '];
-      Second_Len   : Natural := 0;
-      Journal      : Ada.Strings.Unbounded.Unbounded_String;
-      Policy       : Ada.Strings.Unbounded.Unbounded_String;
-      Scheduled    : Ada.Strings.Unbounded.Unbounded_String;
-   end record;
+   function Proposed_Scheduled_Id (Proposal : Scheduled_Proposal) return String
+     renames HRA_N.Application.Proposal.Primary_Id;
+   function Proposed_Secondary_Id (Proposal : Scheduled_Proposal) return String
+     renames HRA_N.Application.Proposal.Secondary_Id;
+   function Expected_Snapshot (Proposal : Scheduled_Proposal) return String
+     renames HRA_N.Application.Proposal.Expected_Snapshot;
 
 end HRA_N.Application.Scheduled_Command;

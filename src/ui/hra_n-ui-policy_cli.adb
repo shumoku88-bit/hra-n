@@ -139,7 +139,7 @@ package body HRA_N.UI.Policy_CLI is
                   end if;
 
                   Put_Line ("[OK] Committed Role Assignment: " &
-                            Receipt.Allocated_Id (1 .. Receipt.Allocated_Len));
+                            Receipt.Primary_Id (1 .. Receipt.Primary_Len));
                   Put_Line ("SNAPSHOT: " &
                             Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
                end;
@@ -298,7 +298,7 @@ package body HRA_N.UI.Policy_CLI is
                   end if;
 
                   Put_Line ("[OK] Added Evaluation Window: " &
-                            Receipt.Allocated_Id (1 .. Receipt.Allocated_Len));
+                            Receipt.Primary_Id (1 .. Receipt.Primary_Len));
                   Put_Line ("SNAPSHOT: " &
                             Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
                end;

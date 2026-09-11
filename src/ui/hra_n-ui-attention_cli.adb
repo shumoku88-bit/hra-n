@@ -113,7 +113,7 @@ package body HRA_N.UI.Attention_CLI is
                      if Receipt.Success then
                         Put_Line ("============================================================");
                         Put_Line (" [OK] Raised Attention: " &
-                                  Receipt.Item_Id (1 .. Receipt.Item_Len));
+                                  Receipt.Primary_Id (1 .. Receipt.Primary_Len));
                         Put_Line ("      SNAPSHOT: " &
                                   Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
                         Put_Line ("============================================================");

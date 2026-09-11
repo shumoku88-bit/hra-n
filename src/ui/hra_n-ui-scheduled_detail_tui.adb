@@ -219,7 +219,7 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                                  begin
                                     if Rec.Success then
                                        Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
-                                       Current_Id := Make_Token (Rec.Secondary_Id (1 .. Rec.Secondary_Id_Len));
+                                       Current_Id := Make_Token (Rec.Secondary_Id (1 .. Rec.Secondary_Len));
                                     end if;
                                  end;
                               end if;

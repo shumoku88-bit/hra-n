@@ -150,7 +150,7 @@ begin
                      if Receipt.Success then
                         Put_Line ("============================================================");
                         Put_Line (" [OK] Committed Reversal: " &
-                                  Receipt.Event_Id (1 .. Receipt.Event_Id_Len));
+                                  Receipt.Primary_Id (1 .. Receipt.Primary_Len));
                         Put_Line ("      REVERSED: " & Target_Id);
                         Put_Line ("      SNAPSHOT: " &
                                   Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
@@ -258,7 +258,7 @@ begin
                      if Receipt.Success then
                         Put_Line ("============================================================");
                         Put_Line (" [OK] Committed Correction: " &
-                                  Receipt.Event_Id (1 .. Receipt.Event_Id_Len));
+                                  Receipt.Primary_Id (1 .. Receipt.Primary_Len));
                         Put_Line ("      REPLACED: " & Target_Id);
                         Put_Line ("      SNAPSHOT: " &
                                   Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
@@ -370,7 +370,7 @@ begin
                   if Receipt.Success then
                      Put_Line ("============================================================");
                      Put_Line (" [OK] Committed Movement: " &
-                               Receipt.Event_Id (1 .. Receipt.Event_Id_Len));
+                               Receipt.Primary_Id (1 .. Receipt.Primary_Len));
                      Put_Line ("      SNAPSHOT: " &
                                Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
                      Put_Line ("      FLOW:     " & From_Locus & " (-" & Amount_Str & " jpy) -> " &
