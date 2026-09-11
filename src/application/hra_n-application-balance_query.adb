@@ -303,7 +303,12 @@ package body HRA_N.Application.Balance_Query is
                      end loop;
 
                      --  Determine role
-                     Find_Role (P_Res.Roles, (Token => Loc), Role_Val, Has_Role_Val);
+                     if Request.Has_As_Of then
+                        Find_Role_As_Of
+                          (P_Res.Roles, (Token => Loc), Request.As_Of_Date, Role_Val, Has_Role_Val);
+                     else
+                        Find_Role (P_Res.Roles, (Token => Loc), Role_Val, Has_Role_Val);
+                     end if;
 
                      declare
                         Status_Val : constant Balance_Epistemic_Status :=

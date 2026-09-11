@@ -101,17 +101,24 @@ package body Test_Generation_Transaction is
       end;
 
       declare
-         Policy_Mutation : constant Commit_Result :=
+         Policy_Rewrite : constant Commit_Result :=
            Commit
              (Test_Dir, "g00000002", First_Journal,
-              Policy & "# mutation" & ASCII.LF, Scheduled);
+              "# rewritten policy state" & ASCII.LF, Scheduled);
+         Policy_Invalid : constant Commit_Result :=
+           Commit
+             (Test_Dir, "g00000002", First_Journal,
+              Policy & "ROLE r0001 2026-09-11 cash INVALID_ROLE" & ASCII.LF,
+              Scheduled);
          Scheduled_Rewrite : constant Commit_Result :=
            Commit
              (Test_Dir, "g00000002", First_Journal,
               Policy, "# rewritten scheduled state" & ASCII.LF);
       begin
-         Assert (not Policy_Mutation.Success,
-                 "Versioned policy is immutable without policy facts");
+         Assert (not Policy_Rewrite.Success,
+                 "Candidate cannot rewrite policy history");
+         Assert (not Policy_Invalid.Success,
+                 "Candidate cannot admit invalid policy facts");
          Assert (not Scheduled_Rewrite.Success,
                  "Candidate cannot rewrite scheduled history");
       end;

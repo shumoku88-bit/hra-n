@@ -25,6 +25,7 @@ with HRA_N.UI.Budget_CLI;
 with HRA_N.UI.Scheduled_Cli;
 with HRA_N.UI.Balance_CLI;
 with HRA_N.UI.Reconciliation_CLI;
+with HRA_N.UI.Policy_CLI;
 with HRA_N.UI.Interactive_Movement;
 
 procedure HRA_N_Main is
@@ -403,6 +404,18 @@ begin
          if not Success then
             Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
          end if;
+         return;
+      end if;
+
+      --  Branch: Accounting roles
+      if Command = "role" or else Command = "roles" then
+         HRA_N.UI.Policy_CLI.Handle_Role_Command (Paths, Command_Idx + 1);
+         return;
+      end if;
+
+      --  Branch: Evaluation windows
+      if Command = "window" or else Command = "windows" then
+         HRA_N.UI.Policy_CLI.Handle_Window_Command (Paths, Command_Idx + 1);
          return;
       end if;
 

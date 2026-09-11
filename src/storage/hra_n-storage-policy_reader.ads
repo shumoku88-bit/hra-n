@@ -12,6 +12,7 @@ with HRA_N.Core.Coverage;        use HRA_N.Core.Coverage;
 with HRA_N.Core.Capacity;        use HRA_N.Core.Capacity;
 with HRA_N.Core.Actual_Routing;  use HRA_N.Core.Actual_Routing;
 with HRA_N.Core.Validity;        use HRA_N.Core.Validity;
+with HRA_N.Core.Window_Policy;   use HRA_N.Core.Window_Policy;
 with HRA_N.Core.Types;           use HRA_N.Core.Types;
 
 package HRA_N.Storage.Policy_Reader is
@@ -19,6 +20,7 @@ package HRA_N.Storage.Policy_Reader is
    type Policy_Result is record
       Success      : Boolean := False;
       Roles        : Role_Map;
+      Windows      : Window_Memory;
       Coverage     : Zero_Origin_Coverage;
       Capacities   : Capacity_Memory;
       Routing      : Routing_Map;

@@ -25,6 +25,7 @@ with Test_Scheduled_Query;
 with Test_Scheduled_Command;
 with Test_Balance_Query;
 with Test_Assertion;
+with Test_Policy;
 
 procedure Test_Runner is
 begin
@@ -88,6 +89,9 @@ begin
 
    Put_Line ("--> Running Test_Assertion...");
    Test_Assertion.Run;
+
+   Put_Line ("--> Running Test_Policy...");
+   Test_Policy.Run;
 
    Put_Line ("========================================");
    Test_Support.Report_Summary ("All HRA-N Unit Tests");

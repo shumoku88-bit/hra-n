@@ -6,6 +6,7 @@ with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Core.Scheduled; use HRA_N.Core.Scheduled;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
+with HRA_N.Core.Window_Policy; use HRA_N.Core.Window_Policy;
 with HRA_N.Storage.Atomic_Writer; use HRA_N.Storage.Atomic_Writer;
 with HRA_N.Storage.Exact_File; use HRA_N.Storage.Exact_File;
 with HRA_N.Storage.File_Lock; use HRA_N.Storage.File_Lock;
@@ -87,13 +88,11 @@ package body HRA_N.Storage.Generation_Transaction is
 
       function Streams_Preserve_Authority (Identity : String) return Boolean is
          Root : constant String := Meta_Dir & "/generations/" & Identity;
-         Policy : constant Read_Result := Read_All (Root & "/policy.hra");
       begin
          return Content_Extends (Root & "/journal.hra", Journal_Content)
            and then Content_Extends
              (Root & "/scheduled.hra", Scheduled_Content)
-           and then Policy.Success
-           and then To_String (Policy.Content) = Policy_Content;
+           and then Content_Extends (Root & "/policy.hra", Policy_Content);
       end Streams_Preserve_Authority;
 
       function Generation_Equals (Identity : String) return Boolean is
@@ -122,15 +121,16 @@ package body HRA_N.Storage.Generation_Transaction is
       end Event_Exists;
 
       function Candidate_Is_Admitted
-        (Journal  : Journal_Result;
-         Policy   : Policy_Result;
+        (Journal   : Journal_Result;
+         Policy    : Policy_Result;
          Scheduled : Scheduled_Journal_Result) return Boolean
       is
          Life : Scheduled_Lifecycle renames Scheduled.Lifecycle;
       begin
          if not Journal.Success or else not Policy.Success or else not Scheduled.Success
            or else Natural (Journal.Events.Length) > Max_Validity_Entries
-           or else not Loci_Are_Unique (Policy.Roles)
+           or else not All_Role_Laws_Hold (Policy.Roles)
+           or else not Windows_Are_Sound (Policy.Windows)
            or else not Scheduled_Ids_Are_Unique (Life)
            or else not Completions_Reference_Known (Life)
            or else not Retirements_Reference_Known (Life)

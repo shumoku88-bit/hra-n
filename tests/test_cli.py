@@ -268,6 +268,101 @@ class TestHraNCli(unittest.TestCase):
         self.assertEqual(res.returncode, 0)
         self.assertIn("CONFLICT", res.stdout)
 
+        # 27. Role inspection
+        res = self.run_cmd("role")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("HRA-N Accounting Roles", res.stdout)
+        self.assertIn("cash", res.stdout)
+        self.assertIn("bank", res.stdout)
+        self.assertIn("food", res.stdout)
+
+        # 28. Assign new role via generation authority
+        res = self.run_cmd("role", "assign", "crypto", "ASSET", "2026-09-01")
+        self.assertEqual(res.returncode, 0, f"role assign failed: {res.stderr}")
+        self.assertIn("[OK] Committed Role Assignment: r0001", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000012")
+
+        # 28b. Inspect assigned role
+        res = self.run_cmd("role")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("crypto", res.stdout)
+        self.assertIn("ASSET", res.stdout)
+
+        # 29. Replace role via generation authority
+        res = self.run_cmd("role", "assign", "crypto", "EXPENSE", "2026-10-01", "r0001")
+        self.assertEqual(res.returncode, 0, f"role replacement failed: {res.stderr}")
+        self.assertIn("[OK] Committed Role Assignment: r0002", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000013")
+
+        # 29b. Inspect active role replacement column
+        res = self.run_cmd("role")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("r0002", res.stdout)
+        self.assertIn("r0001", res.stdout)
+        self.assertIn("EXPENSE", res.stdout)
+
+        # 29c. Inspect historical roles via --as-of
+        res = self.run_cmd("role", "--as-of", "2026-09-15")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("r0001", res.stdout)
+        self.assertIn("ASSET", res.stdout)
+        self.assertNotIn("r0002", res.stdout)
+
+        res = self.run_cmd("role", "--as-of", "2026-10-05")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("r0002", res.stdout)
+        self.assertIn("EXPENSE", res.stdout)
+        self.assertIn("r0001", res.stdout)  # r0001 appears in REPLACES column
+
+        # 30. Invalid role assignments fail closed
+        # 30a. Unknown replacement target
+        res = self.run_cmd("role", "assign", "crypto", "ASSET", "2026-10-02", "r9999")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("replacement target does not exist", res.stderr + res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000013")
+
+        # 30b. Cross-locus replacement
+        res = self.run_cmd("role", "assign", "food", "EXPENSE", "2026-10-02", "r0002")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("replacement target locus does not match", res.stderr + res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000013")
+
+        # 30c. Duplicate active role without replacement
+        res = self.run_cmd("role", "assign", "crypto", "ASSET", "2026-10-02")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("already has an active assigned role", res.stderr + res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000013")
+
+        # 31. Window inspection (empty initially)
+        res = self.run_cmd("window")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("No evaluation windows defined", res.stdout)
+
+        # 32. Add window via generation authority
+        res = self.run_cmd("window", "add", "w0001", "2026-09-01", "2026-10-01", "September 2026")
+        self.assertEqual(res.returncode, 0, f"window add failed: {res.stderr}")
+        self.assertIn("[OK] Added Evaluation Window: w0001", res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000014")
+
+        # 32b. Inspect added window
+        res = self.run_cmd("window")
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("w0001", res.stdout)
+        self.assertIn("September 2026", res.stdout)
+
+        # 33. Invalid windows fail closed
+        # 33a. Reversed dates
+        res = self.run_cmd("window", "add", "w0002", "2026-10-01", "2026-09-01", "Reversed")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("strictly before", res.stderr + res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000014")
+
+        # 33b. Duplicate window ID
+        res = self.run_cmd("window", "add", "w0001", "2026-10-01", "2026-11-01", "Duplicate")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("already exists", res.stderr + res.stdout)
+        self.assertEqual(self.current_snapshot(), "g00000014")
+
 
 if __name__ == "__main__":
     unittest.main()
