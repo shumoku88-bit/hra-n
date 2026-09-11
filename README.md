@@ -92,11 +92,14 @@ hra-n -d /path/to/household tui
 
 The TUI supports day navigation, Selected Day and all-Actual workspaces,
 chronology toggling, row selection, identity-revalidated Actual detail, return-to-
-today, reload, resize/redraw, and clean quit. Detail currently exposes date,
-description, and exact `(Locus, Measure, Amount)` effects. Write actions remain
-disabled until the generation transaction writer is connected; direct mutation
-of a selected generation is rejected. Scheduled, balances, budget, and report
-workspaces are added through the same shared query boundary.
+today, reload, resize/redraw, and clean quit. Detail exposes date, description,
+purpose, provenance, and exact `(Locus, Measure, Amount)` effects. Selected Day
+provides quick movement recording (`n`) seeded with the selected day, featuring
+policy locus candidate cycling, admission preview, generation transaction commit,
+and immediate reload from the activated snapshot. Correction and reversal actions
+remain pending generation transaction wiring; direct mutation of a selected
+generation is rejected. Scheduled, balances, budget, and report workspaces are
+added through the same shared query boundary.
 
 The combined repository gate is:
 

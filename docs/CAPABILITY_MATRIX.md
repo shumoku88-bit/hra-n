@@ -24,7 +24,7 @@ named command.
 | Generation transaction write | journal and Scheduled facts are byte-prefix append-only; Policy bytes are immutable until effective-dated policy facts exist | process/task lock, authoritative re-read, stale rejection, post-lock allocation, fsync, atomic activation, post-verify; exact selected-candidate comparison recovers lost receipts | typed Movement Intent/opaque Proposal/durable Receipt connected | not connected | writes not yet connected | stale, all-stream rewrite, invalid-candidate, concurrent-writer, activation-boundary fault, idempotent retry, and Movement contract tests + TLA+/SPIN model | **V2 foundation** |
 | Actual list by day/all | occurrence date and stable source order | journal reader | `Actual_Query` | legacy review is separate | Home, Selected Day, Actual | unit + PTY | **V2 read slice** |
 | Actual detail | identity revalidated against current read | journal reader | `Actual_Detail_Query` | no structured detail command | selected-row detail | unit + PTY | **V2 read slice** |
-| Record movement | typed coordinates, positive exact amount, balanced per-measure effects, canonical encoding | admitted immutable generation transaction | `Movement_Command` Intent -> opaque snapshot-bound Proposal -> Receipt | legacy path not connected | editor not connected | validation, stale-proposal, retry, and receipt tests | **V2 Application slice** |
+| Record movement | typed coordinates, positive exact amount, balanced per-measure effects, canonical encoding | admitted immutable generation transaction | `Movement_Command` Intent -> opaque snapshot-bound Proposal -> Receipt | legacy path not connected | Selected Day keyboard editor (n) with catalog selection, draft preview, and immediate reload | validation, stale-proposal, retry, receipt, and PTY tests | **V2** |
 | Correct movement | explicit closed, acyclic supersession with no branch | replacement metadata retained | no atomic correction Intent | legacy command is not V2 | disabled | replacement-law tests only | **Missing** |
 | Correct occurrence date | versioned validity fact | no V2 representation | none | none | none | none | **Missing** |
 | Reverse movement | immutable inverse linked to target | link currently not retained | legacy publisher lacks qualified generation transaction | legacy command | disabled | insufficient | **Blocked** |
@@ -47,9 +47,8 @@ named command.
 
 ### P1 — Actual vertical slice
 
-1. TUI record editor using the selected day.
-2. Actual correction, date correction, and reversal from selected detail.
-3. Equivalent scriptable CLI operations through the same Application boundary.
+1. Actual correction, date correction, and reversal from selected detail.
+2. Equivalent scriptable CLI operations through the same Application boundary.
 
 ### P2 — Scheduled vertical slice
 

@@ -81,10 +81,11 @@ package body HRA_N.UI.Home_TUI is
      (Paths   : HRA_N.Application.Path_Resolver.Path_Config;
       Success : out Boolean)
    is
-      Selected      : Date_Type := Get_System_Date;
-      Running       : Boolean := True;
+      Current_Paths  : HRA_N.Application.Path_Resolver.Path_Config := Paths;
+      Selected       : Date_Type := Get_System_Date;
+      Running        : Boolean := True;
       Screen_Started : Boolean := False;
-      Query_Healthy : Boolean := False;
+      Query_Healthy  : Boolean := False;
    begin
       Success := False;
       Curses.Init_Screen;
@@ -94,7 +95,7 @@ package body HRA_N.UI.Home_TUI is
       Curses.Set_KeyPad_Mode (Curses.Standard_Window, True);
 
       while Running loop
-         Draw (Paths, Selected, Query_Healthy);
+         Draw (Current_Paths, Selected, Query_Healthy);
          declare
             Key : constant Integer := Integer (Curses.Get_Keystroke);
          begin
@@ -105,14 +106,20 @@ package body HRA_N.UI.Home_TUI is
               or else Key = Character'Pos (ASCII.LF)
             then
                HRA_N.UI.Actual_TUI.Run
-                 (Paths,
+                 (Current_Paths,
                   Selected,
                   HRA_N.Application.Actual_Query.Scope_Selected_Day);
+               Current_Paths :=
+                 HRA_N.Application.Path_Resolver.Resolve_Paths
+                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
             elsif Key = Character'Pos ('a') or else Key = Character'Pos ('A') then
                HRA_N.UI.Actual_TUI.Run
-                 (Paths,
+                 (Current_Paths,
                   Selected,
                   HRA_N.Application.Actual_Query.Scope_All);
+               Current_Paths :=
+                 HRA_N.Application.Path_Resolver.Resolve_Paths
+                   (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
             elsif Key = Character'Pos ('h') or else Key = Integer (Curses.KEY_LEFT) then
                if Selected.Year > Year_Type'First
                  or else Selected.Month > Month_Type'First

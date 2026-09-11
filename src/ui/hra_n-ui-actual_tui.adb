@@ -2,7 +2,9 @@ with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Actual_Query; use HRA_N.Application.Actual_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
+with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.UI.Actual_Detail_TUI;
+with HRA_N.UI.Record_TUI;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with Terminal_Interface.Curses;
 
@@ -75,7 +77,7 @@ package body HRA_N.UI.Actual_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "j/k: select   Enter: detail   f: day/all   o: order   b/Esc: home");
+            "j/k: select   Enter: detail   n: record   f: day/all   o: order   b/Esc: home");
       end if;
       Curses.Refresh;
    end Draw;
@@ -85,14 +87,15 @@ package body HRA_N.UI.Actual_TUI is
       Selected_Day  : Date_Type;
       Initial_Scope : Actual_Scope)
    is
-      Scope    : Actual_Scope := Initial_Scope;
-      Ordering : Actual_Order := Order_Newest_First;
-      Cursor   : Positive := 1;
-      Count    : Natural := 0;
-      Running  : Boolean := True;
+      Current_Paths : Path_Config := Paths;
+      Scope         : Actual_Scope := Initial_Scope;
+      Ordering      : Actual_Order := Order_Newest_First;
+      Cursor        : Positive := 1;
+      Count         : Natural := 0;
+      Running       : Boolean := True;
    begin
       while Running loop
-         Draw (Paths, Selected_Day, Scope, Ordering, Cursor, Count);
+         Draw (Current_Paths, Selected_Day, Scope, Ordering, Cursor, Count);
          if Count = 0 then
             Cursor := 1;
          elsif Cursor > Count then
@@ -113,7 +116,7 @@ package body HRA_N.UI.Actual_TUI is
                declare
                   Current : constant Actual_View :=
                     Execute
-                      (Paths,
+                      (Current_Paths,
                        (Scope        => Scope,
                         Selected_Day => Selected_Day,
                         Ordering     => Ordering));
@@ -122,7 +125,20 @@ package body HRA_N.UI.Actual_TUI is
                     and then Cursor <= Current.Row_Count
                   then
                      HRA_N.UI.Actual_Detail_TUI.Run
-                       (Paths, Current.Rows (Cursor).Event_Id);
+                       (Current_Paths, Current.Rows (Cursor).Event_Id);
+                  end if;
+               end;
+            elsif Key = Character'Pos ('n') or else Key = Character'Pos ('N') then
+               declare
+                  Committed : Boolean := False;
+               begin
+                  HRA_N.UI.Record_TUI.Run
+                    (Current_Paths,
+                     Selected_Day,
+                     Committed);
+                  if Committed then
+                     Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+                     Cursor := 1;
                   end if;
                end;
             elsif Key = Character'Pos ('j') or else Key = Integer (Curses.KEY_DOWN) then

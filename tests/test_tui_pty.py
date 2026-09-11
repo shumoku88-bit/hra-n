@@ -33,11 +33,15 @@ def main() -> None:
     household = tempfile.mkdtemp(prefix="hra_n_tui_")
     try:
         today = datetime.date.today().isoformat()
-        with open(os.path.join(household, "journal.hra"), "w", encoding="utf-8") as stream:
+        gen_dir = os.path.join(household, ".hra", "generations", "g00000001")
+        os.makedirs(gen_dir, exist_ok=True)
+        with open(os.path.join(household, ".hra", "CURRENT"), "w", encoding="utf-8") as stream:
+            stream.write("g00000001\n")
+        with open(os.path.join(gen_dir, "journal.hra"), "w", encoding="utf-8") as stream:
             stream.write(f'TX e0001 {today} cash:-100 food:100 "PTY fixture"\n')
-        with open(os.path.join(household, "policy.hra"), "w", encoding="utf-8") as stream:
+        with open(os.path.join(gen_dir, "policy.hra"), "w", encoding="utf-8") as stream:
             stream.write("ROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n")
-        with open(os.path.join(household, "scheduled.hra"), "w", encoding="utf-8") as stream:
+        with open(os.path.join(gen_dir, "scheduled.hra"), "w", encoding="utf-8") as stream:
             stream.write("# empty scheduled journal\n")
 
         pid, fd = pty.fork()
@@ -46,17 +50,48 @@ def main() -> None:
             env["TERM"] = "xterm-256color"
             os.execve(harness, [harness, household], env)
 
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
         output = bytearray()
         try:
             read_until(fd, output, b"HRA-N HOME")
             os.write(fd, b"\n")
             read_until(fd, output, b"SELECTED DAY")
+            # Test draft cancellation from Movement editor
+            os.write(fd, b"n")
+            read_until(fd, output, b"RECORD MOVEMENT")
+            os.write(fd, b"\x1b")
+            read_until(fd, output, b"SELECTED DAY")
+
+            # Open Movement editor and record new transaction
+            os.write(fd, b"n")
+            read_until(fd, output, b"RECORD MOVEMENT")
+            time.sleep(0.05)
+            os.write(fd, b"\t")
+            time.sleep(0.05)
+            os.write(fd, b"cash\t")
+            time.sleep(0.05)
+            os.write(fd, b"food\t")
+            time.sleep(0.05)
+            os.write(fd, b"250\t")
+            time.sleep(0.05)
+            os.write(fd, b"Lunch\n")
+
+            # Preview admission and commit
+            read_until(fd, output, b"ADMISSION PREVIEW")
+            os.write(fd, b"\n")
+
+            # Selected Day must immediately reload and display newly admitted row
+            read_until(fd, output, b"Lunch")
+
+            # Return to Home and verify count update
             os.write(fd, b"b")
-            read_until(fd, output, b"Evidence")
+            read_until(fd, output, b"Actual     2 selected / 2 total")
+
+            # Review all Actual and inspect detail of new record
             os.write(fd, b"a")
             read_until(fd, output, b"ACTUAL  ALL CURRENT")
             os.write(fd, b"\n")
-            read_until(fd, output, b"DETAIL")
+            read_until(fd, output, b"DETAIL  e0002")
             os.write(fd, b"b")
             read_until(fd, output, b"Order:")
             os.write(fd, b"b")
@@ -66,7 +101,7 @@ def main() -> None:
             os.waitpid(pid, 0)
             raise
 
-        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 35, 120, 0, 0))
         os.kill(pid, signal.SIGWINCH)
         os.write(fd, b"\x0c")
         os.write(fd, b"q")
@@ -96,7 +131,7 @@ def main() -> None:
         if not os.WIFEXITED(exit_status) or os.WEXITSTATUS(exit_status) != 0:
             raise AssertionError(f"Home TUI exited unsuccessfully: {exit_status}")
 
-        print("TUI PTY: Home, Selected Day, Actual detail, resize, redraw, and quit passed")
+        print("TUI PTY: Home, Selected Day, Movement record editor, Actual detail, resize, redraw, and quit passed")
     finally:
         shutil.rmtree(household, ignore_errors=True)
 
