@@ -25,8 +25,4 @@ project HRA_N_Tests is
       for Executable ("test_runner.adb") use "test_runner";
       for Executable ("tui_harness.adb") use "tui_harness";
    end Builder;
-
-   package Linker is
-      for Default_Switches ("Ada") use ("-Wl,-stack_size,0x1000000");
-   end Linker;
 end HRA_N_Tests;
