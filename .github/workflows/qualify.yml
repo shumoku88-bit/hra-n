@@ -26,9 +26,27 @@ jobs:
         run: |
           ./tools/build
 
-      - name: Run Unit and Frontend Tests
+      - name: Build Ada Unit Test Runner
         run: |
-          ./tools/test-suite
+          source ./tools/alire-env
+          ensure_alire_environment "$PWD"
+          alr exec -- gprbuild -P tests/hra_n_tests.gpr -p
+
+      - name: Run Ada Unit Tests
+        run: |
+          ./tests/bin/test_runner
+
+      - name: Run CLI E2E
+        run: |
+          python3 ./tests/test_cli.py
+
+      - name: Run Household Observation E2E
+        run: |
+          python3 ./tests/test_observation.py
+
+      - name: Run TUI PTY E2E
+        run: |
+          python3 ./tests/test_tui_pty.py
 
       - name: Final Production Build
         run: |
