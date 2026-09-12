@@ -202,13 +202,17 @@ package body HRA_N.UI.Report_TUI is
                        else Make_Token ("")),
                     Is_Versioned => Paths.Is_Versioned);
                S        : Financial_Summary renames Report.Summary;
-               Complete : constant Boolean := Is_Complete (S);
+               Complete : constant Boolean := Is_Complete (Report);
             begin
                if Report.Status = Query_Rejected then
                   Emit (" [ERROR] Statement query rejected: " & Report.Diagnostic (1 .. Report.Diagnostic_Len));
                else
+                  if not Complete then
+                     Emit (" [PARTIAL] " & Report.Diagnostic (1 .. Report.Diagnostic_Len));
+                     Emit (" Amounts are retained changes, not qualified opening/closing balances.");
+                  end if;
                   if Complete then
-                     Emit (" Status: COMPLETE FINANCIAL STATEMENT (Universal Frontier Fully Classified)");
+                     Emit (" Status: COMPLETE FINANCIAL STATEMENT (Classified, known stock origins, no conflicts)");
                   else
                      Emit (" Status: PARTIAL PROJECTION (Evidence Frontier Incomplete - " &
                            Trim (Natural'Image (Report.Unresolved_Count), Both) & " unclassified loci)");
@@ -268,8 +272,12 @@ package body HRA_N.UI.Report_TUI is
                   Emit ("");
 
                   Emit ("  " & Repeat ('=', 50));
-                  Emit ("  " & Pad_Right ("NET WORTH (Assets - Liabilities)", 32) & " : " &
-                        Pad_Left (Format_Quanta (Net_Worth (S)), 14) & " JPY");
+                  if Complete then
+                     Emit ("  " & Pad_Right ("NET WORTH (Assets - Liabilities)", 32) & " : " &
+                           Pad_Left (Format_Quanta (Net_Worth (S)), 14) & " JPY");
+                  else
+                     Emit ("  Net worth unavailable: incomplete balance evidence");
+                  end if;
                   Emit ("  " & Repeat ('=', 50));
                   Emit ("");
 
@@ -310,10 +318,12 @@ package body HRA_N.UI.Report_TUI is
                   Emit ("");
 
                   Emit ("  " & Repeat ('=', 50));
-                  Emit ("  " & Pad_Right ("NET SAVINGS (Income - Expense)", 32) & " : " &
-                        Pad_Left (Format_Quanta (Net_Savings (S)), 14) & " JPY");
+                  if Complete then
+                     Emit ("  " & Pad_Right ("NET SAVINGS (Income - Expense)", 32) & " : " &
+                           Pad_Left (Format_Quanta (Net_Savings (S)), 14) & " JPY");
+                  end if;
 
-                  if S.Total_Income > 0 then
+                  if Complete and then S.Total_Income > 0 then
                      declare
                         Rate_Int   : constant Long_Long_Integer := (Net_Savings (S) * 1000) / S.Total_Income;
                         Rate_Whole : constant Long_Long_Integer := Rate_Int / 10;
@@ -459,17 +469,22 @@ package body HRA_N.UI.Report_TUI is
                begin
                   Emit ("");
                   Emit ("--- SOLVENCY & ENVELOPE BACKING (Liquid Assets vs Envelopes) ---");
-                  Emit ("  Liquid Assets (Funding)       : " &
-                        Pad_Left (Format_Quanta (Funding_Assets), 14) & " JPY");
-                  Emit ("  Backing Required (Envelopes)  : " &
-                        Pad_Left (Format_Quanta (Backing_Req), 14) & " JPY");
-                  Emit ("  " & Repeat ('-', 56));
-                  if Backing_Surplus >= 0 then
-                     Emit ("  Backing Surplus (Buffer)      : " &
-                           Pad_Left (Format_Quanta (Backing_Surplus), 14) & " JPY  [SOLVENT - 100% Backed]");
+                  if not Is_Complete (Stmt_Rep) then
+                     Emit (" [PARTIAL] Backing unavailable: " &
+                           Stmt_Rep.Diagnostic (1 .. Stmt_Rep.Diagnostic_Len));
                   else
-                     Emit ("  Backing Shortfall (Deficit!)   : " &
-                           Pad_Left (Format_Quanta (Backing_Surplus), 14) & " JPY  [OVERALLOCATED - Illiquid]");
+                     Emit ("  Liquid Assets (Funding)       : " &
+                           Pad_Left (Format_Quanta (Funding_Assets), 14) & " JPY");
+                     Emit ("  Backing Required (Envelopes)  : " &
+                           Pad_Left (Format_Quanta (Backing_Req), 14) & " JPY");
+                     Emit ("  " & Repeat ('-', 56));
+                     if Backing_Surplus >= 0 then
+                        Emit ("  Backing Surplus (Buffer)      : " &
+                              Pad_Left (Format_Quanta (Backing_Surplus), 14) & " JPY  [SOLVENT - 100% Backed]");
+                     else
+                        Emit ("  Backing Shortfall (Deficit!)   : " &
+                              Pad_Left (Format_Quanta (Backing_Surplus), 14) & " JPY  [OVERALLOCATED - Illiquid]");
+                     end if;
                   end if;
                end;
             end;
@@ -703,10 +718,12 @@ package body HRA_N.UI.Report_TUI is
                Comp_Title : constant String := Y_Str & "-" & Pad_M & " vs " &
                  Trim (Natural'Image (Prev_Year), Both) & "-" & Pad_PM;
             begin
+               Emit ("--- MONTH-OVER-MONTH COMPARISON (" & Comp_Title & ") ---");
                if Cur_Rep.Status = Query_Rejected or else Prev_Rep.Status = Query_Rejected then
                   Emit (" [ERROR] Statement query rejected during comparison");
+               elsif not Is_Complete (Cur_Rep) or else not Is_Complete (Prev_Rep) then
+                  Emit (" [PARTIAL] Comparison requires classified, known stocks without assertion conflicts");
                else
-                  Emit ("--- MONTH-OVER-MONTH COMPARISON (" & Comp_Title & ") ---");
                   Emit ("");
                   Emit ("  " & Pad_Right ("Category / Role", 26) & " " &
                         Pad_Left ("Current", 14) & " " &
@@ -1105,6 +1122,16 @@ package body HRA_N.UI.Report_TUI is
                Emit ("  Evaluation Date : " & Y_Str & "-" & Pad_M & "-" & Pad_D);
                Emit ("");
 
+               if Stmt_Rep.Status = Query_Rejected or else Bal_View.Status = Query_Rejected then
+                  Emit (" [ERROR] Audit projection rejected");
+                  Total_Lines := Line_Num;
+                  return;
+               end if;
+               if not Is_Complete (Stmt_Rep) then
+                  Emit (" [PARTIAL] " & Stmt_Rep.Diagnostic (1 .. Stmt_Rep.Diagnostic_Len));
+                  Emit (" Numeric totals below are retained changes, not qualified balances.");
+               end if;
+
                --  1. Financial Conservation
                Emit ("[1. UNIVERSAL FINANCIAL CONSERVATION]");
                if Universal_Conservation_Holds (Stmt_Rep.Summary) then
@@ -1188,16 +1215,21 @@ package body HRA_N.UI.Report_TUI is
                   Backing_Req     : constant Long_Long_Integer := Long_Long_Integer (B_Rep.Total_Remaining);
                   Backing_Surplus : constant Long_Long_Integer := Funding_Assets - Backing_Req;
                begin
-                  Emit ("  Liquid Funding Assets        : " &
-                        Pad_Left (Format_Quanta (Funding_Assets), 14) & " JPY");
-                  Emit ("  Active Envelope Requirements : " &
-                        Pad_Left (Format_Quanta (Backing_Req), 14) & " JPY");
-                  if Backing_Surplus >= 0 then
-                     Emit ("  Surplus Liquidity Buffer     : " &
-                           Pad_Left (Format_Quanta (Backing_Surplus), 14) & " JPY  [SOLVENT - 100% Backed]");
+                  if not Is_Complete (Stmt_Rep) then
+                     Emit (" [PARTIAL] Backing unavailable: " &
+                           Stmt_Rep.Diagnostic (1 .. Stmt_Rep.Diagnostic_Len));
                   else
-                     Emit ("  Liquidity Deficit            : " &
-                           Pad_Left (Format_Quanta (Backing_Surplus), 14) & " JPY  [OVERALLOCATED]");
+                     Emit ("  Liquid Funding Assets        : " &
+                           Pad_Left (Format_Quanta (Funding_Assets), 14) & " JPY");
+                     Emit ("  Active Envelope Requirements : " &
+                           Pad_Left (Format_Quanta (Backing_Req), 14) & " JPY");
+                     if Backing_Surplus >= 0 then
+                        Emit ("  Surplus Liquidity Buffer     : " &
+                              Pad_Left (Format_Quanta (Backing_Surplus), 14) & " JPY  [SOLVENT - 100% Backed]");
+                     else
+                        Emit ("  Liquidity Deficit            : " &
+                              Pad_Left (Format_Quanta (Backing_Surplus), 14) & " JPY  [OVERALLOCATED]");
+                     end if;
                   end if;
                end;
             end;

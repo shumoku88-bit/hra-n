@@ -28,6 +28,65 @@ def read_until(fd: int, output: bytearray, needle: bytes | tuple[bytes, ...], ti
         raise AssertionError(f"TUI did not render {needle!r}, got: {bytes(output[start:])!r}")
 
 
+def test_statement_evidence() -> None:
+    """Unknown and conflicting stock evidence must survive cached TUI rendering."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    harness = os.path.join(root, "tests", "bin", "tui_harness")
+    today = datetime.date.today().isoformat()
+    for conflict in [False, True]:
+        with tempfile.TemporaryDirectory(prefix="hra_n_statement_pty_") as household:
+            fixtures = {
+                "journal.hra": f'TX e0001 {today} cash:-10 food:10 "synthetic"\n'
+                    + (f"ASSERT a0001 {today} cash:jpy 0\n" if conflict else ""),
+                "policy.hra": "ROLE cash: ASSET\nROLE food: EXPENSE\n"
+                    + ("ZERO-ORIGIN cash:jpy\n" if conflict else ""),
+                "scheduled.hra": "",
+            }
+            for name, text in fixtures.items():
+                with open(os.path.join(household, name), "w", encoding="utf-8") as stream:
+                    stream.write(text)
+            pid, fd = pty.fork()
+            if pid == 0:
+                env = os.environ.copy()
+                env["TERM"] = "xterm-256color"
+                os.execve(harness, [harness, household], env)
+            reaped = False
+            try:
+                fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 80, 160, 0, 0))
+                output = bytearray()
+                read_until(fd, output, b"Markers:")
+                os.write(fd, b"p")
+                read_until(fd, output, b"COHERENCE & VERIFICATION")
+                expected = b"assertion conflicts= 1" if conflict else b"unknown stock origin= 1"
+                assert expected in output, bytes(output)
+                assert b"Net worth unavailable" in output, bytes(output)
+                assert b"NET WORTH (Assets" not in output, bytes(output)
+                assert b"COMPLETE FINANCIAL STATEMENT" not in output, bytes(output)
+                os.write(fd, b"q")
+                read_until(fd, output, b"Evidence")
+                os.write(fd, b"q")
+                deadline = time.monotonic() + 8
+                while time.monotonic() < deadline:
+                    exited, status = os.waitpid(pid, os.WNOHANG)
+                    if exited:
+                        reaped = True
+                        assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+                        break
+                    ready, _, _ = select.select([fd], [], [], 0.05)
+                    if ready:
+                        try:
+                            output.extend(os.read(fd, 4096))
+                        except OSError:
+                            pass
+                assert reaped, "Statement PTY did not quit"
+            finally:
+                if not reaped:
+                    os.kill(pid, signal.SIGKILL)
+                    os.waitpid(pid, 0)
+                os.close(fd)
+    print("Statement PTY: unknown origin and assertion conflict remain partial")
+
+
 def main() -> None:
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     harness = os.path.join(root, "tests", "bin", "tui_harness")
@@ -63,8 +122,8 @@ def main() -> None:
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
         output = bytearray()
         try:
-            read_until(fd, output, b"HRA-N HOME")
             read_until(fd, output, b"Markers: . actual   * sched   ! attention   + multi")
+            assert b"HRA-N HOME" in output
             os.write(fd, b"\n")
             read_until(fd, output, b"SELECTED DAY")
             # Test draft cancellation from Movement editor
@@ -171,8 +230,10 @@ def main() -> None:
             time.sleep(0.05)
             # Accept Description and seeded postings by advancing with Enter
             os.write(fd, b"\n\n\n\n\n")
-            read_until(fd, output, b"ADMISSION PREVIEW")
-            assert b"Completes:    s0001" in output
+            # Wait for the fact itself, not an earlier header: a PTY read can
+            # split the preview between these two lines.
+            read_until(fd, output, b"Completes:    s0001")
+            assert b"ADMISSION PREVIEW" in output
             time.sleep(0.05)
             # Commit completion
             os.write(fd, b"\n")
@@ -703,3 +764,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    test_statement_evidence()

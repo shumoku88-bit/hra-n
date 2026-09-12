@@ -33,11 +33,13 @@ class TestHraNCli(unittest.TestCase):
         with open(current_file, "r", encoding="utf-8") as f:
             return f.read().strip()
 
-    def write_report_fixture(self, journal: str) -> None:
+    def write_report_fixture(self, journal: str, *, known_stock: bool = True) -> None:
         # Explicitly unversioned synthetic input; never mutate a generation.
         for name, text in {
             "journal.hra": journal,
-            "policy.hra": "ROLE cash: ASSET\nROLE food: EXPENSE\n",
+            "policy.hra": "ROLE cash: ASSET\nROLE food: EXPENSE\n" + (
+                "ZERO-ORIGIN cash:jpy\n" if known_stock else ""
+            ),
             "scheduled.hra": "",
         }.items():
             with open(os.path.join(self.test_dir, name), "w", encoding="utf-8") as f:
@@ -63,6 +65,42 @@ class TestHraNCli(unittest.TestCase):
             res = self.run_cmd("statement", *args)
             self.assertNotEqual(res.returncode, 0)
             self.assertIn("cannot be combined", res.stdout + res.stderr)
+
+    def test_statement_origin_and_conflict_across_surfaces(self) -> None:
+        journal = 'TX e0001 2026-09-10 cash:-10 food:10 "purchase"\n'
+        for known, assertion, diagnostic in [
+            (False, "", "unknown stock origin= 1"),
+            (True, "ASSERT a0001 2026-09-20 cash:jpy 0\n", "assertion conflicts= 1"),
+        ]:
+            self.write_report_fixture(journal + assertion, known_stock=known)
+            for args in [
+                ("statement",), ("status",),
+                ("report", "--audit", "-m", "9", "-y", "2026"),
+                ("report", "--budget", "-m", "9", "-y", "2026"),
+            ]:
+                with self.subTest(known=known, args=args):
+                    res = self.run_cmd(*args)
+                    self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+                    self.assertIn(diagnostic, res.stdout)
+                    self.assertIn("PARTIAL", res.stdout)
+                    self.assertNotIn("NET WORTH", res.stdout)
+                    self.assertNotIn("Net worth :", res.stdout)
+                    self.assertNotIn("[SOLVENT", res.stdout)
+                    self.assertNotIn("COMPLETE FINANCIAL STATEMENT", res.stdout)
+            res = self.run_cmd("home")
+            self.assertIn("PARTIAL", res.stdout)
+            res = self.run_cmd("report", "--mom", "-m", "9", "-y", "2026")
+            self.assertIn("[PARTIAL]", res.stdout)
+
+        # A future conflicting assertion must not contaminate an earlier day.
+        res = self.run_cmd("statement", "--as-of", "2026-09-15")
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn("COMPLETE FINANCIAL STATEMENT", res.stdout)
+        self.write_report_fixture(journal)
+        res = self.run_cmd("statement")
+        self.assertIn("COMPLETE FINANCIAL STATEMENT", res.stdout)
+        res = self.run_cmd("status")
+        self.assertIn("Net worth : -10", res.stdout)
 
     def test_monthly_reports_reject_exact_day_requests(self) -> None:
         self.write_report_fixture(

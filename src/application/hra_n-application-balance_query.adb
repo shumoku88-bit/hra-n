@@ -103,6 +103,7 @@ package body HRA_N.Application.Balance_Query is
 
             Coords      : array (1 .. Max_Balance_Rows) of Coord_Pair;
             Coord_Count : Natural := 0;
+            Overflow    : Boolean := False;
 
             procedure Add_Coord (Loc, Mea : Token_Text) is
             begin
@@ -119,6 +120,8 @@ package body HRA_N.Application.Balance_Query is
                if Coord_Count < Max_Balance_Rows then
                   Coord_Count := Coord_Count + 1;
                   Coords (Coord_Count) := (Locus => Loc, Measure => Mea);
+               else
+                  Overflow := True;
                end if;
             end Add_Coord;
 
@@ -159,6 +162,11 @@ package body HRA_N.Application.Balance_Query is
                   Add_Coord (A.Coordinate.Locus.Token, A.Coordinate.Measure.Token);
                end;
             end loop;
+
+            if Overflow then
+               Fail ("balance coordinate limit exceeded");
+               return Result;
+            end if;
 
             --  Now compute balance and attributes for each coordinate
             for C in 1 .. Coord_Count loop

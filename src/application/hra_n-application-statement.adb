@@ -88,7 +88,9 @@ package body HRA_N.Application.Statement is
       Snapshot     : Token_Text := (Length => 0, Value => [others => ' ']);
       Is_Versioned : Boolean := False) return Statement_Report
    is
+      use type Balance_Query.Balance_Epistemic_Status;
       Result : Statement_Report;
+      Balances : Balance_Query.Balance_View;
 
       procedure Fail (Msg : String) is
          L : constant Natural := Natural'Min (Msg'Length, Result.Diagnostic'Length);
@@ -123,7 +125,8 @@ package body HRA_N.Application.Statement is
                Has_Role    => False,
                Raw_Quanta  => 0,
                Natural_Amt => 0,
-               Event_Count => 0);
+               Event_Count => 0,
+               Epistemic_Status => Balance_Query.Status_Unknown_Origin);
          else
             Idx := 0;
             Fail ("statement account limit exceeded");
@@ -184,6 +187,29 @@ package body HRA_N.Application.Statement is
          begin
             Ensure_Account (Policy.Loci.Values (I), Idx);
          end;
+      end loop;
+
+      Balances := Balance_Query.Project
+        (Journal, Policy,
+         (Scope => Balance_Query.Scope_All, Has_As_Of => Has_As_Of,
+          As_Of_Date => As_Of),
+         (if Is_Versioned then (Kind => Snapshot_Versioned, Identity => Snapshot)
+          else (Kind => Snapshot_Unversioned)));
+      if Balances.Status = Query_Rejected then
+         Fail (Balances.Diagnostic (1 .. Balances.Diagnostic_Len));
+         return Result;
+      end if;
+      for Row of Balances.Rows (1 .. Balances.Row_Count) loop
+         if Equal_Token (Row.Measure, Make_Token ("jpy")) then
+            declare
+               Idx : Natural;
+            begin
+               Ensure_Account ((Token => Row.Locus), Idx);
+               if Idx > 0 then
+                  Result.Accounts (Idx).Epistemic_Status := Row.Epistemic_Status;
+               end if;
+            end;
+         end if;
       end loop;
 
       --  2. Aggregate effects from active unsuperseded transactions
@@ -256,6 +282,15 @@ package body HRA_N.Application.Statement is
             Acc.Role := Role_Val;
             Acc.Has_Role := Has_Role_Val;
 
+            if Acc.Epistemic_Status = Balance_Query.Status_Conflict then
+               Result.Conflict_Count := Result.Conflict_Count + 1;
+            elsif Acc.Has_Role
+              and then Acc.Role in Role_Asset | Role_Liability | Role_Equity
+              and then Acc.Epistemic_Status = Balance_Query.Status_Unknown_Origin
+            then
+               Result.Unknown_Stock_Count := Result.Unknown_Stock_Count + 1;
+            end if;
+
             if Acc.Has_Role then
                case Acc.Role is
                   when Role_Asset =>
@@ -295,6 +330,20 @@ package body HRA_N.Application.Statement is
          Result.Summary.Status := Statement_Complete;
       end if;
 
+      if not Is_Complete (Result) then
+         Result.Status := Query_Partial;
+         declare
+            Message : constant String :=
+              "statement evidence incomplete: unclassified=" &
+              Natural'Image (Result.Unresolved_Count) &
+              "; unknown stock origin=" & Natural'Image (Result.Unknown_Stock_Count) &
+              "; assertion conflicts=" & Natural'Image (Result.Conflict_Count);
+         begin
+            Result.Diagnostic_Len := Natural'Min (Message'Length, Result.Diagnostic'Length);
+            Result.Diagnostic (1 .. Result.Diagnostic_Len) :=
+              Message (1 .. Result.Diagnostic_Len);
+         end;
+      end if;
       Sort_Accounts (Result);
       return Result;
    end Project;

@@ -110,7 +110,7 @@ package body HRA_N.UI.Statement_Cli is
 
    procedure Display_Statement (Report : Statement_Report) is
       S        : Financial_Summary renames Report.Summary;
-      Complete : constant Boolean := Is_Complete (S);
+      Complete : constant Boolean := Is_Complete (Report);
    begin
       if Report.Status = Query_Rejected then
          Put_Error_Line ("[ERROR] Statement query rejected: " &
@@ -148,6 +148,12 @@ package body HRA_N.UI.Statement_Cli is
       Put_Line ("  Events Aggregated   : " & Natural'Image (Report.Total_Events));
       Put_Line ("  Accounts Classified : " & Natural'Image (Report.Account_Count - Report.Unresolved_Count) & " loci");
       Put_Line ("  Unresolved Frontier : " & Natural'Image (Report.Unresolved_Count) & " loci");
+      Put_Line ("  Unknown Stock Origin: " & Natural'Image (Report.Unknown_Stock_Count) & " loci");
+      Put_Line ("  Assertion Conflicts : " & Natural'Image (Report.Conflict_Count) & " coordinates");
+      if not Complete then
+         Put_Line ("  " & Report.Diagnostic (1 .. Report.Diagnostic_Len));
+         Put_Line ("  Amounts below are retained changes, not qualified opening/closing balances.");
+      end if;
       New_Line;
 
       if Complete then
@@ -254,7 +260,7 @@ package body HRA_N.UI.Statement_Cli is
       end if;
 
       if Complete then
-         Put_Line ("  Statement Completeness : [PASS] 100% of admitted evidence is affirmatively classified");
+         Put_Line ("  Statement Completeness : [PASS] Classified, known stock origins, no assertion conflicts");
          if Is_Coherent (S) then
             Put_Line ("  Accounting Coherence   : [PASS] Assets = (Liabilities + Equity) + (Income - Expense)");
          else
@@ -262,9 +268,9 @@ package body HRA_N.UI.Statement_Cli is
          end if;
       else
          Put_Line ("  Statement Completeness : [PARTIAL] " &
-                   Natural'Image (Report.Unresolved_Count) & " frontier loci lack role evidence");
+                   Report.Diagnostic (1 .. Report.Diagnostic_Len));
          Put_Line ("  Auditor Verdict        : Complete financial statements (Net Worth / Savings Rate)");
-         Put_Line ("                           cannot be asserted without conjectural classification.");
+         Put_Line ("                           require classification, stock origins, and conflict-free evidence.");
          Put_Line ("                           Canonical evidence frontier preserved fail-closed.");
       end if;
 

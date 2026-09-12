@@ -57,10 +57,11 @@ semantic parity. Current source inspection exposes these remaining gaps:
   CLI delegating to a TUI renderer is not the required adapter boundary. Compare
   old HRA's `Household_Report_Observation` (typed semantic report book) and Loam's
   `StockFlowReview` (correction-aware half-open window over explicit coverage).
-- Statement completeness currently measures role classification, not known
-  opening balance evidence. A fully classified locus without zero-origin
-  coverage must not become a qualified known net-worth claim. Carry coverage
-  status from the shared balance boundary before claiming full report parity.
+- Budget/Audit backing currently equates classified assets with liquid funding.
+  Known origin alone does not establish liquidity or funding authority. Replace
+  this with explicitly selected funding coordinates before claiming backing
+  parity with old HRA; unknown/conflicting Statement evidence already suppresses
+  the current backing verdict.
 - Daily Flow counts only positive income/expense effects; refunds and reversal
   effects need explicit gross/net semantics and cross-report tests. MoM uses
   cumulative statement values and needs distinct monthly-flow versus stock
@@ -75,12 +76,21 @@ semantic parity. Current source inspection exposes these remaining gaps:
 Current safeguards: scalar financial reports reject journals containing any
 non-`jpy` effect (including retained history); coordinate Balance remains
 available without conversion. Statement rejects account-capacity overflow and
-invalid as-of dates. Home classification and status financial totals share
-Statement.Project, including supersession. Statement `--month/--year` selects
+invalid as-of dates. Balance coordinate-capacity overflow also rejects rather
+than discarding evidence. Statement.Project carries Balance_Query epistemic
+status at the same snapshot/as-of date: completeness requires classification,
+known Asset/Liability/Equity origins, and no JPY assertion conflicts. Income and
+Expense remain retained flows, not inferred opening stocks. Zero net movement
+or a matching assertion does not establish zero-origin coverage. Unknown or
+conflicting evidence returns Query_Partial with counts and a diagnostic; CLI,
+TUI, Home, status, MoM, and backing verdicts must not strengthen it. Home
+classification and status financial totals share Statement.Project, including
+supersession. Statement `--month/--year` selects
 month-end; combining these with `--as-of` rejects. Explicit `--as-of` is accepted
 only for one-shot Statement, not monthly tabs or the report TUI. Focused Statement tests and CLI
-regressions cover these boundaries; the existing PTY suite covers shared report
-navigation, not complete semantic parity. These guards are not multi-measure
+regressions cover these boundaries, including future assertions and corrected
+frontiers. PTY specimens check unknown/conflicting Statement rendering and
+shared report navigation, not complete semantic parity. These guards are not multi-measure
 valuation support.
 
 ### P1 — Actual vertical slice

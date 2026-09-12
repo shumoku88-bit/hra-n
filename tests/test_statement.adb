@@ -57,7 +57,7 @@ package body Test_Statement is
          Rep : constant Statement_Report :=
            Execute_Statement_Query (Paths, Mid_Month, Has_As_Of => True);
       begin
-         Assert (Rep.Status = Query_Complete, "Statement query as-of completes");
+         Assert (Rep.Status = Query_Partial, "Statement query preserves unclassified frontier");
          Assert_Equal_Int (4, Long_Long_Integer (Rep.Total_Events),
                            "Statement aggregates 4 active events as-of 09-15");
          Assert_Equal_Int (300000, Rep.Summary.Total_Income,
@@ -81,7 +81,7 @@ package body Test_Statement is
          Rep : constant Statement_Report :=
            Execute_Statement_Query (Paths, Has_As_Of => False);
       begin
-         Assert (Rep.Status = Query_Complete, "Statement query full completes");
+         Assert (Rep.Status = Query_Partial, "Full statement preserves unclassified frontier");
          Assert_Equal_Int (5, Long_Long_Integer (Rep.Total_Events),
                            "Full statement aggregates 5 active events");
          Assert_Equal_Int (7500, Rep.Summary.Total_Expense,
@@ -134,8 +134,77 @@ package body Test_Statement is
       begin
          Assert (Rep.Status = Query_Rejected, "Account overflow rejects");
          Assert (Rep.Diagnostic (1 .. Rep.Diagnostic_Len) =
-                   "statement account limit exceeded",
+                   "balance coordinate limit exceeded",
                  "Account overflow is not silent truncation");
+      end;
+
+      --  Zero net retained movement is not affirmative zero-origin evidence.
+      Assert
+        (Write_File_Atomically
+           (Policy_Path_Str (Paths),
+            "ROLE cash: ASSET" & ASCII.LF & "ROLE food: EXPENSE" & ASCII.LF,
+            Error, Error_Len), "Origin test policy writes");
+      Assert
+        (Write_File_Atomically
+           (Journal_Path_Str (Paths),
+            "TX e0001 2026-09-01 cash:-10 food:10" & ASCII.LF &
+            "TX e0002 2026-09-02 cash:10 food:-10" & ASCII.LF &
+            "ASSERT a0001 2026-09-02 cash:jpy 0" & ASCII.LF,
+            Error, Error_Len), "Zero net movement and matching assertion fixture writes");
+      declare
+         Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+      begin
+         Assert (Rep.Summary.Total_Assets = 0, "Retained asset changes sum to zero");
+         Assert (Rep.Unresolved_Count = 0, "All roles are classified");
+         Assert (Rep.Unknown_Stock_Count = 1, "Unknown stock origin is independent of role");
+         Assert (Rep.Status = Query_Partial and then not Is_Complete (Rep),
+                 "Zero net movement and matching assertion do not establish known wealth");
+      end;
+
+      Assert
+        (Write_File_Atomically
+           (Policy_Path_Str (Paths),
+            "ROLE cash: ASSET" & ASCII.LF & "ROLE food: EXPENSE" & ASCII.LF &
+            "ZERO-ORIGIN cash:jpy" & ASCII.LF,
+            Error, Error_Len), "Known origin evidence writes");
+      declare
+         Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+      begin
+         Assert (Rep.Status = Query_Complete and then Is_Complete (Rep),
+                 "Explicit stock origin qualifies known zero; expense remains a flow");
+      end;
+
+      Assert
+        (Write_File_Atomically
+           (Journal_Path_Str (Paths),
+            "TX e0001 2026-09-01 cash:-10 food:10" & ASCII.LF &
+            "ASSERT a0001 2026-09-20 cash:jpy 0" & ASCII.LF,
+            Error, Error_Len), "Conflicting assertion fixture writes");
+      declare
+         Before : constant Statement_Report := Execute_Statement_Query
+           (Paths, (2026, 9, 15), Has_As_Of => True);
+         After : constant Statement_Report := Execute_Statement_Query
+           (Paths, (2026, 9, 20), Has_As_Of => True);
+      begin
+         Assert (Is_Complete (Before), "Future assertion does not taint earlier query");
+         Assert (After.Status = Query_Partial and then not Is_Complete (After),
+                 "Known origin with assertion conflict is not complete");
+         Assert (After.Conflict_Count = 1, "Statement propagates balance conflict");
+      end;
+
+      --  A correction is applied by the same frontier used in Balance_Query.
+      Assert
+        (Write_File_Atomically
+           (Journal_Path_Str (Paths),
+            "TX e0001 2026-09-01 cash:-10 food:10" & ASCII.LF &
+            "TX e0002 2026-09-01 cash:-20 food:20 replaces:e0001" & ASCII.LF &
+            "ASSERT a0001 2026-09-20 cash:jpy -20" & ASCII.LF,
+            Error, Error_Len), "Corrected assertion fixture writes");
+      declare
+         Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+      begin
+         Assert (Is_Complete (Rep), "Assertion evaluates corrected frontier");
+         Assert (Rep.Summary.Total_Assets = -20, "Statement and balance use same correction");
       end;
 
       --  Cleanup

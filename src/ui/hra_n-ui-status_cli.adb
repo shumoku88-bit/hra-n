@@ -48,12 +48,13 @@ package body HRA_N.UI.Status_CLI is
       Put_Line ("============================================================");
       Put_Line ("Authority : HEALTHY");
       Put_Line ("Events    : " & Trim (Events.Length'Image, Ada.Strings.Both));
-      if Statement.Summary.Status = Statement_Complete then
+      if Is_Complete (Statement) then
          Put_Line ("Statement : COMPLETE");
          Put_Line ("Net worth : " & Img (Net_Worth (Statement.Summary)));
          Put_Line ("Savings   : " & Img (Net_Savings (Statement.Summary)));
       else
          Put_Line ("Statement : PARTIAL (epistemic frontier visible)");
+         Put_Line (Statement.Diagnostic (1 .. Statement.Diagnostic_Len));
          Put_Line ("Unresolved loci: " &
            Trim (Statement.Unresolved_Count'Image, Ada.Strings.Both));
       end if;

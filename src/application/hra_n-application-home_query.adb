@@ -97,11 +97,12 @@ package body HRA_N.Application.Home_Query is
             Result.Status := Query_Partial;
             Set_Diagnostic
               (Statement.Diagnostic (1 .. Statement.Diagnostic_Len));
-         elsif Statement.Summary.Status = Statement_Complete then
+         elsif Is_Complete (Statement) then
             Result.Status := Query_Complete;
          else
             Result.Status := Query_Partial;
-            Set_Diagnostic ("unclassified loci remain in the current journal");
+            Set_Diagnostic
+              (Statement.Diagnostic (1 .. Statement.Diagnostic_Len));
          end if;
       end;
 

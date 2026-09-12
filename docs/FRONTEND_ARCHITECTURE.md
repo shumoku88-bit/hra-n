@@ -43,6 +43,18 @@ Every query identifies:
 A query result carries its snapshot identity and completeness status. Renderers
 cannot strengthen `Unknown` or `Conflict` into zero, false, or an empty list.
 
+Statement classification and balance knowledge are separate. The pure
+`Financial_Summary` classifies retained changes; `Statement_Report` additionally
+carries per-account Balance_Query epistemic status, unknown stock counts, and
+assertion conflict counts at the same snapshot and as-of date. Complete reports
+require known origins for Asset/Liability/Equity, classification for all accounts,
+and no JPY assertion conflicts. Income/Expense are retained flows, not inferred
+opening stocks. A zero net change or matching assertion alone does not establish
+an origin. Missing evidence produces `Query_Partial`, not invented balances.
+Renderers use report-level completeness before showing net worth, savings rate,
+or backing verdicts; partial numeric subtotals must be identified as retained
+changes. This is not a claim that all classified assets are liquid funding.
+
 ### Intents
 
 A mutation begins as a typed intent. Preparation returns either a rejection or a

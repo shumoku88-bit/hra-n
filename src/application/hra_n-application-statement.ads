@@ -7,6 +7,7 @@
 --  Encodes fail-closed classification and algebraic conservation coherence.
 -------------------------------------------------------------------------------
 
+with HRA_N.Application.Balance_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;  use HRA_N.Application.Path_Resolver;
 with HRA_N.Core.Types;                 use HRA_N.Core.Types;
@@ -26,6 +27,8 @@ package HRA_N.Application.Statement is
       Raw_Quanta  : Long_Long_Integer := 0;
       Natural_Amt : Long_Long_Integer := 0;
       Event_Count : Natural           := 0;
+      Epistemic_Status : Balance_Query.Balance_Epistemic_Status :=
+        Balance_Query.Status_Unknown_Origin;
    end record;
 
    Empty_Account : constant Account_Balance :=
@@ -34,7 +37,8 @@ package HRA_N.Application.Statement is
       Has_Role    => False,
       Raw_Quanta  => 0,
       Natural_Amt => 0,
-      Event_Count => 0);
+      Event_Count => 0,
+      Epistemic_Status => Balance_Query.Status_Unknown_Origin);
 
    type Account_Array is array (1 .. Max_Statement_Accounts) of Account_Balance;
 
@@ -51,7 +55,19 @@ package HRA_N.Application.Statement is
       Summary          : Financial_Summary := Empty_Financial_Summary;
       Unresolved_Count : Natural           := 0;
       Total_Events     : Natural           := 0;
+      --  Origin is required for stock roles (Asset/Liability/Equity).
+      --  Income/Expense remain retained flows, not inferred opening stocks.
+      Unknown_Stock_Count : Natural := 0;
+      Conflict_Count      : Natural := 0;
    end record;
+
+   --  Financial_Summary completeness is classification only. A report also
+   --  requires known stock origins and no balance assertion conflicts.
+   function Is_Complete (Report : Statement_Report) return Boolean is
+     (Report.Status /= Query_Rejected
+      and then HRA_N.Core.Accounting_Role.Is_Complete (Report.Summary)
+      and then Report.Unknown_Stock_Count = 0
+      and then Report.Conflict_Count = 0);
 
    --  Scalar financial reports currently support JPY only. Never implicitly
    --  value other measures; inspect them through the coordinate balance query.
