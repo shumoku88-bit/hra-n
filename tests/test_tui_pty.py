@@ -133,8 +133,7 @@ def main() -> None:
 
             # Return to Actual list and inspect superseded e0002
             os.write(fd, b"b")
-            read_until(fd, output, b"Order:")
-            assert b"e0003" in output
+            read_until(fd, output, b"e0003")
             time.sleep(0.05)
             os.write(fd, b"j")
             time.sleep(0.05)
@@ -147,13 +146,12 @@ def main() -> None:
             os.write(fd, b"b")
             read_until(fd, output, b"Order:")
             os.write(fd, b"b")
-            read_until(fd, output, b"Evidence")
-            assert b"3 selected / 3 total" in output
+            read_until(fd, output, b"3 selected / 3 total")
 
             # Test Scheduled TUI navigation from Home
             os.write(fd, b"s")
-            read_until(fd, output, b"SCHEDULED")
-            assert b"s0001" in output
+            read_until(fd, output, b"s0001")
+            assert b"SCHEDULED" in output
             time.sleep(0.05)
 
             # Open Scheduled detail
@@ -219,8 +217,8 @@ def main() -> None:
             os.write(fd, b"j")
             time.sleep(0.05)
             os.write(fd, b"\n")
-            read_until(fd, output, b"DETAIL  e0001")
-            assert b"v: reverse" in output
+            read_until(fd, output, b"v: reverse")
+            assert b"DETAIL  e0001" in output
 
             # Reverse e0001 with an inverse movement committed via generation.
             # The reload redraws the reversal record: its default description
@@ -388,8 +386,8 @@ def main() -> None:
             os.write(fd, b"j")
             time.sleep(0.05)
             os.write(fd, b"\n")
-            read_until(fd, output, b"DETAIL  e0003")
-            assert b"l: relate" in output
+            read_until(fd, output, b"l: relate")
+            assert b"DETAIL  e0003" in output
             os.write(fd, b"l")
             read_until(fd, output, b"Debtor (household or name)")
             time.sleep(0.05)
@@ -476,8 +474,8 @@ def main() -> None:
             read_until(fd, output, b"Date (YYYY-MM-DD")
             time.sleep(0.05)
             os.write(fd, b"\n")
-            read_until(fd, output, b"SPLIT PREVIEW")
-            assert b"cash" in output
+            read_until(fd, output, b"cash")
+            assert b"SPLIT PREVIEW" in output
             os.write(fd, b"y")
             read_until(fd, output, b"ACTUAL  ALL CURRENT")
 
@@ -499,8 +497,8 @@ def main() -> None:
             read_until(fd, output, b"Effective (initial or YYYY-MM-DD")
             time.sleep(0.05)
             os.write(fd, b"\n")
-            read_until(fd, output, b"PREVIEW  food")
-            assert b"groceries" in output
+            read_until(fd, output, b"groceries")
+            assert b"PREVIEW  food" in output
             os.write(fd, b"y")
             read_until(fd, output, b"AS OF")
             os.write(fd, b"h")
@@ -524,8 +522,8 @@ def main() -> None:
             read_until(fd, output, b"New stable Locus token:")
             time.sleep(0.05)
             os.write(fd, b"new-place\n")
-            read_until(fd, output, b"ADMISSION PREVIEW  new-place")
-            assert b"No role, route, label, alias" in output
+            read_until(fd, output, b"No role, route, label, alias")
+            assert b"ADMISSION PREVIEW  new-place" in output
             os.write(fd, b"y")
             read_until(fd, output, b"new-place")
             os.write(fd, b"b")
@@ -533,12 +531,12 @@ def main() -> None:
 
             # Open Reports workspace with 'p'
             os.write(fd, b"p")
-            read_until(fd, output, b"HRA-N FINANCIAL REPORT WORKSPACE")
-            assert b"Statement" in output
+            read_until(fd, output, b"Statement")
+            assert b"HRA-N FINANCIAL REPORT WORKSPACE" in output
             # Switch to Tab 2: Budget Envelopes (verifying Backing Solvency)
             os.write(fd, b"2")
-            read_until(fd, output, b"BUDGET & ENVELOPE PROJECTION")
-            assert b"SOLVENCY & ENVELOPE BACKING" in output
+            read_until(fd, output, b"SOLVENCY & ENVELOPE BACKING")
+            assert b"BUDGET & ENVELOPE PROJECTION" in output
             # Switch to Tab 3: Balances
             os.write(fd, b"3")
             read_until(fd, output, b"COORDINATE BALANCES")
@@ -592,8 +590,8 @@ def main() -> None:
             time.sleep(0.05)
             # Description: write UTF-8 note and press Enter to propose
             os.write(fd, "昼食\n".encode("utf-8"))
-            read_until(fd, output, b"ADMISSION PREVIEW")
-            assert "昼食".encode("utf-8") in output
+            read_until(fd, output, "昼食".encode("utf-8"))
+            assert b"ADMISSION PREVIEW" in output
             # Commit
             os.write(fd, b"\n")
             read_until(fd, output, "昼食".encode("utf-8"))
