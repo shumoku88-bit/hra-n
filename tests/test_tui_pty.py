@@ -665,7 +665,7 @@ def main() -> None:
             read_until(fd, output, b"MONTH-OVER-MONTH COMPARISON")
             # Switch to Tab 6: Daily Cash Flow Timeline
             os.write(fd, b"6")
-            read_until(fd, output, b"DAILY CASH FLOW TIMELINE")
+            read_until(fd, output, b"DAILY INCOME / EXPENSE FLOW TIMELINE")
             # Switch to Tab 7: Fail-Closed Audit & Invariants
             os.write(fd, b"7")
             read_until(fd, output, b"FAIL-CLOSED AUDIT, INTEGRITY & COHERENCE")

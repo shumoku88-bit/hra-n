@@ -13,9 +13,6 @@ with HRA_N.Application.Path_Resolver;  use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Review;
 with HRA_N.Application.Statement;      use HRA_N.Application.Statement;
 with HRA_N.Core.Accounting_Role;       use HRA_N.Core.Accounting_Role;
-with HRA_N.Core.Description;           use HRA_N.Core.Description;
-with HRA_N.Core.Event;                 use HRA_N.Core.Event;
-with HRA_N.Core.Transaction_Metadata;  use HRA_N.Core.Transaction_Metadata;
 with HRA_N.Core.Types;                 use HRA_N.Core.Types;
 with HRA_N.Core.Validity;              use HRA_N.Core.Validity;
 with HRA_N.Storage.Journal_Reader;     use HRA_N.Storage.Journal_Reader;
@@ -23,6 +20,7 @@ with HRA_N.Storage.Policy_Reader;      use HRA_N.Storage.Policy_Reader;
 with HRA_N.UI.Actual_TUI;
 with HRA_N.UI.Terminal;                use HRA_N.UI.Terminal;
 with Ada.Command_Line;
+with HRA_N.Application.Daily_Flow_Query;
 with HRA_N.UI.Output;
 with HRA_N.UI.Terminal_Style;
 with HRA_N.UI.TUI_Input;
@@ -141,7 +139,8 @@ package body HRA_N.UI.Report_TUI is
       Year        : Year_Type;
       Month       : Month_Type;
       Lines       : out Report_Line_Array;
-      Total_Lines : out Natural)
+      Total_Lines : out Natural;
+      Result_Status : out Query_Status)
    is
       Line_Num : Natural := 0;
 
@@ -171,17 +170,21 @@ package body HRA_N.UI.Report_TUI is
       Period_Str : constant String := Y_Str & "-" & Pad_M & "-01 .. " & Y_Str & "-" & Pad_M & "-" & Pad_D;
 
    begin
+      Result_Status := Query_Complete;
       if not Journal.Success then
+         Result_Status := Query_Rejected;
          Emit (" [ERROR] Journal read failure: " & Journal.Error_Reason (1 .. Journal.Error_Len));
          Total_Lines := Line_Num;
          return;
       elsif not Policy.Success then
+         Result_Status := Query_Rejected;
          Emit (" [ERROR] Policy read failure: " & Policy.Error_Reason (1 .. Policy.Error_Len));
          Total_Lines := Line_Num;
          return;
       end if;
 
       if Tab /= Tab_Balances and then not Supports_Measures (Journal) then
+         Result_Status := Query_Rejected;
          Emit (" [ERROR] " & Unsupported_Measure_Diagnostic);
          Total_Lines := Line_Num;
          return;
@@ -856,222 +859,79 @@ package body HRA_N.UI.Report_TUI is
 
          when Tab_Daily_Flow =>
             declare
-               type Day_Flow_Rec is record
-                  Income   : Long_Long_Integer := 0;
-                  Expense  : Long_Long_Integer := 0;
-                  Has_Flow : Boolean := False;
-               end record;
-               Daily_Flows : array (1 .. End_D) of Day_Flow_Rec;
-               Total_Month_Inc : Long_Long_Integer := 0;
-               Total_Month_Exp : Long_Long_Integer := 0;
-
-               type Top_Outlay is record
-                  Day      : Day_Type := 1;
-                  Amount   : Long_Long_Integer := 0;
-                  Desc_Str : String (1 .. 40) := [others => ' '];
-                  Desc_Len : Natural := 0;
-                  Loc_Str  : String (1 .. 24) := [others => ' '];
-                  Loc_Len  : Natural := 0;
-               end record;
-               Top_List : array (1 .. 10) of Top_Outlay;
-               Top_Count : Natural := 0;
+               View : constant HRA_N.Application.Daily_Flow_Query.Flow_View :=
+                 HRA_N.Application.Daily_Flow_Query.Project
+                   (Journal, Policy, Year, Month,
+                    (if Paths.Is_Versioned then
+                       (Kind => Snapshot_Versioned, Identity => Make_Token (Snapshot_Id_Str (Paths)))
+                     else (Kind => Snapshot_Unversioned)));
+               T : HRA_N.Application.Daily_Flow_Query.Flow_Totals renames View.Totals;
             begin
-               for E of Journal.Events loop
-                  declare
-                     Succ          : Event_Id;
-                     Is_Superseded : Boolean := False;
-                  begin
-                     Find_Successor (Journal.Metadata, Id (E), Succ, Is_Superseded);
-                     if not Is_Superseded then
+               Result_Status := View.Status;
+               Emit ("--- DAILY INCOME / EXPENSE FLOW TIMELINE (" & Period_Str & ") ---");
+               Emit (" Occurrence-day roles; retained net flows, not physical cash balances. Measure: jpy");
+               if View.Snapshot.Kind = Snapshot_Versioned then
+                  Emit (" Snapshot: " & View.Snapshot.Identity.Value (1 .. View.Snapshot.Identity.Length));
+               else
+                  Emit (" Snapshot: unversioned");
+               end if;
+               if View.Status = Query_Rejected then
+                  Emit (" [ERROR] " & View.Diagnostic (1 .. View.Diagnostic_Len));
+               else
+                  if View.Status = Query_Partial then
+                     Emit (" [PARTIAL] " & View.Diagnostic (1 .. View.Diagnostic_Len));
+                     Emit (" Classified subtotals only; unclassified effects are not assumed zero.");
+                  end if;
+                  Emit (" Positive expense = charge; negative expense = net refund.");
+                  Emit ("  " & Pad_Right ("Date", 12) & " " &
+                        Pad_Left ("Net Income", 14) & " " &
+                        Pad_Left ("Net Expense", 14) & " " &
+                        Pad_Left ("Net Flow", 14) & " " &
+                        Pad_Left ("Cumulative", 14));
+                  Emit ("  " & Repeat ('-', 72));
+                  for D in 1 .. View.Day_Count loop
+                     if View.Days (D).Has_Flow then
                         declare
-                           Ev_Date : Date_Type;
-                           Found_D : Boolean := False;
+                           Row : HRA_N.Application.Daily_Flow_Query.Day_Row renames View.Days (D);
+                           D_Img : constant String := Trim (Natural'Image (D), Both);
+                           Date_Txt : constant String := Y_Str & "-" & Pad_M & "-" &
+                             (if D_Img'Length = 1 then "0" else "") & D_Img;
                         begin
-                           Find_Occurrence_Date (Journal.Validities, Id (E), Ev_Date, Found_D);
-                           if Found_D and then Ev_Date.Year = Year and then Ev_Date.Month = Month then
-                              declare
-                                 Ev_Exp   : Long_Long_Integer := 0;
-                                 Main_Loc : String (1 .. 24) := [others => ' '];
-                                 Main_Len : Natural := 0;
-                              begin
-                                 for I in 1 .. Effect_Count (E) loop
-                                    declare
-                                       Eff      : constant Effect := Effect_At (E, I);
-                                       Role_Val : Accounting_Role := Role_Asset;
-                                       Has_R    : Boolean := False;
-                                    begin
-                                       Find_Role_As_Of (Policy.Roles, Eff.Locus, Ev_Date, Role_Val, Has_R);
-                                       if Has_R then
-                                          if Role_Val = Role_Income then
-                                             declare
-                                                Amt : constant Long_Long_Integer :=
-                                                  -Long_Long_Integer (Eff.Amount.Quanta);
-                                             begin
-                                                if Amt > 0 then
-                                                   Daily_Flows (Ev_Date.Day).Income :=
-                                                     Daily_Flows (Ev_Date.Day).Income + Amt;
-                                                   Daily_Flows (Ev_Date.Day).Has_Flow := True;
-                                                   Total_Month_Inc := Total_Month_Inc + Amt;
-                                                end if;
-                                             end;
-                                          elsif Role_Val = Role_Expense then
-                                             declare
-                                                Amt : constant Long_Long_Integer :=
-                                                  Long_Long_Integer (Eff.Amount.Quanta);
-                                             begin
-                                                if Amt > 0 then
-                                                   Daily_Flows (Ev_Date.Day).Expense :=
-                                                     Daily_Flows (Ev_Date.Day).Expense + Amt;
-                                                   Daily_Flows (Ev_Date.Day).Has_Flow := True;
-                                                   Total_Month_Exp := Total_Month_Exp + Amt;
-                                                   Ev_Exp := Ev_Exp + Amt;
-                                                   if Main_Len = 0 then
-                                                      declare
-                                                         Tok : constant String :=
-                                                           Eff.Locus.Token.Value (1 .. Eff.Locus.Token.Length);
-                                                         L   : constant Natural := Natural'Min (Tok'Length, 24);
-                                                      begin
-                                                         Main_Loc (1 .. L) := Tok (Tok'First .. Tok'First + L - 1);
-                                                         Main_Len := L;
-                                                      end;
-                                                   end if;
-                                                end if;
-                                             end;
-                                          end if;
-                                       end if;
-                                    end;
-                                 end loop;
-
-                                 if Ev_Exp > 0 then
-                                    declare
-                                       Desc_T  : Description_Text;
-                                       Found_T : Boolean := False;
-                                       D_Str   : String (1 .. 40) := [others => ' '];
-                                       D_Len   : Natural := 0;
-                                    begin
-                                       Find_Description (Journal.Descriptions, Id (E), Desc_T, Found_T);
-                                       if Found_T and then Desc_T.Length > 0 then
-                                          D_Len := Natural'Min (Desc_T.Length, 40);
-                                          D_Str (1 .. D_Len) := Desc_T.Value (1 .. D_Len);
-                                       else
-                                          D_Str (1 .. 13) := "(transaction)";
-                                          D_Len := 13;
-                                       end if;
-
-                                       --  Insert into sorted Top_List
-                                       declare
-                                          Insert_Pos : Natural := 0;
-                                       begin
-                                          for P in 1 .. Top_Count loop
-                                             if Ev_Exp > Top_List (P).Amount then
-                                                Insert_Pos := P;
-                                                exit;
-                                             end if;
-                                          end loop;
-                                          if Insert_Pos = 0 and then Top_Count < Top_List'Length then
-                                             Top_Count := Top_Count + 1;
-                                             Insert_Pos := Top_Count;
-                                          end if;
-                                          if Insert_Pos > 0 then
-                                             if Top_Count < Top_List'Length and then Insert_Pos < Top_Count then
-                                                Top_Count := Top_Count + 1;
-                                             end if;
-                                             for P in reverse Insert_Pos + 1 .. Top_Count loop
-                                                Top_List (P) := Top_List (P - 1);
-                                             end loop;
-                                             Top_List (Insert_Pos) :=
-                                               (Day      => Ev_Date.Day,
-                                                Amount   => Ev_Exp,
-                                                Desc_Str => D_Str,
-                                                Desc_Len => D_Len,
-                                                Loc_Str  => Main_Loc,
-                                                Loc_Len  => Main_Len);
-                                          end if;
-                                       end;
-                                    end;
-                                 end if;
-                              end;
-                           end if;
-                        end;
-                     end if;
-                  end;
-               end loop;
-
-               Emit ("--- DAILY CASH FLOW TIMELINE (" & Period_Str & ") ---");
-               Emit ("");
-               Emit ("  " & Pad_Right ("Date", 12) & " " &
-                     Pad_Left ("Income (+)", 14) & " " &
-                     Pad_Left ("Expense (-)", 14) & " " &
-                     Pad_Left ("Net Flow", 14) & " " &
-                     Pad_Left ("Cumulative", 14));
-               Emit ("  " & Repeat ('-', 72));
-
-               declare
-                  Running_Net : Long_Long_Integer := 0;
-                  Flow_Days   : Natural := 0;
-               begin
-                  for D in 1 .. End_D loop
-                     if Daily_Flows (D).Has_Flow then
-                        Flow_Days := Flow_Days + 1;
-                        declare
-                           Inc      : constant Long_Long_Integer := Daily_Flows (D).Income;
-                           Exp      : constant Long_Long_Integer := Daily_Flows (D).Expense;
-                           Net      : constant Long_Long_Integer := Inc - Exp;
-                           D_Val    : constant Natural := Natural (D);
-                           D_Img    : constant String := Trim (Natural'Image (D_Val), Both);
-                           Pad_Day  : constant String := (if D_Img'Length = 1 then "0" & D_Img else D_Img);
-                           Date_Txt : constant String := Y_Str & "-" & Pad_M & "-" & Pad_Day;
-                           Net_Pfx  : constant String := (if Net > 0 then "+" else "");
-                           Cum_Pfx  : constant String := (if Running_Net + Net > 0 then "+" else "");
-                        begin
-                           Running_Net := Running_Net + Net;
                            Emit ("  " & Pad_Right (Date_Txt, 12) & " " &
-                                 Pad_Left (Format_Quanta (Inc), 14) & " " &
-                                 Pad_Left (Format_Quanta (Exp), 14) & " " &
-                                 Pad_Left (Net_Pfx & Format_Quanta (Net), 14) & " " &
-                                 Pad_Left (Cum_Pfx & Format_Quanta (Running_Net), 14));
+                                 Pad_Left (Format_Quanta (Row.Totals.Net_Income), 14) & " " &
+                                 Pad_Left (Format_Quanta (Row.Totals.Net_Expense), 14) & " " &
+                                 Pad_Left (Format_Quanta (Row.Totals.Net_Flow), 14) & " " &
+                                 Pad_Left (Format_Quanta (Row.Cumulative), 14));
                         end;
                      end if;
                   end loop;
-
-                  if Flow_Days = 0 then
-                     Emit ("  (No active Income/Expense cash movements in this month)");
+                  if View.Flow_Days = 0 then
+                     Emit ("  (No classified income/expense flows in this month)");
                   end if;
-               end;
-
-               Emit ("  " & Repeat ('-', 72));
-               declare
-                  Net_M   : constant Long_Long_Integer := Total_Month_Inc - Total_Month_Exp;
-                  Pfx_M   : constant String := (if Net_M > 0 then "+" else "");
-               begin
+                  Emit ("  " & Repeat ('-', 72));
                   Emit ("  " & Pad_Right ("Total Monthly Flow", 12) & " " &
-                        Pad_Left (Format_Quanta (Total_Month_Inc), 14) & " " &
-                        Pad_Left (Format_Quanta (Total_Month_Exp), 14) & " " &
-                        Pad_Left (Pfx_M & Format_Quanta (Net_M), 14));
-               end;
-               Emit ("");
-
-               --  Top Outlays
-               Emit ("--- TOP OUTLAYS / LARGEST EXPENSES (" & Y_Str & "-" & Pad_M & ") ---");
-               if Top_Count = 0 then
-                  Emit ("  (No expenses recorded this month)");
-               else
-                  for P in 1 .. Natural'Min (Top_Count, 5) loop
+                        Pad_Left (Format_Quanta (T.Net_Income), 14) & " " &
+                        Pad_Left (Format_Quanta (T.Net_Expense), 14) & " " &
+                        Pad_Left (Format_Quanta (T.Net_Flow), 14));
+                  Emit ("  Gross Income    : " & Format_Quanta (T.Gross_Income) & " JPY");
+                  Emit ("  Income Returned : " & Format_Quanta (T.Income_Returned) & " JPY");
+                  Emit ("  Gross Expense   : " & Format_Quanta (T.Gross_Expense) & " JPY");
+                  Emit ("  Expense Refunds : " & Format_Quanta (T.Expense_Refunds) & " JPY");
+                  Emit ("");
+                  Emit ("--- TOP OUTLAYS / LARGEST GROSS EXPENSE EVENTS ---");
+                  if View.Top_Count = 0 then
+                     Emit ("  (No gross expenses recorded this month)");
+                  end if;
+                  for P in 1 .. View.Top_Count loop
                      declare
-                        Entry_Item : Top_Outlay renames Top_List (P);
-                        Day_Num    : constant Natural := Natural (Entry_Item.Day);
-                        Day_Img    : constant String := Trim (Natural'Image (Day_Num), Both);
-                        Pad_D_Val  : constant String := (if Day_Img'Length = 1 then "0" & Day_Img else Day_Img);
-                        Date_Label : constant String := Y_Str & "-" & Pad_M & "-" & Pad_D_Val;
-                        Amt_Str    : constant String := Format_Quanta (Entry_Item.Amount) & " JPY";
-                        Loc_Sub    : constant String := Entry_Item.Loc_Str (1 .. Entry_Item.Loc_Len);
-                        Desc_Sub   : constant String := Entry_Item.Desc_Str (1 .. Entry_Item.Desc_Len);
+                        Item : HRA_N.Application.Daily_Flow_Query.Outlay renames View.Top (P);
                      begin
                         Emit ("  #" & Trim (Natural'Image (P), Both) & " " &
-                              Date_Label & "  " &
-                              Pad_Left (Amt_Str, 14) & "  " &
-                              Pad_Right (Loc_Sub, 20) & "  " &
-                              Desc_Sub);
+                              Item.Event.Token.Value (1 .. Item.Event.Token.Length) & " day " &
+                              Trim (Natural'Image (Item.Day), Both) & " " &
+                              Format_Quanta (Item.Amount) & " JPY " &
+                              Item.Locus.Value (1 .. Item.Locus.Length));
+                        Emit ("     " & Item.Description.Value (1 .. Item.Description.Length));
                      end;
                   end loop;
                end if;
@@ -1248,6 +1108,7 @@ package body HRA_N.UI.Report_TUI is
       P_Res : constant Policy_Result := Read_Policy_File (Policy_Path_Str (Paths));
       Lines : Report_Line_Array;
       Total : Natural := 0;
+      Result_Status : Query_Status;
    begin
       Generate_Report_Lines
         (Journal     => J_Res,
@@ -1257,15 +1118,14 @@ package body HRA_N.UI.Report_TUI is
          Year        => Year,
          Month       => Month,
          Lines       => Lines,
-         Total_Lines => Total);
+         Total_Lines => Total,
+         Result_Status => Result_Status);
 
       for I in 1 .. Total loop
          HRA_N.UI.Output.Put_Line (Lines (I).Text (1 .. Lines (I).Len));
       end loop;
 
-      if not J_Res.Success or else not P_Res.Success
-        or else (Tab /= Tab_Balances and then not Supports_Measures (J_Res))
-      then
+      if Result_Status = Query_Rejected then
          Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
       end if;
    end Export_Cli;
@@ -1399,6 +1259,7 @@ package body HRA_N.UI.Report_TUI is
 
       Lines         : Report_Line_Array;
       Total_Lines   : Natural     := 0;
+      Result_Status : Query_Status;
       Cached_Tab    : Report_Tab  := Tab_Statement;
       Cached_Year   : Year_Type   := Year_Type'First;
       Cached_Month  : Month_Type  := 1;
@@ -1421,7 +1282,8 @@ package body HRA_N.UI.Report_TUI is
            or else Month /= Cached_Month
          then
             Generate_Report_Lines
-              (Current_Journal, Current_Policy, Current_Paths, Current_Tab, Year, Month, Lines, Total_Lines);
+              (Current_Journal, Current_Policy, Current_Paths, Current_Tab, Year, Month,
+               Lines, Total_Lines, Result_Status);
             Cached_Tab   := Current_Tab;
             Cached_Year  := Year;
             Cached_Month := Month;
