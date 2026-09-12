@@ -150,8 +150,10 @@ def main() -> None:
 
             # Test Scheduled TUI navigation from Home
             os.write(fd, b"s")
+            # The row identity is the stable transition marker.  Curses may
+            # update the shared title prefix by emitting only changed cells,
+            # so the raw PTY stream need not contain contiguous "SCHEDULED".
             read_until(fd, output, b"s0001")
-            assert b"SCHEDULED" in output
             time.sleep(0.05)
 
             # Open Scheduled detail
