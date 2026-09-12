@@ -53,6 +53,11 @@ def main() -> None:
         if pid == 0:
             env = os.environ.copy()
             env["TERM"] = "xterm-256color"
+            # Exercise the UTF-8 path independently of the runner's default
+            # locale; narrow curses renders high bytes as M-x notation in C.
+            env["LANG"] = "C.UTF-8"
+            env["LC_ALL"] = "C.UTF-8"
+            env["LC_CTYPE"] = "C.UTF-8"
             os.execve(harness, [harness, household], env)
 
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
