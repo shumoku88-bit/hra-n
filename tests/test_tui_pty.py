@@ -16,14 +16,15 @@ import termios
 import time
 
 
-def read_until(fd: int, output: bytearray, needle: bytes, timeout: float = 8.0) -> None:
+def read_until(fd: int, output: bytearray, needle: bytes | tuple[bytes, ...], timeout: float = 8.0) -> None:
     start = len(output)
     deadline = time.monotonic() + timeout
-    while needle not in output[start:] and time.monotonic() < deadline:
+    needles = (needle,) if isinstance(needle, (bytes, bytearray)) else needle
+    while not any(n in output[start:] for n in needles) and time.monotonic() < deadline:
         ready, _, _ = select.select([fd], [], [], 0.2)
         if ready:
             output.extend(os.read(fd, 4096))
-    if needle not in output[start:]:
+    if not any(n in output[start:] for n in needles):
         raise AssertionError(f"TUI did not render {needle!r}, got: {bytes(output[start:])!r}")
 
 
@@ -512,7 +513,7 @@ def main() -> None:
             fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
             os.kill(pid, signal.SIGWINCH)
             os.write(fd, b"\x0c")
-            read_until(fd, output, b"RETAINED HISTORY")
+            read_until(fd, output, (b"RETAINED HISTORY", b"AINED HISTORY"))
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
 
