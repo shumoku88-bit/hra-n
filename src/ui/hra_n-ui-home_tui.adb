@@ -13,6 +13,8 @@ with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Description; use HRA_N.Core.Description;
+with HRA_N.Core.Attention; use HRA_N.Core.Attention;
+with HRA_N.Core.Scheduled; use HRA_N.Core.Scheduled;
 with HRA_N.Application.Actual_Query;
 with HRA_N.Application.Scheduled_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
@@ -137,9 +139,90 @@ package body HRA_N.UI.Home_TUI is
             Put_Clipped (3, " Mon  Tue  Wed  Thu  Fri  Sat  Sun");
 
             declare
+               type Day_Flags is record
+                  Has_Actual    : Boolean := False;
+                  Has_Scheduled : Boolean := False;
+                  Has_Attention : Boolean := False;
+               end record;
+
+               type Day_Flags_Array is array (Day_Type range 1 .. 31) of Day_Flags;
+               Flags : Day_Flags_Array := [others => (others => False)];
+
+               function Marker_Char (F : Day_Flags) return Character is
+                  Count : Natural := 0;
+               begin
+                  if F.Has_Actual then Count := Count + 1; end if;
+                  if F.Has_Scheduled then Count := Count + 1; end if;
+                  if F.Has_Attention then Count := Count + 1; end if;
+
+                  if Count > 1 then
+                     return '+';
+                  elsif F.Has_Attention then
+                     return '!';
+                  elsif F.Has_Scheduled then
+                     return '*';
+                  elsif F.Has_Actual then
+                     return '.';
+                  else
+                     return ' ';
+                  end if;
+               end Marker_Char;
+
                Current_Day : Natural := 1;
                Cal_Row     : Natural := 4;
             begin
+               --  Populate Actual flags
+               for Index in 1 .. Entry_Count (JR.Validities) loop
+                  declare
+                     V_Date : constant Date_Type := Entry_At (JR.Validities, Index).Valid_On;
+                  begin
+                     if V_Date.Year = Selected_Day.Year
+                       and then V_Date.Month = Selected_Day.Month
+                       and then V_Date.Day in 1 .. Days_In_Month_Val
+                     then
+                        Flags (V_Date.Day).Has_Actual := True;
+                     end if;
+                  end;
+               end loop;
+
+               --  Populate Scheduled flags
+               for Index in 1 .. SR.Lifecycle.Sched_Count loop
+                  declare
+                     Item : constant Scheduled_Occurrence := SR.Lifecycle.Sched_Items (Index);
+                  begin
+                     if Is_Current_Open (SR.Lifecycle, Item.Id)
+                       and then Item.Expected_Day.Year = Selected_Day.Year
+                       and then Item.Expected_Day.Month = Selected_Day.Month
+                       and then Item.Expected_Day.Day in 1 .. Days_In_Month_Val
+                     then
+                        Flags (Item.Expected_Day.Day).Has_Scheduled := True;
+                     end if;
+                  end;
+               end loop;
+
+               --  Populate Attention flags
+               for Index in 1 .. PR.Attention.Item_Count loop
+                  declare
+                     Item : constant HRA_N.Core.Attention.Attention_Item :=
+                       PR.Attention.Items (Index);
+                  begin
+                     if HRA_N.Core.Attention.Is_Open (PR.Attention, Item.Id)
+                       and then Item.Due.Kind = HRA_N.Core.Attention.Due_On_Date
+                     then
+                        declare
+                           D_Date : constant Date_Type := Item.Due.Due_Date;
+                        begin
+                           if D_Date.Year = Selected_Day.Year
+                             and then D_Date.Month = Selected_Day.Month
+                             and then D_Date.Day in 1 .. Days_In_Month_Val
+                           then
+                              Flags (D_Date.Day).Has_Attention := True;
+                           end if;
+                        end;
+                     end if;
+                  end;
+               end loop;
+
                while Current_Day <= Days_In_Month_Val and then Cal_Row < 10 loop
                   declare
                      Row_Str : String (1 .. 35) := [others => ' '];
@@ -163,13 +246,26 @@ package body HRA_N.UI.Home_TUI is
                                    (Today.Year = Selected_Day.Year
                                     and then Today.Month = Selected_Day.Month
                                     and then Today.Day = Current_Day);
+                                 M_Char      : constant Character := Marker_Char (Flags (Current_Day));
                               begin
                                  if Is_Selected then
-                                    Row_Str (Cell_Start .. Cell_Start + 4) := "[" & D_Str & "] ";
+                                    if M_Char /= ' ' then
+                                       Row_Str (Cell_Start .. Cell_Start + 4) := "[" & D_Str & M_Char & "]";
+                                    else
+                                       Row_Str (Cell_Start .. Cell_Start + 4) := "[" & D_Str & "] ";
+                                    end if;
                                  elsif Is_Today then
-                                    Row_Str (Cell_Start .. Cell_Start + 4) := "_" & D_Str & "_ ";
+                                    if M_Char /= ' ' then
+                                       Row_Str (Cell_Start .. Cell_Start + 4) := "_" & D_Str & M_Char & "_";
+                                    else
+                                       Row_Str (Cell_Start .. Cell_Start + 4) := "_" & D_Str & "_ ";
+                                    end if;
                                  else
-                                    Row_Str (Cell_Start .. Cell_Start + 4) := " " & D_Str & "  ";
+                                    if M_Char /= ' ' then
+                                       Row_Str (Cell_Start .. Cell_Start + 4) := " " & D_Str & M_Char & " ";
+                                    else
+                                       Row_Str (Cell_Start .. Cell_Start + 4) := " " & D_Str & "  ";
+                                    end if;
                                  end if;
                                  Current_Day := Current_Day + 1;
                               end;
@@ -183,6 +279,8 @@ package body HRA_N.UI.Home_TUI is
                Next_Row := Cal_Row;
             end;
 
+            Put_Clipped (Next_Row, " Markers: . actual   * sched   ! attention   + multi");
+            Next_Row := Next_Row + 1;
             Put_Clipped (Next_Row, "------------------------------------------------------------");
             Next_Row := Next_Row + 1;
 

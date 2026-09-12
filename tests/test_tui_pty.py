@@ -64,6 +64,7 @@ def main() -> None:
         output = bytearray()
         try:
             read_until(fd, output, b"HRA-N HOME")
+            read_until(fd, output, b"Markers: . actual   * sched   ! attention   + multi")
             os.write(fd, b"\n")
             read_until(fd, output, b"SELECTED DAY")
             # Test draft cancellation from Movement editor
