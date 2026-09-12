@@ -18,6 +18,18 @@ jobs:
       - name: Setup Alire & GNAT Toolchain
         uses: alire-project/setup-alire@v6
 
-      - name: Run Qualification Pipeline (SPARK SMT Proof + Tests)
+      - name: Prove SPARK Core
         run: |
-          ./tools/qualify
+          ./tools/prove
+
+      - name: Build Production Executables
+        run: |
+          ./tools/build
+
+      - name: Run Unit and Frontend Tests
+        run: |
+          ./tools/test-suite
+
+      - name: Final Production Build
+        run: |
+          ./tools/build

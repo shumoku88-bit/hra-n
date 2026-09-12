@@ -5,12 +5,4 @@ project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_root"
 
 "$project_root/tools/build"
-
-source "$project_root/tools/alire-env"
-ensure_alire_environment "$project_root"
-
-alr exec -- gprbuild -P tests/hra_n_tests.gpr -p
-"$project_root/tests/bin/test_runner"
-python3 "$project_root/tests/test_cli.py"
-python3 "$project_root/tests/test_observation.py"
-python3 "$project_root/tests/test_tui_pty.py"
+"$project_root/tools/test-suite"
