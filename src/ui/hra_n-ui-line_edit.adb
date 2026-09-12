@@ -40,38 +40,81 @@ package body HRA_N.UI.Line_Edit is
             & "] (Enter: accept   Esc: cancel)          ");
          Curses.Refresh;
          declare
-            Key : constant Integer := Integer (Curses.Get_Keystroke);
+            Event : constant HRA_N.UI.Terminal_UTF8.Input_Event :=
+              HRA_N.UI.Terminal_UTF8.Read_Input;
+            use type HRA_N.UI.Terminal_UTF8.Input_Kind;
          begin
-            if Key = Key_Esc then
-               Cancelled := True;
-               return;
-            elsif Key = Character'Pos (ASCII.LF)
-              or else Key = Character'Pos (ASCII.CR)
-              or else Key = Integer (Curses.KEY_ENTER)
-            then
+            if Event.Kind = HRA_N.UI.Terminal_UTF8.Character_Input then
+               if Event.Code_Point = Key_Esc then
+                  Cancelled := True;
+                  return;
+               elsif Event.Code_Point = Character'Pos (ASCII.LF)
+                 or else Event.Code_Point = Character'Pos (ASCII.CR)
+               then
+                  if Len = 0 and then not Allow_Blank then
+                     null;
+                  else
+                     if Len > 0 then
+                        Result (Result'First .. Result'First + Len - 1) :=
+                          Buf (1 .. Len);
+                     end if;
+                     Result_Len := Len;
+                     return;
+                  end if;
+               elsif Event.Code_Point = Key_BS
+                 or else Event.Code_Point = Key_DEL
+               then
+                  if Len > 0 then
+                     declare
+                        Dropped : constant String :=
+                          HRA_N.UI.Terminal_UTF8.Drop_Last_Code_Point
+                            (Buf (1 .. Len));
+                     begin
+                        Len := Dropped'Length;
+                        if Len > 0 then
+                           Buf (1 .. Len) := Dropped;
+                        end if;
+                     end;
+                  end if;
+               elsif Event.Code_Point in
+                 32 .. HRA_N.UI.Terminal_UTF8.Unicode_Code_Point'Last
+               then
+                  declare
+                     Encoded : constant String :=
+                       HRA_N.UI.Terminal_UTF8.Append_Code_Point
+                         ("", Event.Code_Point);
+                  begin
+                     if Encoded'Length <= Buf'Length - Len then
+                        Buf (Len + 1 .. Len + Encoded'Length) := Encoded;
+                        Len := Len + Encoded'Length;
+                     end if;
+                  end;
+               end if;
+            elsif Event.Key_Code = Integer (Curses.KEY_ENTER) then
                if Len = 0 and then not Allow_Blank then
                   null;
                else
-                  Result (Result'First .. Result'First + Len - 1) := Buf (1 .. Len);
+                  if Len > 0 then
+                     Result (Result'First .. Result'First + Len - 1) :=
+                       Buf (1 .. Len);
+                  end if;
                   Result_Len := Len;
                   return;
                end if;
-            elsif Key = Key_BS or else Key = Key_DEL then
+            elsif Event.Key_Code = Integer (Curses.KEY_BACKSPACE)
+              or else Event.Key_Code = Integer (Curses.Key_Backspace)
+            then
                if Len > 0 then
                   declare
                      Dropped : constant String :=
-                       HRA_N.UI.Terminal_UTF8.Drop_Last_Code_Point (Buf (1 .. Len));
+                       HRA_N.UI.Terminal_UTF8.Drop_Last_Code_Point
+                         (Buf (1 .. Len));
                   begin
                      Len := Dropped'Length;
                      if Len > 0 then
                         Buf (1 .. Len) := Dropped;
                      end if;
                   end;
-               end if;
-            elsif (Key in 32 .. 126 | 128 .. 255) then
-               if Len < Buf'Length then
-                  Len := Len + 1;
-                  Buf (Len) := Character'Val (Key);
                end if;
             end if;
          end;

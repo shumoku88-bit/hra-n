@@ -35,11 +35,61 @@ package HRA_N.UI.Terminal_UTF8 is
 
    function Is_Unicode_Scalar (Code_Point : Natural) return Boolean;
 
+   type Input_Kind is (Character_Input, Special_Key_Input);
+
+   type Input_Event (Kind : Input_Kind := Character_Input) is record
+      case Kind is
+         when Character_Input =>
+            Code_Point : Unicode_Code_Point;
+         when Special_Key_Input =>
+            Key_Code : Integer;
+      end case;
+   end record;
+
+   type Decode_Status is
+     (Incomplete,
+      Decoded_Character,
+      Decoded_Special_Key,
+      Invalid_Sequence);
+
+   type Decode_Result (Status : Decode_Status := Incomplete) is record
+      case Status is
+         when Decoded_Character =>
+            Code_Point : Unicode_Code_Point;
+         when Decoded_Special_Key =>
+            Key_Code : Integer;
+         when Incomplete | Invalid_Sequence =>
+            null;
+      end case;
+   end record;
+
+   type Decoder_State is private;
+
+   function Initial_Decoder_State return Decoder_State;
+
+   --  Decode one raw curses keystroke. Octets form UTF-8 characters while
+   --  KEY_* values remain a separate namespace.
+   function Feed_Keystroke
+     (State : in out Decoder_State;
+      Key   : Integer) return Decode_Result;
+
+   --  Blocking read which never exposes an incomplete UTF-8 sequence.
+   function Read_Input return Input_Event;
+
    function Append_Code_Point
      (Text       : String;
       Code_Point : Unicode_Code_Point) return String
      with Pre => Is_Unicode_Scalar (Code_Point);
 
    function Drop_Last_Code_Point (Text : String) return String;
+
+private
+
+   type Decoder_State is record
+      Remaining_Bytes : Natural range 0 .. 3 := 0;
+      Accumulator     : Natural := 0;
+      Min_Code_Point  : Natural := 0;
+      Max_Code_Point  : Natural := 0;
+   end record;
 
 end HRA_N.UI.Terminal_UTF8;

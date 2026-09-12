@@ -16,14 +16,15 @@ import termios
 import time
 
 
-def read_until(fd: int, output: bytearray, needle: bytes, timeout: float = 8.0) -> None:
+def read_until(fd: int, output: bytearray, needle: bytes | tuple[bytes, ...], timeout: float = 8.0) -> None:
     start = len(output)
     deadline = time.monotonic() + timeout
-    while needle not in output[start:] and time.monotonic() < deadline:
+    needles = (needle,) if isinstance(needle, (bytes, bytearray)) else needle
+    while not any(n in output[start:] for n in needles) and time.monotonic() < deadline:
         ready, _, _ = select.select([fd], [], [], 0.2)
         if ready:
             output.extend(os.read(fd, 4096))
-    if needle not in output[start:]:
+    if not any(n in output[start:] for n in needles):
         raise AssertionError(f"TUI did not render {needle!r}, got: {bytes(output[start:])!r}")
 
 
@@ -52,6 +53,11 @@ def main() -> None:
         if pid == 0:
             env = os.environ.copy()
             env["TERM"] = "xterm-256color"
+            # Exercise the UTF-8 path independently of the runner's default
+            # locale; narrow curses renders high bytes as M-x notation in C.
+            env["LANG"] = "C.UTF-8"
+            env["LC_ALL"] = "C.UTF-8"
+            env["LC_CTYPE"] = "C.UTF-8"
             os.execve(harness, [harness, household], env)
 
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
@@ -132,8 +138,7 @@ def main() -> None:
 
             # Return to Actual list and inspect superseded e0002
             os.write(fd, b"b")
-            read_until(fd, output, b"Order:")
-            assert b"e0003" in output
+            read_until(fd, output, b"e0003")
             time.sleep(0.05)
             os.write(fd, b"j")
             time.sleep(0.05)
@@ -146,13 +151,14 @@ def main() -> None:
             os.write(fd, b"b")
             read_until(fd, output, b"Order:")
             os.write(fd, b"b")
-            read_until(fd, output, b"Evidence")
-            assert b"3 selected / 3 total" in output
+            read_until(fd, output, b"3 selected / 3 total")
 
             # Test Scheduled TUI navigation from Home
             os.write(fd, b"s")
-            read_until(fd, output, b"SCHEDULED")
-            assert b"s0001" in output
+            # The row identity is the stable transition marker.  Curses may
+            # update the shared title prefix by emitting only changed cells,
+            # so the raw PTY stream need not contain contiguous "SCHEDULED".
+            read_until(fd, output, b"s0001")
             time.sleep(0.05)
 
             # Open Scheduled detail
@@ -187,7 +193,8 @@ def main() -> None:
 
             # Open Balances workspace from Home
             os.write(fd, b"b")
-            read_until(fd, output, b"BALANCES")
+            read_until(fd, output, b"toggle as-of")
+            assert b"BALANCES" in output
             assert b"KNOWN ZERO" in output
             assert b"cash" in output
             time.sleep(0.05)
@@ -217,8 +224,8 @@ def main() -> None:
             os.write(fd, b"j")
             time.sleep(0.05)
             os.write(fd, b"\n")
-            read_until(fd, output, b"DETAIL  e0001")
-            assert b"v: reverse" in output
+            read_until(fd, output, b"v: reverse")
+            assert b"DETAIL  e0001" in output
 
             # Reverse e0001 with an inverse movement committed via generation.
             # The reload redraws the reversal record: its default description
@@ -386,8 +393,8 @@ def main() -> None:
             os.write(fd, b"j")
             time.sleep(0.05)
             os.write(fd, b"\n")
-            read_until(fd, output, b"DETAIL  e0003")
-            assert b"l: relate" in output
+            read_until(fd, output, b"l: relate")
+            assert b"DETAIL  e0003" in output
             os.write(fd, b"l")
             read_until(fd, output, b"Debtor (household or name)")
             time.sleep(0.05)
@@ -474,8 +481,8 @@ def main() -> None:
             read_until(fd, output, b"Date (YYYY-MM-DD")
             time.sleep(0.05)
             os.write(fd, b"\n")
-            read_until(fd, output, b"SPLIT PREVIEW")
-            assert b"cash" in output
+            read_until(fd, output, b"cash")
+            assert b"SPLIT PREVIEW" in output
             os.write(fd, b"y")
             read_until(fd, output, b"ACTUAL  ALL CURRENT")
 
@@ -497,8 +504,8 @@ def main() -> None:
             read_until(fd, output, b"Effective (initial or YYYY-MM-DD")
             time.sleep(0.05)
             os.write(fd, b"\n")
-            read_until(fd, output, b"PREVIEW  food")
-            assert b"groceries" in output
+            read_until(fd, output, b"groceries")
+            assert b"PREVIEW  food" in output
             os.write(fd, b"y")
             read_until(fd, output, b"AS OF")
             os.write(fd, b"h")
@@ -511,7 +518,7 @@ def main() -> None:
             fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
             os.kill(pid, signal.SIGWINCH)
             os.write(fd, b"\x0c")
-            read_until(fd, output, b"RETAINED HISTORY")
+            read_until(fd, output, (b"RETAINED HISTORY", b"AINED HISTORY"))
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
 
@@ -522,8 +529,8 @@ def main() -> None:
             read_until(fd, output, b"New stable Locus token:")
             time.sleep(0.05)
             os.write(fd, b"new-place\n")
-            read_until(fd, output, b"ADMISSION PREVIEW  new-place")
-            assert b"No role, route, label, alias" in output
+            read_until(fd, output, b"No role, route, label, alias")
+            assert b"ADMISSION PREVIEW  new-place" in output
             os.write(fd, b"y")
             read_until(fd, output, b"new-place")
             os.write(fd, b"b")
@@ -531,12 +538,12 @@ def main() -> None:
 
             # Open Reports workspace with 'p'
             os.write(fd, b"p")
-            read_until(fd, output, b"HRA-N FINANCIAL REPORT WORKSPACE")
-            assert b"Statement" in output
+            read_until(fd, output, b"Statement")
+            assert b"HRA-N FINANCIAL REPORT WORKSPACE" in output
             # Switch to Tab 2: Budget Envelopes (verifying Backing Solvency)
             os.write(fd, b"2")
-            read_until(fd, output, b"BUDGET & ENVELOPE PROJECTION")
-            assert b"SOLVENCY & ENVELOPE BACKING" in output
+            read_until(fd, output, b"SOLVENCY & ENVELOPE BACKING")
+            assert b"BUDGET & ENVELOPE PROJECTION" in output
             # Switch to Tab 3: Balances
             os.write(fd, b"3")
             read_until(fd, output, b"COORDINATE BALANCES")
@@ -590,8 +597,8 @@ def main() -> None:
             time.sleep(0.05)
             # Description: write UTF-8 note and press Enter to propose
             os.write(fd, "昼食\n".encode("utf-8"))
-            read_until(fd, output, b"ADMISSION PREVIEW")
-            assert "昼食".encode("utf-8") in output
+            read_until(fd, output, "昼食".encode("utf-8"))
+            assert b"ADMISSION PREVIEW" in output
             # Commit
             os.write(fd, b"\n")
             read_until(fd, output, "昼食".encode("utf-8"))

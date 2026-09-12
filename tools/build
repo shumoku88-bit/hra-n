@@ -4,4 +4,7 @@ set -euo pipefail
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_root"
 
-exec alr exec -- gprbuild -P hra_n.gpr -p
+source "$project_root/tools/alire-env"
+ensure_alire_environment "$project_root"
+
+exec alr build -- -p

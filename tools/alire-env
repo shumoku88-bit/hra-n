@@ -1,0 +1,34 @@
+# Shared repository-local Alire setup for HRA-N command wrappers.
+#
+# Keep the ncursesada compatibility override and Alire settings local to this
+# checkout instead of mutating the user's ordinary Alire configuration.
+ensure_alire_environment() {
+  local project_root="$1"
+  local overlay_path="$project_root/support/alire-index"
+  local index_listing
+  local toolchain_listing
+
+  mkdir -p "$project_root/alire/settings"
+  export ALIRE_SETTINGS_DIR="$project_root/alire/settings"
+  export HRA_TARGET_OS="$(uname -s)"
+
+  if ! index_listing="$(alr index 2>/dev/null)"; then
+    index_listing=""
+  fi
+
+  if [[ "$index_listing" != *community* ]]; then
+    alr index --reset-community >&2
+    index_listing="$(alr index 2>/dev/null)"
+  fi
+
+  if [[ -d "$overlay_path" && "$index_listing" != *hra_n_overlay* ]]; then
+    alr index --add "$overlay_path" --name hra_n_overlay --before community >&2
+  fi
+
+  if ! toolchain_listing="$(alr toolchain 2>/dev/null)"; then
+    toolchain_listing=""
+  fi
+  if [[ "$toolchain_listing" != *Default* ]]; then
+    alr toolchain --select gnat_native gprbuild >&2
+  fi
+}

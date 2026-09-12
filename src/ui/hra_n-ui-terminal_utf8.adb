@@ -5,13 +5,16 @@
 
 with Interfaces.C;
 with Interfaces.C.Strings;
+with Terminal_Interface.Curses;
 
 package body HRA_N.UI.Terminal_UTF8 is
 
    package C renames Interfaces.C;
    package C_Strings renames Interfaces.C.Strings;
+   package Curses renames Terminal_Interface.Curses;
    use type C.int;
    use type C_Strings.chars_ptr;
+   use type Curses.Real_Key_Code;
 
    function C_Initialize return C.int
      with Import,
@@ -144,6 +147,116 @@ package body HRA_N.UI.Terminal_UTF8 is
    function Is_Unicode_Scalar (Code_Point : Natural) return Boolean is
      (Code_Point in 0 .. 16#D7FF#
       or Code_Point in 16#E000# .. 16#10FFFF#);
+
+   function Initial_Decoder_State return Decoder_State is
+     ((Remaining_Bytes => 0,
+       Accumulator     => 0,
+       Min_Code_Point  => 0,
+       Max_Code_Point  => 0));
+
+   function Feed_Keystroke
+     (State : in out Decoder_State;
+      Key   : Integer) return Decode_Result
+   is
+   begin
+      if Key >= 256 then
+         State := Initial_Decoder_State;
+         return (Status => Decoded_Special_Key, Key_Code => Key);
+      elsif Key < 0 then
+         State := Initial_Decoder_State;
+         return (Status => Invalid_Sequence);
+      end if;
+
+      if State.Remaining_Bytes = 0 then
+         if Key in 0 .. 127 then
+            return
+              (Status => Decoded_Character,
+               Code_Point => Unicode_Code_Point (Key));
+         elsif Key in 16#C2# .. 16#DF# then
+            State :=
+              (Remaining_Bytes => 1,
+               Accumulator     => Key - 16#C0#,
+               Min_Code_Point  => 16#80#,
+               Max_Code_Point  => 16#7FF#);
+            return (Status => Incomplete);
+         elsif Key in 16#E0# .. 16#EF# then
+            State :=
+              (Remaining_Bytes => 2,
+               Accumulator     => Key - 16#E0#,
+               Min_Code_Point  => 16#800#,
+               Max_Code_Point  => 16#FFFF#);
+            return (Status => Incomplete);
+         elsif Key in 16#F0# .. 16#F4# then
+            State :=
+              (Remaining_Bytes => 3,
+               Accumulator     => Key - 16#F0#,
+               Min_Code_Point  => 16#10000#,
+               Max_Code_Point  => 16#10FFFF#);
+            return (Status => Incomplete);
+         else
+            return (Status => Invalid_Sequence);
+         end if;
+      elsif Key in 16#80# .. 16#BF# then
+         State.Accumulator := State.Accumulator * 64 + (Key - 16#80#);
+         State.Remaining_Bytes := State.Remaining_Bytes - 1;
+         if State.Remaining_Bytes = 0 then
+            declare
+               Code   : constant Natural := State.Accumulator;
+               Min_CP : constant Natural := State.Min_Code_Point;
+               Max_CP : constant Natural := State.Max_Code_Point;
+            begin
+               State := Initial_Decoder_State;
+               if Code >= Min_CP
+                 and then Code <= Max_CP
+                 and then Is_Unicode_Scalar (Code)
+               then
+                  return
+                    (Status => Decoded_Character,
+                     Code_Point => Unicode_Code_Point (Code));
+               else
+                  return (Status => Invalid_Sequence);
+               end if;
+            end;
+         else
+            return (Status => Incomplete);
+         end if;
+      else
+         State := Initial_Decoder_State;
+         return (Status => Invalid_Sequence);
+      end if;
+   end Feed_Keystroke;
+
+   function Read_Input return Input_Event is
+      State : Decoder_State := Initial_Decoder_State;
+   begin
+      loop
+         declare
+            Key : constant Curses.Real_Key_Code := Curses.Get_Keystroke;
+         begin
+            if Key = -1 then
+               raise Program_Error with "error reading terminal keystroke";
+            end if;
+
+            declare
+               Result : constant Decode_Result :=
+                 Feed_Keystroke (State, Integer (Key));
+            begin
+               case Result.Status is
+                  when Decoded_Character =>
+                     return
+                       (Kind => Character_Input,
+                        Code_Point => Result.Code_Point);
+                  when Decoded_Special_Key =>
+                     return
+                       (Kind => Special_Key_Input,
+                        Key_Code => Result.Key_Code);
+                  when Incomplete | Invalid_Sequence =>
+                     null;
+               end case;
+            end;
+         end;
+      end loop;
+   end Read_Input;
 
    function Append_Code_Point
      (Text       : String;

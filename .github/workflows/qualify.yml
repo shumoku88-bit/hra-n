@@ -15,11 +15,110 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Alire & SPARK Toolchain
-        uses: alire-project/setup-alire@v3
-        with:
-          toolchain: gnat_native gnatprove
+      - name: Setup Alire & GNAT Toolchain
+        uses: alire-project/setup-alire@v6
 
-      - name: Run Qualification Pipeline (SPARK SMT Proof + Tests)
+      - name: Prove SPARK Core
         run: |
-          ./tools/qualify
+          ./tools/prove
+
+      - name: Build Production Executables
+        run: |
+          ./tools/build
+
+      - name: Build Ada Unit Test Runner
+        run: |
+          source ./tools/alire-env
+          ensure_alire_environment "$PWD"
+          alr exec -- gprbuild -P tests/hra_n_tests.gpr -p
+
+      - name: Test Quantity
+        run: ./tests/bin/test_runner Test_Quantity
+
+      - name: Test Relation Command
+        run: ./tests/bin/test_runner Test_Relation_Command
+
+      - name: Test Movement
+        run: ./tests/bin/test_runner Test_Movement
+
+      - name: Test Event
+        run: ./tests/bin/test_runner Test_Event
+
+      - name: Test Validity
+        run: ./tests/bin/test_runner Test_Validity
+
+      - name: Test Review
+        run: ./tests/bin/test_runner Test_Review
+
+      - name: Test Initializer
+        run: ./tests/bin/test_runner Test_Initializer
+
+      - name: Test Path Resolver
+        run: ./tests/bin/test_runner Test_Path_Resolver
+
+      - name: Test Atomic Writer
+        run: ./tests/bin/test_runner Test_Atomic_Writer
+
+      - name: Test HRA Storage
+        run: ./tests/bin/test_runner Test_HRA_Storage
+
+      - name: Test Home Query
+        run: ./tests/bin/test_runner Test_Home_Query
+
+      - name: Test Actual Query
+        run: ./tests/bin/test_runner Test_Actual_Query
+
+      - name: Test Generation Transaction
+        run: ./tests/bin/test_runner Test_Generation_Transaction
+
+      - name: Test Movement Command
+        run: ./tests/bin/test_runner Test_Movement_Command
+
+      - name: Test Transaction Metadata
+        run: ./tests/bin/test_runner Test_Transaction_Metadata
+
+      - name: Test Scheduled Facts
+        run: ./tests/bin/test_runner Test_Scheduled_Facts
+
+      - name: Test Scheduled Query
+        run: ./tests/bin/test_runner Test_Scheduled_Query
+
+      - name: Test Scheduled Command
+        run: ./tests/bin/test_runner Test_Scheduled_Command
+
+      - name: Test Balance Query
+        run: ./tests/bin/test_runner Test_Balance_Query
+
+      - name: Test Assertion
+        run: ./tests/bin/test_runner Test_Assertion
+
+      - name: Test Capacity Command
+        run: ./tests/bin/test_runner Test_Capacity_Command
+
+      - name: Test Attention Command
+        run: ./tests/bin/test_runner Test_Attention_Command
+
+      - name: Test Policy
+        run: ./tests/bin/test_runner Test_Policy
+
+      - name: Test Statement
+        run: ./tests/bin/test_runner Test_Statement
+
+      - name: Test Terminal UTF-8
+        run: ./tests/bin/test_runner Test_Terminal_UTF8
+
+      - name: Run CLI E2E
+        run: |
+          python3 ./tests/test_cli.py
+
+      - name: Run Household Observation E2E
+        run: |
+          python3 ./tests/test_observation.py
+
+      - name: Run TUI PTY E2E
+        run: |
+          python3 ./tests/test_tui_pty.py
+
+      - name: Final Production Build
+        run: |
+          ./tools/build
