@@ -101,7 +101,11 @@ movement correction and date correction (`c`) seeded with the target transaction
 preventing branching or cyclic replacement, committing via generation
 transaction, and immediately reloading the active successor record. Direct
 mutation of a selected generation is rejected. Scheduled, balances, budget,
-and report workspaces are added through the same shared query boundary.
+and 7-tab financial report workspaces (Statement, Budget, Balances, Pace, MoM,
+Daily Flow, Invariant Audit) are added through the same shared query boundary,
+featuring universal mouse-wheel scrolling, in-memory projection caching for
+zero-disk-I/O navigation, semantic styling, and headless CLI exports
+(`hra-n report --flow`, `--pace`, `--audit`, `--mom`, `--budget`, `--balances`).
 
 The combined repository gate is:
 

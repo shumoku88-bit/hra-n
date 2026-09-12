@@ -108,8 +108,10 @@ known-through semantics.
 ### Reports
 
 - explicit date/range selection;
-- statement, flow, schedule, relation, and evidence-health projections as they
-  become admitted capabilities;
+- 7 core reporting tabs: Financial Statement (B/S & P/L), Budget Envelopes, Account Balances, Spending Pace & Daily Burn, Month-over-Month Comparison (MoM), Daily Cash Flow Timeline, and Fail-Closed Invariant Audit & Coherence;
+- pure in-memory projection caching across navigation for instant sub-millisecond response;
+- comprehensive mouse wheel scroll support across all TUI workspaces;
+- headless CLI export (`hra-n report [--flow/--pace/--audit/--mom/--budget/--balances/--statement] [-m MM] [-y YYYY]`);
 - exact query coordinates visible to the user.
 
 A policy administration surface is required before policy mutation is enabled,

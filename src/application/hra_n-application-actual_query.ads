@@ -7,6 +7,7 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;
+with HRA_N.Storage.Journal_Reader;
 
 package HRA_N.Application.Actual_Query is
 
@@ -53,6 +54,12 @@ package HRA_N.Application.Actual_Query is
       Diagnostic     : Frontend_Types.Diagnostic_Text := [others => ' '];
       Diagnostic_Len : Frontend_Types.Diagnostic_Length := 0;
    end record;
+
+   function Project
+     (Journal  : HRA_N.Storage.Journal_Reader.Journal_Result;
+      Request  : Query;
+      Snapshot : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned)) return Actual_View;
 
    function Execute
      (Paths         : HRA_N.Application.Path_Resolver.Path_Config;

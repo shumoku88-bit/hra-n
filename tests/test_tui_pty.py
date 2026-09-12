@@ -187,7 +187,8 @@ def main() -> None:
 
             # Open Balances workspace from Home
             os.write(fd, b"b")
-            read_until(fd, output, b"BALANCES")
+            read_until(fd, output, b"toggle as-of")
+            assert b"BALANCES" in output
             assert b"KNOWN ZERO" in output
             assert b"cash" in output
             time.sleep(0.05)
@@ -546,7 +547,13 @@ def main() -> None:
             # Switch to Tab 5: MoM Comparison
             os.write(fd, b"5")
             read_until(fd, output, b"MONTH-OVER-MONTH COMPARISON")
-            # Test tab key cycling (5 -> 1)
+            # Switch to Tab 6: Daily Cash Flow Timeline
+            os.write(fd, b"6")
+            read_until(fd, output, b"DAILY CASH FLOW TIMELINE")
+            # Switch to Tab 7: Fail-Closed Audit & Invariants
+            os.write(fd, b"7")
+            read_until(fd, output, b"FAIL-CLOSED AUDIT, INTEGRITY & COHERENCE")
+            # Test tab key cycling (7 -> 1)
             os.write(fd, b"\t")
             read_until(fd, output, b"BALANCE SHEET (B/S)")
             # Test prev month '[' and next month ']'
@@ -554,6 +561,11 @@ def main() -> None:
             read_until(fd, output, b"August")
             os.write(fd, b"]")
             read_until(fd, output, b"September")
+            # Test drill-down to Actual_TUI with 'a'
+            os.write(fd, b"a")
+            read_until(fd, output, b"HRA-N ACTUAL")
+            os.write(fd, b"b")
+            read_until(fd, output, b"HRA-N FINANCIAL REPORT WORKSPACE")
             # Return to Home
             os.write(fd, b"q")
             read_until(fd, output, b"Evidence")
@@ -568,7 +580,7 @@ def main() -> None:
             os.write(fd, b"\n")
             time.sleep(0.05)
             # From: candidates should be visible; press Enter to accept first candidate (cash) and advance to To
-            read_until(fd, output, b"Candidates (Up/Down: pick, Enter/Right: accept):")
+            read_until(fd, output, b"Candidate loci [Up/Down: pick, Enter/Right: accept]:")
             os.write(fd, b"\n")
             time.sleep(0.05)
             # To: type 'f' then press Enter to accept 'food' and advance to Amount

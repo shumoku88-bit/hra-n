@@ -16,6 +16,8 @@ with HRA_N.UI.Record_TUI; use HRA_N.UI.Record_TUI;
 with HRA_N.UI.Relation_CLI;
 with HRA_N.UI.Snapshot_Label;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
+with HRA_N.UI.Terminal_Style;
+with HRA_N.UI.TUI_Input;
 with Terminal_Interface.Curses;
 
 package body HRA_N.UI.Actual_Detail_TUI is
@@ -57,46 +59,71 @@ package body HRA_N.UI.Actual_Detail_TUI is
          end if;
          while Selecting loop
             Curses.Erase;
+            HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Header_Style);
             Put_Clipped (0, "PICK CLAIM TO DISCHARGE");
+            HRA_N.UI.Terminal_Style.Reset;
             Put_Clipped (1, "============================================================");
             for Index in 1 .. List.Count loop
-               Put_Clipped
-                 (2 + Index,
-                  (if Index = Cursor then "> " else "  ") &
-                  Token_String (List.Rows (Index).Id) & "  " &
-                  Endpoint_Label (List.Rows (Index).Debtor) & " -> " &
-                  Endpoint_Label (List.Rows (Index).Creditor) & "  remaining " &
-                  Amount_Image (List.Rows (Index).Remaining));
+               declare
+                  Line_Str : constant String :=
+                    Token_String (List.Rows (Index).Id) & "  " &
+                    Endpoint_Label (List.Rows (Index).Debtor) & " -> " &
+                    Endpoint_Label (List.Rows (Index).Creditor) & "  remaining " &
+                    Amount_Image (List.Rows (Index).Remaining);
+               begin
+                  if Index = Cursor then
+                     HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Selected_Style);
+                     Put_Clipped (2 + Index, "> " & Line_Str);
+                     HRA_N.UI.Terminal_Style.Reset;
+                  else
+                     Put_Clipped (2 + Index, "  " & Line_Str);
+                  end if;
+               end;
             end loop;
             Put_Clipped
               ((if Rows > 2 then Rows - 1 else 0),
-               "j/k: select   Enter: pick   Esc: cancel");
+               "j/k/wheel: select   Enter: pick   Esc: cancel");
             Curses.Refresh;
             declare
-               Key : constant Integer := Integer (Curses.Get_Keystroke);
+               Evt : constant HRA_N.UI.TUI_Input.Event := HRA_N.UI.TUI_Input.Read;
             begin
-               if Key = 27 then
-                  Selecting := False;
-               elsif Key = Character'Pos (ASCII.LF)
-                 or else Key = Character'Pos (ASCII.CR)
-                 or else Key = Integer (Curses.KEY_ENTER)
-               then
-                  Picked := List.Rows (Cursor).Id;
-                  Found := True;
-                  Selecting := False;
-               elsif Key = Character'Pos ('j')
-                 or else Key = Integer (Curses.KEY_DOWN)
-               then
-                  if Cursor < List.Count then
-                     Cursor := Cursor + 1;
-                  end if;
-               elsif Key = Character'Pos ('k')
-                 or else Key = Integer (Curses.KEY_UP)
-               then
-                  if Cursor > 1 then
-                     Cursor := Cursor - 1;
-                  end if;
-               end if;
+               case Evt.Kind is
+                  when HRA_N.UI.TUI_Input.Scroll_Input =>
+                     case Evt.Direction is
+                        when HRA_N.UI.TUI_Input.Scroll_Up =>
+                           if Cursor > 1 then
+                              Cursor := Cursor - 1;
+                           end if;
+                        when HRA_N.UI.TUI_Input.Scroll_Down =>
+                           if Cursor < List.Count then
+                              Cursor := Cursor + 1;
+                           end if;
+                     end case;
+
+                  when HRA_N.UI.TUI_Input.Key_Input =>
+                     declare
+                        Key : constant Integer := Evt.Key_Code;
+                     begin
+                        if Key = 27 or else Key = Character'Pos ('q') then
+                           Selecting := False;
+                        elsif HRA_N.UI.TUI_Input.Is_Enter (Key) then
+                           Picked := List.Rows (Cursor).Id;
+                           Found := True;
+                           Selecting := False;
+                        elsif HRA_N.UI.TUI_Input.Is_Down (Key) then
+                           if Cursor < List.Count then
+                              Cursor := Cursor + 1;
+                           end if;
+                        elsif HRA_N.UI.TUI_Input.Is_Up (Key) then
+                           if Cursor > 1 then
+                              Cursor := Cursor - 1;
+                           end if;
+                        end if;
+                     end;
+
+                  when HRA_N.UI.TUI_Input.Ignored_Input =>
+                     null;
+               end case;
             end;
          end loop;
       end Pick_Open_Claim;
@@ -239,13 +266,18 @@ package body HRA_N.UI.Actual_Detail_TUI is
          end;
       end Run_Discharge;
    begin
+      HRA_N.UI.Terminal_Style.Initialize;
+      HRA_N.UI.TUI_Input.Start_Mouse_Scroll;
+
       while Running loop
          declare
             View : constant Actual_Detail_View :=
               Execute (Current_Paths, Current_Event_Id);
          begin
             Curses.Erase;
+            HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Header_Style);
             Put_Clipped (0, "HRA-N ACTUAL DETAIL  " & Token_String (Current_Event_Id));
+            HRA_N.UI.Terminal_Style.Reset;
             Put_Clipped (1, "============================================================");
 
             if View.Status = Query_Rejected then
@@ -339,7 +371,7 @@ package body HRA_N.UI.Actual_Detail_TUI is
                   if Rows > 2 then
                      declare
                         Scroll_Hint : constant String :=
-                          (if Total_Lines > Avail_Rows then "j/k: scroll   " else "");
+                          (if Total_Lines > Avail_Rows then "j/k/wheel: scroll   " else "");
                      begin
                         if not View.Is_Superseded and then not View.Is_Reversed
                           and then View.Status /= Query_Rejected
@@ -355,49 +387,71 @@ package body HRA_N.UI.Actual_Detail_TUI is
             Curses.Refresh;
 
             declare
-               Key : constant Integer := Integer (Curses.Get_Keystroke);
+               Evt : constant HRA_N.UI.TUI_Input.Event := HRA_N.UI.TUI_Input.Read;
             begin
-               if Key = Character'Pos ('b') or else Key = Character'Pos ('B')
-                 or else Key = 27
-               then
-                  Running := False;
-               elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R') then
-                  Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
-               elsif Key = Character'Pos ('j') or else Key = Integer (Curses.KEY_DOWN) then
-                  if Last_Total_Lines > Last_Avail_Rows
-                    and then Scroll_Offset + Last_Avail_Rows < Last_Total_Lines
-                  then
-                     Scroll_Offset := Scroll_Offset + 1;
-                  end if;
-               elsif Key = Character'Pos ('k') or else Key = Integer (Curses.KEY_UP) then
-                  if Scroll_Offset > 0 then
-                     Scroll_Offset := Scroll_Offset - 1;
-                  end if;
-               elsif Key = Integer (Curses.KEY_NPAGE)
-                 or else Key = 4
-                 or else Key = 32
-               then
-                  if Last_Total_Lines > Last_Avail_Rows then
-                     Scroll_Offset :=
-                       Natural'Min (Last_Total_Lines - Last_Avail_Rows, Scroll_Offset + Last_Avail_Rows);
-                  end if;
-               elsif Key = Integer (Curses.KEY_PPAGE)
-                 or else Key = 21
-               then
-                  Scroll_Offset :=
-                    (if Scroll_Offset > Last_Avail_Rows
-                     then Scroll_Offset - Last_Avail_Rows
-                     else Natural (0));
-               elsif Key = Character'Pos ('G') then
-                  if Last_Total_Lines > Last_Avail_Rows then
-                     Scroll_Offset := Last_Total_Lines - Last_Avail_Rows;
-                  end if;
-               elsif Key = Character'Pos ('g') then
-                  Scroll_Offset := 0;
-               elsif (Key = Character'Pos ('c') or else Key = Character'Pos ('C'))
-                 and then not View.Is_Superseded
-                 and then View.Status /= Query_Rejected
-               then
+               case Evt.Kind is
+                  when HRA_N.UI.TUI_Input.Scroll_Input =>
+                     case Evt.Direction is
+                        when HRA_N.UI.TUI_Input.Scroll_Up =>
+                           if Scroll_Offset > 0 then
+                              Scroll_Offset := Scroll_Offset - 1;
+                           end if;
+                        when HRA_N.UI.TUI_Input.Scroll_Down =>
+                           if Last_Total_Lines > Last_Avail_Rows
+                             and then Scroll_Offset + Last_Avail_Rows < Last_Total_Lines
+                           then
+                              Scroll_Offset := Scroll_Offset + 1;
+                           end if;
+                     end case;
+
+                  when HRA_N.UI.TUI_Input.Key_Input =>
+                     declare
+                        Key : constant Integer := Evt.Key_Code;
+                     begin
+                        if HRA_N.UI.TUI_Input.Is_Quit (Key)
+                          or else Key = Character'Pos ('b')
+                          or else Key = Character'Pos ('B')
+                        then
+                           Running := False;
+                        elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R')
+                          or else HRA_N.UI.TUI_Input.Is_Redraw (Key)
+                        then
+                           Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+                        elsif HRA_N.UI.TUI_Input.Is_Down (Key) then
+                           if Last_Total_Lines > Last_Avail_Rows
+                             and then Scroll_Offset + Last_Avail_Rows < Last_Total_Lines
+                           then
+                              Scroll_Offset := Scroll_Offset + 1;
+                           end if;
+                        elsif HRA_N.UI.TUI_Input.Is_Up (Key) then
+                           if Scroll_Offset > 0 then
+                              Scroll_Offset := Scroll_Offset - 1;
+                           end if;
+                        elsif Key = Integer (Curses.KEY_NPAGE)
+                          or else Key = 4
+                          or else Key = 32
+                        then
+                           if Last_Total_Lines > Last_Avail_Rows then
+                              Scroll_Offset :=
+                                Natural'Min (Last_Total_Lines - Last_Avail_Rows, Scroll_Offset + Last_Avail_Rows);
+                           end if;
+                        elsif Key = Integer (Curses.KEY_PPAGE)
+                          or else Key = 21
+                        then
+                           Scroll_Offset :=
+                             (if Scroll_Offset > Last_Avail_Rows
+                              then Scroll_Offset - Last_Avail_Rows
+                              else Natural (0));
+                        elsif Key = Character'Pos ('G') then
+                           if Last_Total_Lines > Last_Avail_Rows then
+                              Scroll_Offset := Last_Total_Lines - Last_Avail_Rows;
+                           end if;
+                        elsif Key = Character'Pos ('g') then
+                           Scroll_Offset := 0;
+                        elsif (Key = Character'Pos ('c') or else Key = Character'Pos ('C'))
+                          and then not View.Is_Superseded
+                          and then View.Status /= Query_Rejected
+                        then
                   declare
                      From_Tok  : HRA_N.Core.Types.Token_Text :=
                        (Length => 0, Value => [others => ' ']);
@@ -493,8 +547,13 @@ package body HRA_N.UI.Actual_Detail_TUI is
                   null;
                end if;
             end;
-         end;
-      end loop;
-   end Run;
+
+          when HRA_N.UI.TUI_Input.Ignored_Input =>
+             null;
+         end case;
+      end;
+   end;
+end loop;
+end Run;
 
 end HRA_N.UI.Actual_Detail_TUI;

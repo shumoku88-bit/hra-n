@@ -7,8 +7,6 @@ with HRA_N.Core.Coverage; use HRA_N.Core.Coverage;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Core.Assertion; use HRA_N.Core.Assertion;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
-with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
-with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 
 package body HRA_N.Application.Balance_Query is
 
@@ -59,9 +57,11 @@ package body HRA_N.Application.Balance_Query is
       end;
    end Row_Less;
 
-   function Execute
-     (Paths   : HRA_N.Application.Path_Resolver.Path_Config;
-      Request : Query := (Scope => Scope_All, Has_As_Of => False, As_Of_Date => (2026, 1, 1)))
+   function Project
+     (Journal  : Journal_Result;
+      Policy   : Policy_Result;
+      Request  : Query := (Scope => Scope_All, Has_As_Of => False, As_Of_Date => (2026, 1, 1));
+      Snapshot : Frontend_Types.Snapshot_Reference := (Kind => Frontend_Types.Snapshot_Unversioned))
       return Balance_View
    is
       Result : Balance_View;
@@ -78,34 +78,22 @@ package body HRA_N.Application.Balance_Query is
       Result.Scope := Request.Scope;
       Result.Has_As_Of := Request.Has_As_Of;
       Result.As_Of_Date := Request.As_Of_Date;
+      Result.Snapshot := Snapshot;
 
-      if not Paths.Resolution_Ok then
-         Fail ("balance query requires a resolvable household path");
+      if not Journal.Success then
+         Fail ("cannot read journal for balance query: " &
+               Journal.Error_Reason (1 .. Journal.Error_Len));
+         return Result;
+      elsif not Policy.Success then
+         Fail ("cannot read policy for balance query: " &
+               Policy.Error_Reason (1 .. Policy.Error_Len));
          return Result;
       end if;
 
-      Result.Snapshot :=
-        (if Paths.Is_Versioned
-         then (Kind     => Frontend_Types.Snapshot_Versioned,
-               Identity => Make_Token (Path_Resolver.Snapshot_Id_Str (Paths)))
-         else (Kind     => Frontend_Types.Snapshot_Unversioned));
-
       declare
-         J_Res : constant Journal_Result :=
-           Read_Journal_File (Path_Resolver.Journal_Path_Str (Paths));
-         P_Res : constant Policy_Result :=
-           Read_Policy_File (Path_Resolver.Policy_Path_Str (Paths));
+         J_Res : Journal_Result renames Journal;
+         P_Res : Policy_Result renames Policy;
       begin
-         if not J_Res.Success then
-            Fail ("cannot read journal for balance query: " &
-                  J_Res.Error_Reason (1 .. J_Res.Error_Len));
-            return Result;
-         elsif not P_Res.Success then
-            Fail ("cannot read policy for balance query: " &
-                  P_Res.Error_Reason (1 .. P_Res.Error_Len));
-            return Result;
-         end if;
-
          --  Accumulate distinct coordinates
          declare
             type Coord_Pair is record
@@ -371,6 +359,37 @@ package body HRA_N.Application.Balance_Query is
       end;
 
       return Result;
+   end Project;
+
+   function Execute
+     (Paths   : HRA_N.Application.Path_Resolver.Path_Config;
+      Request : Query := (Scope => Scope_All, Has_As_Of => False, As_Of_Date => (2026, 1, 1)))
+      return Balance_View
+   is
+      Result : Balance_View;
+      Snap   : Frontend_Types.Snapshot_Reference;
+   begin
+      if not Paths.Resolution_Ok then
+         Result.Status := Frontend_Types.Query_Rejected;
+         Result.Diagnostic_Len := 45;
+         Result.Diagnostic (1 .. 45) := "balance query requires a resolvable household";
+         return Result;
+      end if;
+
+      Snap :=
+        (if Paths.Is_Versioned
+         then (Kind     => Frontend_Types.Snapshot_Versioned,
+               Identity => Make_Token (Path_Resolver.Snapshot_Id_Str (Paths)))
+         else (Kind     => Frontend_Types.Snapshot_Unversioned));
+
+      declare
+         J_Res : constant Journal_Result :=
+           Read_Journal_File (Path_Resolver.Journal_Path_Str (Paths));
+         P_Res : constant Policy_Result :=
+           Read_Policy_File (Path_Resolver.Policy_Path_Str (Paths));
+      begin
+         return Project (J_Res, P_Res, Request, Snap);
+      end;
    end Execute;
 
 end HRA_N.Application.Balance_Query;

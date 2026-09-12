@@ -10,6 +10,7 @@ ensure_alire_environment() {
 
   mkdir -p "$project_root/alire/settings"
   export ALIRE_SETTINGS_DIR="$project_root/alire/settings"
+  export HRA_TARGET_OS="$(uname -s)"
 
   if ! index_listing="$(alr index 2>/dev/null)"; then
     index_listing=""

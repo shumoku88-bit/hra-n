@@ -13,12 +13,13 @@ with HRA_N.Core.Types;                 use HRA_N.Core.Types;
 with HRA_N.Core.Validity;              use HRA_N.Core.Validity;
 with HRA_N.UI.Line_Edit;               use HRA_N.UI.Line_Edit;
 with HRA_N.UI.Terminal;                use HRA_N.UI.Terminal;
+with HRA_N.UI.Terminal_Style;
+with HRA_N.UI.TUI_Input;
 with Terminal_Interface.Curses;
 
 package body HRA_N.UI.Routing_TUI is
 
    package Curses renames Terminal_Interface.Curses;
-   Ctrl_L : constant Integer := 12;
 
    function Token_String (Value : Token_Text) return String is
      (Value.Value (1 .. Value.Length));
@@ -130,18 +131,24 @@ package body HRA_N.UI.Routing_TUI is
       View : constant Routing_View :=
         Execute_Routing_Query (Paths, Selected, History);
       Capacity : constant Natural := (if Rows > 8 then Rows - 8 else 0);
+      First    : Positive := 1;
+      Last     : Natural := 0;
    begin
       Curses.Erase;
+      HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Header_Style);
       Put_Clipped
         (0, "ACTUAL ROUTING  "
          & (if History then "RETAINED HISTORY"
             else "AS OF " & Format_Iso_Date (Selected)));
+      HRA_N.UI.Terminal_Style.Reset;
       Put_Clipped (1, "============================================================");
       Count := 0;
       if View.Status = Query_Rejected then
          if View.Diagnostic_Len > 0 then
+            HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Error_Style);
             Put_Clipped
               (3, "! " & View.Diagnostic (1 .. View.Diagnostic_Len));
+            HRA_N.UI.Terminal_Style.Reset;
          end if;
       else
          Count := View.Row_Count;
@@ -153,22 +160,34 @@ package body HRA_N.UI.Routing_TUI is
                Cursor := Positive (Count);
             end if;
             Put_Clipped (3, "  LOCUS              EFFECTIVE    TARGET");
-            for I in 1 .. Natural'Min (Count, Capacity) loop
-               declare
-                  Row : constant Routing_View_Row := View.Rows (I);
-                  Prefix : constant String := (if I = Cursor then "> " else "  ");
-                  Effective : constant String :=
-                    (if Row.Effective_Kind = Routing_Initial then "initial"
-                     else Format_Iso_Date (Row.Effective_On));
-                  Target : constant String :=
-                    (if Row.Managed then Token_String (Row.Purpose)
-                     else "UNMANAGED");
-               begin
-                  Put_Clipped
-                    (3 + I, Prefix & Token_String (Row.Locus)
-                     & "  " & Effective & "  " & Target);
-               end;
-            end loop;
+            if Capacity > 0 then
+               if Cursor > Capacity then
+                  First := Cursor - Capacity + 1;
+               end if;
+               Last := Natural'Min (Count, First + Capacity - 1);
+               for I in First .. Last loop
+                  declare
+                     Row : constant Routing_View_Row := View.Rows (I);
+                     Prefix : constant String := (if I = Cursor then "> " else "  ");
+                     Effective : constant String :=
+                       (if Row.Effective_Kind = Routing_Initial then "initial"
+                        else Format_Iso_Date (Row.Effective_On));
+                     Target : constant String :=
+                       (if Row.Managed then Token_String (Row.Purpose)
+                        else "UNMANAGED");
+                  begin
+                     if I = Cursor then
+                        HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Selected_Style);
+                     end if;
+                     Put_Clipped
+                       (3 + I - First + 1, Prefix & Token_String (Row.Locus)
+                        & "  " & Effective & "  " & Target);
+                     if I = Cursor then
+                        HRA_N.UI.Terminal_Style.Reset;
+                     end if;
+                  end;
+               end loop;
+            end if;
          end if;
          if Rows > 3 then
             Put_Clipped
@@ -179,7 +198,7 @@ package body HRA_N.UI.Routing_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "j/k: select  n: managed  u: unmanaged  h: history  R: reload  b/Esc/q: home");
+            "j/k/wheel: select  n: managed  u: unmanaged  h: history  R: reload  b/Esc/q: home");
       end if;
       Curses.Refresh;
    end Draw;
@@ -194,84 +213,106 @@ package body HRA_N.UI.Routing_TUI is
       History : Boolean := False;
       Running : Boolean := True;
    begin
+      HRA_N.UI.Terminal_Style.Initialize;
+      HRA_N.UI.TUI_Input.Start_Mouse_Scroll;
+
       while Running loop
          Draw (Current_Paths, Selected, History, Cursor, Count);
          declare
-            Key : constant Integer := Integer (Curses.Get_Keystroke);
+            Evt : constant HRA_N.UI.TUI_Input.Event := HRA_N.UI.TUI_Input.Read;
          begin
-            if Key = Character'Pos ('b') or else Key = Character'Pos ('B')
-              or else Key = Character'Pos ('q') or else Key = Character'Pos ('Q')
-              or else Key = 27
-            then
-               Running := False;
-            elsif Key = Character'Pos ('j')
-              or else Key = Integer (Curses.KEY_DOWN)
-            then
-               if Count > 0 and then Cursor < Count then
-                  Cursor := Cursor + 1;
-               end if;
-            elsif Key = Character'Pos ('k')
-              or else Key = Integer (Curses.KEY_UP)
-            then
-               if Cursor > 1 then
-                  Cursor := Cursor - 1;
-               end if;
-            elsif Key = Integer (Curses.KEY_NPAGE)
-              or else Key = 4
-              or else Key = 32
-            then
-               declare
-                  Step : constant Positive :=
-                    Positive'Max (1, (if Rows > 9 then Rows - 9 else 5));
-               begin
-                  Cursor := (if Count > 0 then Natural'Min (Count, Cursor + Step) else 1);
-               end;
-            elsif Key = Integer (Curses.KEY_PPAGE)
-              or else Key = 21
-            then
-               declare
-                  Step : constant Positive :=
-                    Positive'Max (1, (if Rows > 9 then Rows - 9 else 5));
-               begin
-                  Cursor := (if Cursor > Step then Cursor - Step else 1);
-               end;
-            elsif Key = Character'Pos ('G') then
-               if Count > 0 then
-                  Cursor := Count;
-               end if;
-            elsif Key = Character'Pos ('g') then
-               Cursor := 1;
-            elsif Key = Character'Pos ('h') or else Key = Character'Pos ('H') then
-               History := not History;
-               Cursor := 1;
-            elsif Key = Character'Pos ('n') or else Key = Character'Pos ('N')
-              or else Key = Character'Pos ('u') or else Key = Character'Pos ('U')
-            then
-               declare
-                  View : constant Routing_View :=
-                    Execute_Routing_Query (Current_Paths, Selected, History);
-                  Seed : constant String :=
-                    (if View.Status = Query_Complete
-                       and then View.Row_Count > 0 and then Cursor <= View.Row_Count
-                     then Token_String (View.Rows (Cursor).Locus) else "");
-                  Done : Boolean := False;
-               begin
-                  Run_Editor
-                    (Current_Paths, Selected, Seed,
-                     Key = Character'Pos ('n') or else Key = Character'Pos ('N'),
-                     Done);
-                  if Done then
-                     Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
-                     Cursor := 1;
-                  end if;
-               end;
-            elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R')
-              or else Key = Ctrl_L or else Key = Integer (Curses.Key_Resize)
-            then
-               Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
-            end if;
+            case Evt.Kind is
+               when HRA_N.UI.TUI_Input.Scroll_Input =>
+                  case Evt.Direction is
+                     when HRA_N.UI.TUI_Input.Scroll_Up =>
+                        if Cursor > 1 then
+                           Cursor := Cursor - 1;
+                        end if;
+                     when HRA_N.UI.TUI_Input.Scroll_Down =>
+                        if Count > 0 and then Cursor < Count then
+                           Cursor := Cursor + 1;
+                        end if;
+                  end case;
+
+               when HRA_N.UI.TUI_Input.Key_Input =>
+                  declare
+                     Key : constant Integer := Evt.Key_Code;
+                  begin
+                     if HRA_N.UI.TUI_Input.Is_Quit (Key)
+                       or else Key = Character'Pos ('b')
+                       or else Key = Character'Pos ('B')
+                     then
+                        Running := False;
+                     elsif HRA_N.UI.TUI_Input.Is_Down (Key) then
+                        if Count > 0 and then Cursor < Count then
+                           Cursor := Cursor + 1;
+                        end if;
+                     elsif HRA_N.UI.TUI_Input.Is_Up (Key) then
+                        if Cursor > 1 then
+                           Cursor := Cursor - 1;
+                        end if;
+                     elsif Key = Integer (Curses.KEY_NPAGE)
+                       or else Key = 4
+                       or else Key = 32
+                     then
+                        declare
+                           Step : constant Positive :=
+                             Positive'Max (1, (if Rows > 9 then Rows - 9 else 5));
+                        begin
+                           Cursor := (if Count > 0 then Natural'Min (Count, Cursor + Step) else 1);
+                        end;
+                     elsif Key = Integer (Curses.KEY_PPAGE)
+                       or else Key = 21
+                     then
+                        declare
+                           Step : constant Positive :=
+                             Positive'Max (1, (if Rows > 9 then Rows - 9 else 5));
+                        begin
+                           Cursor := (if Cursor > Step then Cursor - Step else 1);
+                        end;
+                     elsif Key = Character'Pos ('G') then
+                        if Count > 0 then
+                           Cursor := Count;
+                        end if;
+                     elsif Key = Character'Pos ('g') then
+                        Cursor := 1;
+                     elsif Key = Character'Pos ('h') or else Key = Character'Pos ('H') then
+                        History := not History;
+                        Cursor := 1;
+                     elsif Key = Character'Pos ('n') or else Key = Character'Pos ('N')
+                       or else Key = Character'Pos ('u') or else Key = Character'Pos ('U')
+                     then
+                        declare
+                           View : constant Routing_View :=
+                             Execute_Routing_Query (Current_Paths, Selected, History);
+                           Seed : constant String :=
+                             (if View.Status = Query_Complete
+                                and then View.Row_Count > 0 and then Cursor <= View.Row_Count
+                              then Token_String (View.Rows (Cursor).Locus) else "");
+                           Done : Boolean := False;
+                        begin
+                           Run_Editor
+                             (Current_Paths, Selected, Seed,
+                              Key = Character'Pos ('n') or else Key = Character'Pos ('N'),
+                              Done);
+                           if Done then
+                              Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+                              Cursor := 1;
+                           end if;
+                        end;
+                     elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R')
+                       or else HRA_N.UI.TUI_Input.Is_Redraw (Key)
+                     then
+                        Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+                     end if;
+                  end;
+
+               when HRA_N.UI.TUI_Input.Ignored_Input =>
+                  null;
+            end case;
          end;
       end loop;
+      HRA_N.UI.TUI_Input.Stop_Mouse_Scroll;
    end Run;
 
 end HRA_N.UI.Routing_TUI;

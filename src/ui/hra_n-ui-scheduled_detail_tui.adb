@@ -8,13 +8,13 @@ with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.UI.Snapshot_Label;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
+with HRA_N.UI.Terminal_Style;
+with HRA_N.UI.TUI_Input;
 with Terminal_Interface.Curses;
 
 package body HRA_N.UI.Scheduled_Detail_TUI is
 
    package Curses renames Terminal_Interface.Curses;
-
-   Ctrl_L : constant Integer := 12;
 
    function Token_String (Token : Token_Text) return String is
      (Token.Value (1 .. Token.Length));
@@ -30,6 +30,9 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
       Current_Id    : Token_Text := Scheduled_Id;
       Running       : Boolean := True;
    begin
+      HRA_N.UI.Terminal_Style.Initialize;
+      HRA_N.UI.TUI_Input.Start_Mouse_Scroll;
+
       while Running loop
          declare
             View : constant Scheduled_Detail_View :=
@@ -37,11 +40,15 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                 (Current_Paths, Current_Id);
          begin
             Curses.Erase;
+            HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Header_Style);
             Put_Clipped (0, "HRA-N SCHEDULED DETAIL  " & Token_String (Current_Id));
+            HRA_N.UI.Terminal_Style.Reset;
             Put_Clipped (1, "============================================================");
 
             if View.Status = Query_Rejected then
+               HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Error_Style);
                Put_Clipped (3, "SCHEDULED IDENTITY REJECTED");
+               HRA_N.UI.Terminal_Style.Reset;
                Put_Clipped (4, View.Diagnostic (1 .. View.Diagnostic_Len));
             else
                declare
@@ -89,28 +96,37 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
             Curses.Refresh;
 
             declare
-               Key : constant Integer := Integer (Curses.Get_Keystroke);
+               Evt : constant HRA_N.UI.TUI_Input.Event := HRA_N.UI.TUI_Input.Read;
             begin
-               if Key = Character'Pos ('b') or else Key = Character'Pos ('B')
-                 or else Key = 27
-               then
-                  Running := False;
-               elsif Key = Character'Pos ('l') or else Key = Character'Pos ('L')
-                 or else Key = Ctrl_L or else Key = Integer (Curses.Key_Resize)
-               then
-                  Current_Paths :=
-                    HRA_N.Application.Path_Resolver.Resolve_Paths
-                      (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-               elsif (Key = Character'Pos ('r') or else Key = Character'Pos ('R'))
-                 and then (View.Lifecycle_Status /= Status_Open or else View.Status = Query_Rejected)
-               then
-                  Current_Paths :=
-                    HRA_N.Application.Path_Resolver.Resolve_Paths
-                      (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-               elsif (Key = Character'Pos ('c') or else Key = Character'Pos ('C'))
-                 and then View.Lifecycle_Status = Status_Open
-                 and then View.Status /= Query_Rejected
-               then
+               case Evt.Kind is
+                  when HRA_N.UI.TUI_Input.Scroll_Input =>
+                     null;
+
+                  when HRA_N.UI.TUI_Input.Key_Input =>
+                     declare
+                        Key : constant Integer := Evt.Key_Code;
+                     begin
+                        if HRA_N.UI.TUI_Input.Is_Quit (Key)
+                          or else Key = Character'Pos ('b')
+                          or else Key = Character'Pos ('B')
+                        then
+                           Running := False;
+                        elsif Key = Character'Pos ('l') or else Key = Character'Pos ('L')
+                          or else HRA_N.UI.TUI_Input.Is_Redraw (Key)
+                        then
+                           Current_Paths :=
+                             HRA_N.Application.Path_Resolver.Resolve_Paths
+                               (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                        elsif (Key = Character'Pos ('r') or else Key = Character'Pos ('R'))
+                          and then (View.Lifecycle_Status /= Status_Open or else View.Status = Query_Rejected)
+                        then
+                           Current_Paths :=
+                             HRA_N.Application.Path_Resolver.Resolve_Paths
+                               (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                        elsif (Key = Character'Pos ('c') or else Key = Character'Pos ('C'))
+                          and then View.Lifecycle_Status = Status_Open
+                          and then View.Status /= Query_Rejected
+                        then
                   Put_Clipped (Rows - 1, "Complete obligation and record Actual movement? (y/n): ");
                   Curses.Refresh;
                   declare
@@ -229,8 +245,13 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                   end;
                end if;
             end;
-         end;
-      end loop;
-   end Run;
+
+          when HRA_N.UI.TUI_Input.Ignored_Input =>
+             null;
+       end case;
+    end;
+ end;
+end loop;
+end Run;
 
 end HRA_N.UI.Scheduled_Detail_TUI;

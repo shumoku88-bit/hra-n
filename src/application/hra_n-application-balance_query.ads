@@ -12,6 +12,8 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;
+with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
+with HRA_N.Storage.Policy_Reader;  use HRA_N.Storage.Policy_Reader;
 
 package HRA_N.Application.Balance_Query is
 
@@ -72,6 +74,13 @@ package HRA_N.Application.Balance_Query is
       Diagnostic           : Frontend_Types.Diagnostic_Text := [others => ' '];
       Diagnostic_Len       : Frontend_Types.Diagnostic_Length := 0;
    end record;
+
+   function Project
+     (Journal  : Journal_Result;
+      Policy   : Policy_Result;
+      Request  : Query := (Scope => Scope_All, Has_As_Of => False, As_Of_Date => (2026, 1, 1));
+      Snapshot : Frontend_Types.Snapshot_Reference := (Kind => Frontend_Types.Snapshot_Unversioned))
+      return Balance_View;
 
    function Execute
      (Paths   : HRA_N.Application.Path_Resolver.Path_Config;

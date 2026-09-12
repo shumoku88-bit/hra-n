@@ -7,6 +7,7 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Scheduled; use HRA_N.Core.Scheduled;
 with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;
+with HRA_N.Storage.Scheduled_Journal_Reader;
 
 package HRA_N.Application.Scheduled_Query is
 
@@ -76,6 +77,12 @@ package HRA_N.Application.Scheduled_Query is
    --  Acquire Scheduled lifecycle facts and derive a presentation-neutral projection.
    --  A selected generation carries its snapshot identity;
    --  missing files or unadmitted lifecycle evidence degrade fail-closed with diagnostics.
+   function Project
+     (Sched_Res : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
+      Request   : Query;
+      Snapshot  : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned)) return Scheduled_View;
+
    function Execute
      (Paths   : HRA_N.Application.Path_Resolver.Path_Config;
       Request : Query) return Scheduled_View;

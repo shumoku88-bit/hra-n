@@ -32,4 +32,18 @@ project HRA_N is
       for Executable ("hra_n_main.adb") use "hra-n";
       for Executable ("hra_n_observe.adb") use "hra-n-observe";
    end Builder;
+
+   type Host_OS_Type is ("Darwin", "Linux", "Windows_NT", "Unknown");
+   Host_OS : Host_OS_Type := external ("HRA_TARGET_OS", "Unknown");
+
+   package Linker is
+      case Host_OS is
+         when "Darwin" =>
+            for Default_Switches ("Ada") use ("-Wl,-stack_size,0x1000000");
+         when "Linux" =>
+            for Default_Switches ("Ada") use ("-Wl,-z,stack-size=16777216");
+         when others =>
+            null;
+      end case;
+   end Linker;
 end HRA_N;

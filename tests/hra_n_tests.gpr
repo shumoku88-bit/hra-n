@@ -25,4 +25,18 @@ project HRA_N_Tests is
       for Executable ("test_runner.adb") use "test_runner";
       for Executable ("tui_harness.adb") use "tui_harness";
    end Builder;
+
+   type Host_OS_Type is ("Darwin", "Linux", "Windows_NT", "Unknown");
+   Host_OS : Host_OS_Type := external ("HRA_TARGET_OS", "Unknown");
+
+   package Linker is
+      case Host_OS is
+         when "Darwin" =>
+            for Default_Switches ("Ada") use ("-Wl,-stack_size,0x1000000");
+         when "Linux" =>
+            for Default_Switches ("Ada") use ("-Wl,-z,stack-size=16777216");
+         when others =>
+            null;
+      end case;
+   end Linker;
 end HRA_N_Tests;
