@@ -64,6 +64,27 @@ class TestHraNCli(unittest.TestCase):
             self.assertNotEqual(res.returncode, 0)
             self.assertIn("cannot be combined", res.stdout + res.stderr)
 
+    def test_monthly_reports_reject_exact_day_requests(self) -> None:
+        self.write_report_fixture(
+            'TX e0001 2026-09-10 cash:-10 food:10 "before cutoff"\n'
+            'TX e0002 2026-09-20 cash:-20 food:20 "after cutoff"\n'
+        )
+        for tab in ["--budget", "--pace", "--mom", "--flow", "--audit", "--balances", "--tui"]:
+            for date_flag in ["--as-of", "-a"]:
+                with self.subTest(tab=tab, date_flag=date_flag):
+                    res = self.run_cmd("report", tab, date_flag, "2026-09-15")
+                    self.assertNotEqual(res.returncode, 0)
+                    self.assertIn("supported only for one-shot statement", res.stdout + res.stderr)
+                    self.assertNotIn("[PASS]", res.stdout)
+
+        # Exact-day statements still exclude transactions after the cutoff.
+        res = self.run_cmd("report", "--statement", "--as-of", "2026-09-15")
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertRegex(res.stdout, r"Total EXPENSE\s*:\s*10 JPY")
+        # Month-coordinate queries remain available and include the full month.
+        res = self.run_cmd("report", "--flow", "-m", "9", "-y", "2026")
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+
     def test_financial_reports_reject_foreign_measures(self) -> None:
         self.write_report_fixture(
             'TX e0001 2026-09-01 cash:-10:usd food:10:usd "USD"\n'

@@ -64,9 +64,9 @@ semantic parity. Current source inspection exposes these remaining gaps:
 - Daily Flow counts only positive income/expense effects; refunds and reversal
   effects need explicit gross/net semantics and cross-report tests. MoM uses
   cumulative statement values and needs distinct monthly-flow versus stock
-  comparison coordinates. Non-statement `--as-of` currently resolves a month,
-  not the precise day; introduce typed interval queries rather than imply exact
-  day semantics.
+  comparison coordinates. Monthly report tabs and the report TUI do not yet
+  have exact-day or arbitrary interval queries; `--as-of` rejects on these
+  surfaces rather than silently resolving a month.
 - Home Actual counters still count retained rows rather than the current
   correction frontier; align their labels or projection with Actual_Query.
 - Full three-stream admission, overflow propagation through all report tabs,
@@ -77,7 +77,8 @@ non-`jpy` effect (including retained history); coordinate Balance remains
 available without conversion. Statement rejects account-capacity overflow and
 invalid as-of dates. Home classification and status financial totals share
 Statement.Project, including supersession. Statement `--month/--year` selects
-month-end; combining these with `--as-of` rejects. Focused Statement tests and CLI
+month-end; combining these with `--as-of` rejects. Explicit `--as-of` is accepted
+only for one-shot Statement, not monthly tabs or the report TUI. Focused Statement tests and CLI
 regressions cover these boundaries; the existing PTY suite covers shared report
 navigation, not complete semantic parity. These guards are not multi-measure
 valuation support.

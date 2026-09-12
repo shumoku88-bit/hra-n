@@ -387,6 +387,19 @@ package body HRA_N.UI.Statement_Cli is
          Arg_Idx := Arg_Idx + 1;
       end loop;
 
+      --  Only the one-shot Statement query accepts an exact effective day.
+      --  Monthly tabs (including the report TUI) must not silently strengthen
+      --  an as-of request into a report through the end of that month.
+      if Has_As_Of and then
+        (Is_TUI or else Selected_Tab /= HRA_N.UI.Report_TUI.Tab_Statement)
+      then
+         Put_Error_Line
+           ("hra-n report: --as-of is supported only for one-shot statement; " &
+            "monthly reports require --month/--year");
+         Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         return;
+      end if;
+
       if Has_Period and then Has_As_Of then
          Put_Error_Line ("hra-n report: --as-of cannot be combined with --month/--year");
          Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
