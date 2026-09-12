@@ -16,7 +16,6 @@ with HRA_N.Application.Budget_Window; use HRA_N.Application.Budget_Window;
 with HRA_N.Application.Review;        use HRA_N.Application.Review;
 with HRA_N.UI.Output;                 use HRA_N.UI.Output;
 with HRA_N.UI.Home_CLI;
-with HRA_N.UI.Home_TUI;
 with HRA_N.UI.Status_CLI;
 with HRA_N.UI.Statement_Cli;
 with HRA_N.UI.Budget_CLI;
@@ -31,6 +30,7 @@ with HRA_N.UI.Policy_CLI;
 with HRA_N.UI.Routing_CLI;
 with HRA_N.UI.Locus_CLI;
 with HRA_N.UI.Interactive_Movement;
+with HRA_N.UI.TUI_Dispatcher;
 
 procedure HRA_N_Main is
    Paths       : Path_Config;
@@ -38,6 +38,56 @@ procedure HRA_N_Main is
    Cmd_Len     : Natural          := 0;
    Command_Idx : Positive         := 1;
    Success     : Boolean          := False;
+
+   procedure Print_Help is
+   begin
+      Put_Line ("HRA-N: Verified Household Engine (Ada 2022)");
+      New_Line;
+      Put_Line ("Usage:");
+      Put_Line ("  hra-n [COMMAND] [OPTIONS]");
+      Put_Line ("  hra-n tui [WORKSPACE]");
+      New_Line;
+      Put_Line ("Global Options:");
+      Put_Line ("  -d, --data-dir <DIR>   Set authoritative household storage directory");
+      Put_Line ("  -h, --help             Show this help message");
+      New_Line;
+      Put_Line ("TUI Workspaces (Interactive Curses):");
+      Put_Line ("  tui [home]             Launch interactive Home overview (calendar, balances)");
+      Put_Line ("  tui record, record     Open movement entry form (without args)");
+      Put_Line ("  tui actual             Browse, search (/), and inspect admitted transactions");
+      Put_Line ("  tui scheduled          Manage recurring obligations (search, create, complete)");
+      Put_Line ("  tui capacity           Budget capacity entitlements, transfer, and rebalance");
+      Put_Line ("  tui budget             Budget decision surface and grant shortages");
+      Put_Line ("  tui attention          Attention items and upcoming deadlines");
+      Put_Line ("  tui balances           Inspect canonical zero-origin coordinate balances");
+      Put_Line ("  tui report             Financial Statements (B/S & P/L) and pacing");
+      Put_Line ("  tui route              Inspect historical Actual routing rules");
+      Put_Line ("  tui locus              Inspect admitted accounting loci and roles");
+      New_Line;
+      Put_Line ("CLI Commands (Batch & Scripting):");
+      Put_Line ("  home                   Print read-only Home overview (1-shot)");
+      Put_Line ("  status                 Print household authority status & canonical balances");
+      Put_Line ("  record, movement       Record transaction: <FROM> <TO> <AMOUNT> [DATE] [DESC]");
+      Put_Line ("                         (without arguments: opens TUI form, or --cli for prompt)");
+      Put_Line ("  correct                Correct transaction: <TARGET_ID> <FROM> <TO> <AMT> [DATE] [DESC]");
+      Put_Line ("  revert                 Revert transaction: <EVENT_ID> [DATE] [REASON]");
+      Put_Line ("  split                  Record multi-posting split transaction");
+      Put_Line ("  scheduled              Manage scheduled obligations (list, complete, retire)");
+      Put_Line ("  capacity               Manage capacity authority (list, transfer, rebalance)");
+      Put_Line ("  budget                 Project budget window: [START] [END]");
+      Put_Line ("  balances               List coordinate balances");
+      Put_Line ("  statement, report      Print Balance Sheet and Profit & Loss statement");
+      Put_Line ("  review                 Query historical transactions by date or period");
+      Put_Line ("  assert                 Assert physical balance for reconciliation: <LOCUS> <AMT> [DATE]");
+      Put_Line ("  reconcile              Print balance reconciliation report");
+      Put_Line ("  relation               Inspect and settle payables/receivables");
+      Put_Line ("  locus                  Admit or list accounting loci");
+      Put_Line ("  role                   Assign or list accounting roles");
+      Put_Line ("  route                  Configure or list routing rules");
+      Put_Line ("  window                 Configure or list budget evaluation windows");
+      Put_Line ("  doctor, verify         Verify authority health and cryptographic soundness");
+      Put_Line ("  init [DIR]             Initialize new household authority repository");
+   end Print_Help;
 begin
    Resolve_From_Cli (Paths, Command_Str, Cmd_Len, Command_Idx);
 
@@ -50,6 +100,12 @@ begin
       P_Path    : constant String  := Policy_Path_Str (Paths);
       Data_Dir  : constant String  := Data_Dir_Str (Paths);
    begin
+      --  Branch: Help message
+      if Command = "help" or else Command = "--help" or else Command = "-h" then
+         Print_Help;
+         return;
+      end if;
+
       --  Branch: Initializer for a new household authority
       if Command = "init" then
          declare
@@ -289,6 +345,13 @@ begin
         and then (Rem_Args = 0 or else Ada.Command_Line.Argument (Command_Idx + 1) /= "revert")
       then
          if Rem_Args = 0 then
+            declare
+               Committed : Boolean := False;
+            begin
+               HRA_N.UI.TUI_Dispatcher.Run_Record (Paths, Committed);
+               return;
+            end;
+         elsif Rem_Args = 1 and then Ada.Command_Line.Argument (Command_Idx + 1) = "--cli" then
             HRA_N.UI.Interactive_Movement.Run_Interactive
               (Authority_Dir => Data_Dir,
                Catalog_Path  => "",
@@ -493,11 +556,18 @@ begin
       end if;
 
       if Command = "tui" then
-         HRA_N.UI.Home_TUI.Run (Paths, Success);
-         if not Success then
-            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-         end if;
-         return;
+         declare
+            Sub : constant String :=
+              (if Rem_Args >= 1
+               then Ada.Command_Line.Argument (Command_Idx + 1)
+               else "home");
+         begin
+            HRA_N.UI.TUI_Dispatcher.Dispatch (Paths, Sub, Success);
+            if not Success then
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+            end if;
+            return;
+         end;
       end if;
 
       --  Shared read-only Home projection. The one-shot renderer and TUI use

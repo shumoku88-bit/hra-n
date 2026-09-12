@@ -698,5 +698,19 @@ class TestHraNCli(unittest.TestCase):
         self.assertEqual(res.returncode, 0, f"report --balances failed: {res.stderr}")
         self.assertIn("COORDINATE BALANCES as of", res.stdout)
 
+        # 60. Help command (--help, -h, help)
+        for h_arg in ("--help", "-h", "help"):
+            res = self.run_cmd(h_arg)
+            self.assertEqual(res.returncode, 0, f"{h_arg} failed")
+            self.assertIn("HRA-N: Verified Household Engine", res.stdout)
+            self.assertIn("TUI Workspaces", res.stdout)
+            self.assertIn("CLI Commands", res.stdout)
+
+        # 61. Unknown TUI workspace fails-closed with available list
+        res = self.run_cmd("tui", "non-existent-workspace")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("[ERROR] Unknown TUI workspace", res.stdout)
+        self.assertIn("Available TUI Workspaces:", res.stdout)
+
 if __name__ == "__main__":
     unittest.main()
