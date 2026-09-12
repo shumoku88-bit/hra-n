@@ -23,6 +23,8 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 
 procedure HRA_N_Observe is
 
+   use type HRA_N.Application.Frontend_Types.Query_Status;
+
    function Token_Str (Token : Token_Text) return String is
    begin
       if Token.Length = 0 then
