@@ -82,11 +82,15 @@ package body HRA_N.Application.Path_Resolver is
             Dir (1 .. Len) := Env (Env'First .. Env'First + Len - 1);
          end;
       --  Tier 2: Local ./hra-data
-      elsif Ada.Directories.Exists ("./hra-data/journal.hra") then
+      elsif Ada.Directories.Exists ("./hra-data/journal.hra")
+        or else Ada.Directories.Exists ("./hra-data/.hra/CURRENT")
+      then
          Len := 10;
          Dir (1 .. 10) := "./hra-data";
       --  Tier 3: Local directory ./
-      elsif Ada.Directories.Exists ("./journal.hra") then
+      elsif Ada.Directories.Exists ("./journal.hra")
+        or else Ada.Directories.Exists ("./.hra/CURRENT")
+      then
          Len := 1;
          Dir (1 .. 1) := ".";
       --  Tier 4: Canonical fallback
