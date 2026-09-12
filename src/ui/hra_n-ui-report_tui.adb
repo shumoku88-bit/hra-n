@@ -21,6 +21,7 @@ with HRA_N.UI.Actual_TUI;
 with HRA_N.UI.Terminal;                use HRA_N.UI.Terminal;
 with Ada.Command_Line;
 with HRA_N.Application.Daily_Flow_Query;
+with HRA_N.Application.MoM_Query;
 with HRA_N.UI.Output;
 with HRA_N.UI.Terminal_Style;
 with HRA_N.UI.TUI_Input;
@@ -685,48 +686,27 @@ package body HRA_N.UI.Report_TUI is
 
          when Tab_MoM =>
             declare
-               Prev_Year  : constant Year_Type := (if Month = 1 then Year - 1 else Year);
-               Prev_Month : constant Month_Type := (if Month = 1 then 12 else Month - 1);
-               Prev_End_D : constant Day_Type := Days_In_Month (Prev_Year, Prev_Month);
-               Prev_As_Of : constant Date_Type := (Year => Prev_Year, Month => Prev_Month, Day => Prev_End_D);
+               View : constant HRA_N.Application.MoM_Query.MoM_View :=
+                 HRA_N.Application.MoM_Query.Project
+                   (Journal, Policy, Year, Month,
+                    (if Paths.Is_Versioned then
+                       (Kind => Snapshot_Versioned, Identity => Make_Token (Snapshot_Id_Str (Paths)))
+                     else (Kind => Snapshot_Unversioned)));
 
-               Cur_Rep  : constant Statement_Report :=
-                 Statement.Project
-                   (Journal      => Journal,
-                    Policy       => Policy,
-                    As_Of        => As_Of,
-                    Has_As_Of    => True,
-                    Snapshot     =>
-                      (if Paths.Is_Versioned
-                       then Make_Token (Snapshot_Id_Str (Paths))
-                       else Make_Token ("")),
-                    Is_Versioned => Paths.Is_Versioned);
-               Prev_Rep : constant Statement_Report :=
-                 Statement.Project
-                   (Journal      => Journal,
-                    Policy       => Policy,
-                    As_Of        => Prev_As_Of,
-                    Has_As_Of    => True,
-                    Snapshot     =>
-                      (if Paths.Is_Versioned
-                       then Make_Token (Snapshot_Id_Str (Paths))
-                       else Make_Token ("")),
-                    Is_Versioned => Paths.Is_Versioned);
-
-               Cur_S  : Financial_Summary renames Cur_Rep.Summary;
-               Prev_S : Financial_Summary renames Prev_Rep.Summary;
-
-               P_M_Str : constant String := Trim (Natural'Image (Prev_Month), Both);
-               Pad_PM  : constant String := (if P_M_Str'Length = 1 then "0" & P_M_Str else P_M_Str);
+               P_M_Str    : constant String := Trim (Natural'Image (View.Prior_Month), Both);
+               Pad_PM     : constant String := (if P_M_Str'Length = 1 then "0" & P_M_Str else P_M_Str);
                Comp_Title : constant String := Y_Str & "-" & Pad_M & " vs " &
-                 Trim (Natural'Image (Prev_Year), Both) & "-" & Pad_PM;
+                 Trim (Natural'Image (View.Prior_Year), Both) & "-" & Pad_PM;
             begin
+               Result_Status := View.Status;
                Emit ("--- MONTH-OVER-MONTH COMPARISON (" & Comp_Title & ") ---");
-               if Cur_Rep.Status = Query_Rejected or else Prev_Rep.Status = Query_Rejected then
-                  Emit (" [ERROR] Statement query rejected during comparison");
-               elsif not Is_Complete (Cur_Rep) or else not Is_Complete (Prev_Rep) then
-                  Emit (" [PARTIAL] Comparison requires classified, known stocks without assertion conflicts");
+               if View.Status = Query_Rejected then
+                  Emit (" [ERROR] " & View.Diagnostic (1 .. View.Diagnostic_Len));
                else
+                  if View.Status = Query_Partial then
+                     Emit (" [PARTIAL] " & View.Diagnostic (1 .. View.Diagnostic_Len));
+                  end if;
+                  Emit (" Discrete monthly flows (Income/Expense); month-end balances (Net Worth).");
                   Emit ("");
                   Emit ("  " & Pad_Right ("Category / Role", 26) & " " &
                         Pad_Left ("Current", 14) & " " &
@@ -734,96 +714,64 @@ package body HRA_N.UI.Report_TUI is
                         Pad_Left ("Difference", 14));
                   Emit ("  " & Repeat ('-', 72));
 
-                  --  EXPENSES
-                  Emit ("  [EXPENSES]");
-                  for I in 1 .. Cur_Rep.Account_Count loop
-                     declare
-                        Acc : Account_Balance renames Cur_Rep.Accounts (I);
-                     begin
-                        if Acc.Has_Role and then Acc.Role = Role_Expense then
-                           declare
-                              Tok : constant String := Acc.Locus.Token.Value (1 .. Acc.Locus.Token.Length);
-                              Prev_Amt : Long_Long_Integer := 0;
-                           begin
-                              for J in 1 .. Prev_Rep.Account_Count loop
-                                 if Prev_Rep.Accounts (J).Has_Role
-                                   and then Prev_Rep.Accounts (J).Locus.Token.Length = Acc.Locus.Token.Length
-                                   and then Prev_Rep.Accounts (J).Locus.Token.Value (1 .. Acc.Locus.Token.Length) = Tok
-                                 then
-                                    Prev_Amt := Prev_Rep.Accounts (J).Natural_Amt;
-                                    exit;
-                                 end if;
-                              end loop;
-
-                              declare
-                                 Diff : constant Long_Long_Integer := Acc.Natural_Amt - Prev_Amt;
-                                 Diff_Prefix : constant String := (if Diff > 0 then "+" else "");
-                              begin
-                                 Emit ("    " & Pad_Right (Tok, 24) & " " &
-                                       Pad_Left (Format_Quanta (Acc.Natural_Amt), 14) & " " &
-                                       Pad_Left (Format_Quanta (Prev_Amt), 14) & " " &
-                                       Pad_Left (Diff_Prefix & Format_Quanta (Diff), 14));
-                              end;
-                           end;
-                        end if;
-                     end;
-                  end loop;
+                  --  EXPENSES (Monthly Flows)
+                  Emit ("  [EXPENSES (Monthly Flow)]");
+                  if View.Expense_Count = 0 then
+                     Emit ("    (No active expense flows in comparison period)");
+                  else
+                     for I in 1 .. View.Expense_Count loop
+                        declare
+                           Row         : HRA_N.Application.MoM_Query.Comparison_Row renames View.Expenses (I);
+                           Tok         : constant String := Row.Locus.Value (1 .. Row.Locus.Length);
+                           Diff_Prefix : constant String := (if Row.Difference > 0 then "+" else "");
+                        begin
+                           Emit ("    " & Pad_Right (Tok, 24) & " " &
+                                 Pad_Left (Format_Quanta (Row.Current_Amt), 14) & " " &
+                                 Pad_Left (Format_Quanta (Row.Prior_Amt), 14) & " " &
+                                 Pad_Left (Diff_Prefix & Format_Quanta (Row.Difference), 14));
+                        end;
+                     end loop;
+                  end if;
 
                   declare
-                     Diff_Exp : constant Long_Long_Integer := Cur_S.Total_Expense - Prev_S.Total_Expense;
+                     Diff_Exp : constant Long_Long_Integer := View.Total_Expense.Difference;
                      Prefix   : constant String := (if Diff_Exp > 0 then "+" else "");
                   begin
                      Emit ("    " & Repeat ('-', 68));
                      Emit ("    " & Pad_Right ("Total Expense", 24) & " " &
-                           Pad_Left (Format_Quanta (Cur_S.Total_Expense), 14) & " " &
-                           Pad_Left (Format_Quanta (Prev_S.Total_Expense), 14) & " " &
+                           Pad_Left (Format_Quanta (View.Total_Expense.Current_Amt), 14) & " " &
+                           Pad_Left (Format_Quanta (View.Total_Expense.Prior_Amt), 14) & " " &
                            Pad_Left (Prefix & Format_Quanta (Diff_Exp), 14));
                   end;
                   Emit ("");
 
-                  --  INCOME
-                  Emit ("  [INCOME]");
-                  for I in 1 .. Cur_Rep.Account_Count loop
-                     declare
-                        Acc : Account_Balance renames Cur_Rep.Accounts (I);
-                     begin
-                        if Acc.Has_Role and then Acc.Role = Role_Income then
-                           declare
-                              Tok : constant String := Acc.Locus.Token.Value (1 .. Acc.Locus.Token.Length);
-                              Prev_Amt : Long_Long_Integer := 0;
-                           begin
-                              for J in 1 .. Prev_Rep.Account_Count loop
-                                 if Prev_Rep.Accounts (J).Has_Role
-                                   and then Prev_Rep.Accounts (J).Locus.Token.Length = Acc.Locus.Token.Length
-                                   and then Prev_Rep.Accounts (J).Locus.Token.Value (1 .. Acc.Locus.Token.Length) = Tok
-                                 then
-                                    Prev_Amt := Prev_Rep.Accounts (J).Natural_Amt;
-                                    exit;
-                                 end if;
-                              end loop;
-
-                              declare
-                                 Diff : constant Long_Long_Integer := Acc.Natural_Amt - Prev_Amt;
-                                 Diff_Prefix : constant String := (if Diff > 0 then "+" else "");
-                              begin
-                                 Emit ("    " & Pad_Right (Tok, 24) & " " &
-                                       Pad_Left (Format_Quanta (Acc.Natural_Amt), 14) & " " &
-                                       Pad_Left (Format_Quanta (Prev_Amt), 14) & " " &
-                                       Pad_Left (Diff_Prefix & Format_Quanta (Diff), 14));
-                              end;
-                           end;
-                        end if;
-                     end;
-                  end loop;
+                  --  INCOME (Monthly Flows)
+                  Emit ("  [INCOME (Monthly Flow)]");
+                  if View.Income_Count = 0 then
+                     Emit ("    (No active income flows in comparison period)");
+                  else
+                     for I in 1 .. View.Income_Count loop
+                        declare
+                           Row         : HRA_N.Application.MoM_Query.Comparison_Row renames View.Incomes (I);
+                           Tok         : constant String := Row.Locus.Value (1 .. Row.Locus.Length);
+                           Diff_Prefix : constant String := (if Row.Difference > 0 then "+" else "");
+                        begin
+                           Emit ("    " & Pad_Right (Tok, 24) & " " &
+                                 Pad_Left (Format_Quanta (Row.Current_Amt), 14) & " " &
+                                 Pad_Left (Format_Quanta (Row.Prior_Amt), 14) & " " &
+                                 Pad_Left (Diff_Prefix & Format_Quanta (Row.Difference), 14));
+                        end;
+                     end loop;
+                  end if;
 
                   declare
-                     Diff_Inc : constant Long_Long_Integer := Cur_S.Total_Income - Prev_S.Total_Income;
+                     Diff_Inc : constant Long_Long_Integer := View.Total_Income.Difference;
                      Prefix   : constant String := (if Diff_Inc > 0 then "+" else "");
                   begin
                      Emit ("    " & Repeat ('-', 68));
                      Emit ("    " & Pad_Right ("Total Income", 24) & " " &
-                           Pad_Left (Format_Quanta (Cur_S.Total_Income), 14) & " " &
-                           Pad_Left (Format_Quanta (Prev_S.Total_Income), 14) & " " &
+                           Pad_Left (Format_Quanta (View.Total_Income.Current_Amt), 14) & " " &
+                           Pad_Left (Format_Quanta (View.Total_Income.Prior_Amt), 14) & " " &
                            Pad_Left (Prefix & Format_Quanta (Diff_Inc), 14));
                   end;
                   Emit ("");
@@ -831,26 +779,22 @@ package body HRA_N.UI.Report_TUI is
                   --  SUMMARY TOTALS
                   Emit ("  " & Repeat ('=', 72));
                   declare
-                     Cur_Sav  : constant Long_Long_Integer := Net_Savings (Cur_S);
-                     Prev_Sav : constant Long_Long_Integer := Net_Savings (Prev_S);
-                     Diff_Sav : constant Long_Long_Integer := Cur_Sav - Prev_Sav;
+                     Diff_Sav : constant Long_Long_Integer := View.Net_Savings.Difference;
                      Prefix   : constant String := (if Diff_Sav > 0 then "+" else "");
                   begin
-                     Emit ("  " & Pad_Right ("NET SAVINGS", 26) & " " &
-                           Pad_Left (Format_Quanta (Cur_Sav), 14) & " " &
-                           Pad_Left (Format_Quanta (Prev_Sav), 14) & " " &
+                     Emit ("  " & Pad_Right ("NET SAVINGS (Monthly Flow)", 26) & " " &
+                           Pad_Left (Format_Quanta (View.Net_Savings.Current_Amt), 14) & " " &
+                           Pad_Left (Format_Quanta (View.Net_Savings.Prior_Amt), 14) & " " &
                            Pad_Left (Prefix & Format_Quanta (Diff_Sav), 14));
                   end;
 
                   declare
-                     Cur_NW  : constant Long_Long_Integer := Net_Worth (Cur_S);
-                     Prev_NW : constant Long_Long_Integer := Net_Worth (Prev_S);
-                     Diff_NW : constant Long_Long_Integer := Cur_NW - Prev_NW;
+                     Diff_NW : constant Long_Long_Integer := View.Net_Worth.Difference;
                      Prefix  : constant String := (if Diff_NW > 0 then "+" else "");
                   begin
-                     Emit ("  " & Pad_Right ("NET WORTH (Assets - Liab)", 26) & " " &
-                           Pad_Left (Format_Quanta (Cur_NW), 14) & " " &
-                           Pad_Left (Format_Quanta (Prev_NW), 14) & " " &
+                     Emit ("  " & Pad_Right ("NET WORTH (Month-End Stock)", 26) & " " &
+                           Pad_Left (Format_Quanta (View.Net_Worth.Current_Amt), 14) & " " &
+                           Pad_Left (Format_Quanta (View.Net_Worth.Prior_Amt), 14) & " " &
                            Pad_Left (Prefix & Format_Quanta (Diff_NW), 14));
                   end;
                   Emit ("  " & Repeat ('=', 72));

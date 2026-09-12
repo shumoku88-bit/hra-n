@@ -33,6 +33,7 @@ with Test_Capacity_Command;
 with Test_Policy;
 with Test_Statement;
 with Test_Daily_Flow_Query;
+with Test_MoM_Query;
 with Test_Terminal_UTF8;
 
 procedure Test_Runner is
@@ -195,6 +196,11 @@ begin
    if Selected ("Test_Daily_Flow_Query") then
       Announce ("Test_Daily_Flow_Query");
       Test_Daily_Flow_Query.Run;
+   end if;
+
+   if Selected ("Test_MoM_Query") then
+      Announce ("Test_MoM_Query");
+      Test_MoM_Query.Run;
    end if;
 
    if Selected ("Test_Statement") then

@@ -801,6 +801,10 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("report", "--mom", "--month", "9", "--year", "2026")
         self.assertEqual(res.returncode, 0, f"report --mom failed: {res.stderr}")
         self.assertIn("MONTH-OVER-MONTH COMPARISON", res.stdout)
+        self.assertIn("EXPENSES (Monthly Flow)", res.stdout)
+        self.assertIn("INCOME (Monthly Flow)", res.stdout)
+        self.assertIn("NET SAVINGS (Monthly Flow)", res.stdout)
+        self.assertIn("NET WORTH (Month-End Stock)", res.stdout)
 
         res = self.run_cmd("report", "--budget", "--month", "9", "--year", "2026")
         self.assertEqual(res.returncode, 0, f"report --budget failed: {res.stderr}")
