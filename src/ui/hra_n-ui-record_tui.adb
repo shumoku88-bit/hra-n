@@ -21,6 +21,7 @@ with Terminal_Interface.Curses;
 package body HRA_N.UI.Record_TUI is
 
    package Curses renames Terminal_Interface.Curses;
+   use type HRA_N.UI.Terminal_UTF8.Input_Kind;
 
    Ctrl_L : constant Integer := 12;
 
@@ -223,39 +224,60 @@ package body HRA_N.UI.Record_TUI is
          end case;
       end Prev_Field;
 
-      procedure Append_Char (C : Character) is
+      procedure Append_Character
+        (Code_Point : HRA_N.UI.Terminal_UTF8.Unicode_Code_Point)
+      is
       begin
          Notice_Len := 0;
          case Focus is
             when Field_Date =>
-               if Date_Len < Date_Str'Length then
+               if Code_Point in 32 .. 126
+                 and then Date_Len < Date_Str'Length
+               then
                   Date_Len := Date_Len + 1;
-                  Date_Str (Date_Len) := C;
+                  Date_Str (Date_Len) := Character'Val (Code_Point);
                end if;
             when Field_From =>
-               if From_Len < From_Str'Length and then (Character'Pos (C) in 32 .. 126) then
+               if Code_Point in 32 .. 126
+                 and then From_Len < From_Str'Length
+               then
                   From_Len := From_Len + 1;
-                  From_Str (From_Len) := C;
+                  From_Str (From_Len) := Character'Val (Code_Point);
                   Update_Candidates (From_Str (1 .. From_Len));
                end if;
             when Field_To =>
-               if To_Len < To_Str'Length and then (Character'Pos (C) in 32 .. 126) then
+               if Code_Point in 32 .. 126
+                 and then To_Len < To_Str'Length
+               then
                   To_Len := To_Len + 1;
-                  To_Str (To_Len) := C;
+                  To_Str (To_Len) := Character'Val (Code_Point);
                   Update_Candidates (To_Str (1 .. To_Len));
                end if;
             when Field_Amount =>
-               if C in '0' .. '9' and then Amt_Len < Amt_Str'Length then
+               if Code_Point in Character'Pos ('0') .. Character'Pos ('9')
+                 and then Amt_Len < Amt_Str'Length
+               then
                   Amt_Len := Amt_Len + 1;
-                  Amt_Str (Amt_Len) := C;
+                  Amt_Str (Amt_Len) := Character'Val (Code_Point);
                end if;
             when Field_Description =>
-               if C /= '"' and then Desc_Len < Desc_Str'Length then
-                  Desc_Len := Desc_Len + 1;
-                  Desc_Str (Desc_Len) := C;
+               if Code_Point >= 32
+                 and then Code_Point /= Character'Pos ('"')
+               then
+                  declare
+                     Encoded : constant String :=
+                       HRA_N.UI.Terminal_UTF8.Append_Code_Point
+                         ("", Code_Point);
+                  begin
+                     if Encoded'Length <= Desc_Str'Length - Desc_Len then
+                        Desc_Str
+                          (Desc_Len + 1 .. Desc_Len + Encoded'Length) := Encoded;
+                        Desc_Len := Desc_Len + Encoded'Length;
+                     end if;
+                  end;
                end if;
          end case;
-      end Append_Char;
+      end Append_Character;
 
       procedure Delete_Char is
       begin
@@ -727,71 +749,86 @@ package body HRA_N.UI.Record_TUI is
          end if;
 
          declare
-            Key : constant Integer := Integer (Curses.Get_Keystroke);
+            Event : constant HRA_N.UI.Terminal_UTF8.Input_Event :=
+              HRA_N.UI.Terminal_UTF8.Read_Input;
+            Is_Character : constant Boolean :=
+              Event.Kind = HRA_N.UI.Terminal_UTF8.Character_Input;
+            Key : constant Integer :=
+              (case Event.Kind is
+                  when HRA_N.UI.Terminal_UTF8.Character_Input =>
+                     Integer (Event.Code_Point),
+                  when HRA_N.UI.Terminal_UTF8.Special_Key_Input =>
+                     Event.Key_Code);
          begin
             if Mode = Mode_Editing then
-               if Key = 27 then
+               if Is_Character and then Key = 27 then
                   --  Cancel: discard draft without modifying authority
                   Running := False;
-               elsif Key = 9 then
+               elsif Is_Character and then Key = 9 then
                   --  Tab: advance field
                   Next_Field;
-               elsif Key = Integer (Curses.KEY_BTAB)
-                 or else Key = Integer (Curses.Key_Back_Tab)
+               elsif not Is_Character
+                 and then (Key = Integer (Curses.KEY_BTAB)
+                           or else Key = Integer (Curses.Key_Back_Tab))
                then
                   --  BackTab / Shift-Tab
                   Prev_Field;
-               elsif Key = Integer (Curses.KEY_DOWN) then
+               elsif not Is_Character and then Key = Integer (Curses.KEY_DOWN) then
                   if Focus in Field_From | Field_To and then Filtered_Count > 1 then
                      Cand_Idx := (if Cand_Idx < Filtered_Count then Cand_Idx + 1 else 1);
                   else
                      Next_Field;
                   end if;
-               elsif Key = Integer (Curses.KEY_UP) then
+               elsif not Is_Character and then Key = Integer (Curses.KEY_UP) then
                   if Focus in Field_From | Field_To and then Filtered_Count > 1 then
                      Cand_Idx := (if Cand_Idx > 1 then Cand_Idx - 1 else Filtered_Count);
                   else
                      Prev_Field;
                   end if;
-               elsif Key = Integer (Curses.KEY_RIGHT)
-                 or else Key = Integer (Curses.Key_Cursor_Right)
+               elsif not Is_Character
+                 and then (Key = Integer (Curses.KEY_RIGHT)
+                           or else Key = Integer (Curses.Key_Cursor_Right))
                then
                   if Focus in Field_From | Field_To then
                      Accept_Candidate_And_Advance;
                   else
                      Next_Field;
                   end if;
-               elsif Key = Integer (Curses.KEY_LEFT)
-                 or else Key = Integer (Curses.Key_Cursor_Left)
+               elsif not Is_Character
+                 and then (Key = Integer (Curses.KEY_LEFT)
+                           or else Key = Integer (Curses.Key_Cursor_Left))
                then
                   if Focus in Field_From | Field_To and then Filtered_Count > 1 then
                      Cand_Idx := (if Cand_Idx > 1 then Cand_Idx - 1 else Filtered_Count);
                   else
                      Prev_Field;
                   end if;
-               elsif Key = Integer (Curses.KEY_BACKSPACE)
-                 or else Key = Integer (Curses.Key_Backspace)
-                 or else Key = 127
-                 or else Key = 8
+               elsif (Is_Character and then Key in 8 | 127)
+                 or else (not Is_Character
+                          and then (Key = Integer (Curses.KEY_BACKSPACE)
+                                    or else Key = Integer (Curses.Key_Backspace)))
                then
                   Delete_Char;
-               elsif Key = Integer (Curses.KEY_ENTER)
-                 or else Key = Integer (Curses.Key_Enter_Or_Send)
-                 or else Key = 10
-                 or else Key = 13
+               elsif (Is_Character and then Key in 10 | 13)
+                 or else (not Is_Character
+                          and then (Key = Integer (Curses.KEY_ENTER)
+                                    or else Key = Integer (Curses.Key_Enter_Or_Send)))
                then
                   Handle_Enter;
-               elsif Key in 32 .. 126 | 128 .. 255 then
-                  Append_Char (Character'Val (Key));
-               elsif Key = Ctrl_L or else Key = Integer (Curses.Key_Resize) then
+               elsif Is_Character and then Key >= 32 then
+                  Append_Character (Event.Code_Point);
+               elsif (Is_Character and then Key = Ctrl_L)
+                 or else (not Is_Character
+                          and then Key = Integer (Curses.Key_Resize))
+               then
                   null;
                end if;
             else
                --  Mode_Preview
-               if Key = Integer (Curses.KEY_ENTER)
-                 or else Key = Integer (Curses.Key_Enter_Or_Send)
-                 or else Key = 10
-                 or else Key = 13
+               if (Is_Character and then Key in 10 | 13)
+                 or else (not Is_Character
+                          and then (Key = Integer (Curses.KEY_ENTER)
+                                    or else Key = Integer (Curses.Key_Enter_Or_Send)))
                then
                   declare
                      Receipt : constant Movement_Receipt := Commit (Proposal);
@@ -807,15 +844,22 @@ package body HRA_N.UI.Record_TUI is
                            Receipt.Error (1 .. Receipt.Error_Len));
                      end if;
                   end;
-               elsif Key = Character'Pos ('e')
-                 or else Key = Character'Pos ('E')
-                 or else Key = 27
+               elsif Is_Character
+                 and then (Key = Character'Pos ('e')
+                           or else Key = Character'Pos ('E')
+                           or else Key = 27)
                then
                   Mode := Mode_Editing;
                   Notice_Len := 0;
-               elsif Key = Character'Pos ('q') or else Key = Character'Pos ('Q') then
+               elsif Is_Character
+                 and then (Key = Character'Pos ('q')
+                           or else Key = Character'Pos ('Q'))
+               then
                   Running := False;
-               elsif Key = Ctrl_L or else Key = Integer (Curses.Key_Resize) then
+               elsif (Is_Character and then Key = Ctrl_L)
+                 or else (not Is_Character
+                          and then Key = Integer (Curses.Key_Resize))
+               then
                   null;
                end if;
             end if;

@@ -104,6 +104,9 @@ jobs:
       - name: Test Statement
         run: ./tests/bin/test_runner Test_Statement
 
+      - name: Test Terminal UTF-8
+        run: ./tests/bin/test_runner Test_Terminal_UTF8
+
       - name: Run CLI E2E
         run: |
           python3 ./tests/test_cli.py

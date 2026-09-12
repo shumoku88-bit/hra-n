@@ -32,6 +32,7 @@ with Test_Attention_Command;
 with Test_Capacity_Command;
 with Test_Policy;
 with Test_Statement;
+with Test_Terminal_UTF8;
 
 procedure Test_Runner is
    Matched : Boolean := False;
@@ -193,6 +194,11 @@ begin
    if Selected ("Test_Statement") then
       Announce ("Test_Statement");
       Test_Statement.Run;
+   end if;
+
+   if Selected ("Test_Terminal_UTF8") then
+      Announce ("Test_Terminal_UTF8");
+      Test_Terminal_UTF8.Run;
    end if;
 
    if Ada.Command_Line.Argument_Count = 1 and then not Matched then
