@@ -32,8 +32,4 @@ project HRA_N is
       for Executable ("hra_n_main.adb") use "hra-n";
       for Executable ("hra_n_observe.adb") use "hra-n-observe";
    end Builder;
-
-   package Linker is
-      for Default_Switches ("Ada") use ("-Wl,-stack_size,0x1000000");
-   end Linker;
 end HRA_N;
