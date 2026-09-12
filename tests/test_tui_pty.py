@@ -68,23 +68,23 @@ def main() -> None:
             read_until(fd, output, b"SELECTED DAY")
             # Test draft cancellation from Movement editor
             os.write(fd, b"n")
-            read_until(fd, output, b"RECORD MOVEMENT")
+            read_until(fd, output, b"Record Actual")
             os.write(fd, b"\x1b")
             read_until(fd, output, b"SELECTED DAY")
 
             # Open Movement editor and record new transaction
             os.write(fd, b"n")
-            read_until(fd, output, b"RECORD MOVEMENT")
-            time.sleep(0.05)
-            os.write(fd, b"\t")
-            time.sleep(0.05)
-            os.write(fd, b"cash\t")
-            time.sleep(0.05)
-            os.write(fd, b"food\t")
-            time.sleep(0.05)
-            os.write(fd, b"250\t")
+            read_until(fd, output, b"Record Actual")
             time.sleep(0.05)
             os.write(fd, b"Lunch\n")
+            time.sleep(0.05)
+            os.write(fd, b"cash\n")
+            time.sleep(0.05)
+            os.write(fd, b"-250\n")
+            time.sleep(0.05)
+            os.write(fd, b"food\n")
+            time.sleep(0.05)
+            os.write(fd, b"250\n")
 
             # Preview admission and commit
             read_until(fd, output, b"ADMISSION PREVIEW")
@@ -107,23 +107,19 @@ def main() -> None:
 
             # Test cancelling correction editor
             os.write(fd, b"c")
-            read_until(fd, output, b"CORRECT MOVEMENT e0002")
+            read_until(fd, output, b"Correct Actual: e0002")
             os.write(fd, b"\x1b")
             read_until(fd, output, b"c: correct")
 
             # Open correction editor and modify amount
             os.write(fd, b"c")
-            read_until(fd, output, b"CORRECT MOVEMENT e0002")
+            read_until(fd, output, b"Correct Actual: e0002")
             time.sleep(0.05)
-            os.write(fd, b"\t")  # to From
+            os.write(fd, b"\t\t")  # to Posting 1 Amount
             time.sleep(0.05)
-            os.write(fd, b"\t")  # to To
+            os.write(fd, b"\x7f\x7f\x7f\x7f-350\t\t")  # replace -250 with -350, tab to Posting 2 Amount
             time.sleep(0.05)
-            os.write(fd, b"\t")  # to Amount
-            time.sleep(0.05)
-            os.write(fd, b"\x7f\x7f\x7f")  # delete "250"
-            time.sleep(0.05)
-            os.write(fd, b"350\n")
+            os.write(fd, b"\x7f\x7f\x7f350\n")  # replace 250 with 350, Enter to propose
 
             # Preview admission and commit replacement
             read_until(fd, output, b"Replaces:     e0002")
@@ -437,53 +433,40 @@ def main() -> None:
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
 
-            # Record a split movement through the multi-effect editor
+            # Record a split movement through the unified posting editor
             os.write(fd, b"a")
             read_until(fd, output, b"ACTUAL  ALL CURRENT")
             time.sleep(0.05)
             os.write(fd, b"m")
-            read_until(fd, output, b"From locus (blank finishes)")
+            read_until(fd, output, b"Record Actual")
             time.sleep(0.05)
+            # Description: Split lunch
+            os.write(fd, b"Split lunch\n")
+            time.sleep(0.05)
+            # Posting 1: cash, -1200
             os.write(fd, b"cash\n")
-            read_until(fd, output, b"Amount for cash")
             time.sleep(0.05)
-            os.write(fd, b"1200\n")
-            read_until(fd, output, b"Measure (blank for jpy)")
+            os.write(fd, b"-1200\n")
             time.sleep(0.05)
-            os.write(fd, b"\n")
-            read_until(fd, output, b"From locus (blank finishes)")
-            time.sleep(0.05)
-            os.write(fd, b"\n")
-            read_until(fd, output, b"To locus (blank finishes)")
-            time.sleep(0.05)
+            # Posting 2: food, 800
             os.write(fd, b"food\n")
-            read_until(fd, output, b"Amount for food")
             time.sleep(0.05)
-            os.write(fd, b"800\n")
-            read_until(fd, output, b"Measure (blank for jpy)")
+            os.write(fd, b"800")
             time.sleep(0.05)
-            os.write(fd, b"\n")
-            read_until(fd, output, b"To locus (blank finishes)")
+            # Add third posting row with Ctrl-N (\x0e)
+            os.write(fd, b"\x0e")
             time.sleep(0.05)
+            # Posting 3: misc, 400
             os.write(fd, b"misc\n")
-            read_until(fd, output, b"Amount for misc")
             time.sleep(0.05)
             os.write(fd, b"400\n")
-            read_until(fd, output, b"Measure (blank for jpy)")
-            time.sleep(0.05)
+
+            # Preview admission and commit
+            read_until(fd, output, b"ADMISSION PREVIEW")
+            assert b"cash" in output
+            assert b"food" in output
+            assert b"misc" in output
             os.write(fd, b"\n")
-            read_until(fd, output, b"To locus (blank finishes)")
-            time.sleep(0.05)
-            os.write(fd, b"\n")
-            read_until(fd, output, b"Description (blank for none)")
-            time.sleep(0.05)
-            os.write(fd, b"Split lunch\n")
-            read_until(fd, output, b"Date (YYYY-MM-DD")
-            time.sleep(0.05)
-            os.write(fd, b"\n")
-            read_until(fd, output, b"cash")
-            assert b"SPLIT PREVIEW" in output
-            os.write(fd, b"y")
             read_until(fd, output, b"ACTUAL  ALL CURRENT")
 
             # Return to Home
@@ -580,25 +563,25 @@ def main() -> None:
             os.write(fd, b"\n")
             read_until(fd, output, b"SELECTED DAY")
             os.write(fd, b"n")
-            read_until(fd, output, b"RECORD MOVEMENT")
+            read_until(fd, output, b"Record Actual")
             time.sleep(0.05)
-            # Date: press Enter directly to accept default day and advance to From
-            os.write(fd, b"\n")
+            # Description: write UTF-8 note and press Enter to advance to Posting 1 Locus
+            os.write(fd, "昼食\n".encode("utf-8"))
             time.sleep(0.05)
-            # From: candidates should be visible; press Enter to accept first candidate (cash) and advance to To
+            # Posting 1 Locus: candidates visible; press Enter to accept first candidate (cash) and advance to Amount
             read_until(fd, output, b"Candidate loci [Up/Down: pick, Enter/Right: accept]:")
             os.write(fd, b"\n")
             time.sleep(0.05)
-            # To: type 'f' then press Enter to accept 'food' and advance to Amount
+            # Posting 1 Amount: type -100 then press Enter to advance to Posting 2 Locus
+            os.write(fd, b"-100\n")
+            time.sleep(0.05)
+            # Posting 2 Locus: type 'f' then press Enter to accept 'food' and advance to Amount
             os.write(fd, b"f\n")
             time.sleep(0.05)
-            # Amount: type 100 then press Tab to Description
-            os.write(fd, b"100\t")
-            time.sleep(0.05)
-            # Description: write UTF-8 note and press Enter to propose
-            os.write(fd, "昼食\n".encode("utf-8"))
-            read_until(fd, output, "昼食".encode("utf-8"))
-            assert b"ADMISSION PREVIEW" in output
+            # Posting 2 Amount: type 100 then press Enter to propose
+            os.write(fd, b"100\n")
+            read_until(fd, output, b"ADMISSION PREVIEW")
+            assert "昼食".encode("utf-8") in output
             # Commit
             os.write(fd, b"\n")
             read_until(fd, output, "昼食".encode("utf-8"))
