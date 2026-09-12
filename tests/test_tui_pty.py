@@ -200,7 +200,9 @@ def main() -> None:
             os.write(fd, b"50000\n")
             time.sleep(0.05)
             read_until(fd, output, b"ADMISSION PREVIEW")
-            assert b"Rent" in output
+            time.sleep(0.05)
+            assert b"cash" in output
+            assert b"food" in output
             # Commit new scheduled obligation
             os.write(fd, b"\n")
             read_until(fd, output, b"s0002")
@@ -448,7 +450,7 @@ def main() -> None:
             time.sleep(0.05)
             os.write(fd, b"\n")
             read_until(fd, output, b"DETAIL  e0004")
-            os.write(fd, b"d")
+            os.write(fd, b"s")
             read_until(fd, output, b"PICK CLAIM TO DISCHARGE")
             time.sleep(0.05)
             os.write(fd, b"\n")
@@ -458,10 +460,41 @@ def main() -> None:
             read_until(fd, output, b"DISCHARGE PREVIEW")
             os.write(fd, b"y")
             read_until(fd, output, b"settles rel0001")
+            time.sleep(0.05)
 
-            # Return to Home
+            # Test quick date correction with 'd' on e0004
+            os.write(fd, b"d")
+            read_until(fd, output, b"CORRECT ACTUAL DATE: e0004")
+            time.sleep(0.05)
+            # Edit date: backspace last char '2' and change to '3' (2026-09-13)
+            os.write(fd, b"\x7f3\n")
+            read_until(fd, output, b"DATE CORRECTION - ADMISSION PREVIEW")
+            read_until(fd, output, b"Ready to commit date correction to authority.")
+            time.sleep(0.05)
+            # Commit date correction
+            os.write(fd, b"\n")
+            read_until(fd, output, b"e0006")
+            time.sleep(0.05)
+
+            # Return to Actual list
             os.write(fd, b"b")
             read_until(fd, output, b"Order:")
+            time.sleep(0.05)
+
+            # Test interactive search filter in Actual_TUI
+            os.write(fd, b"/")
+            read_until(fd, output, b"Search: [_]")
+            time.sleep(0.05)
+            # Type search query "e0006"
+            os.write(fd, b"e0006\n")
+            read_until(fd, output, b"Esc: clear filter")
+            time.sleep(0.05)
+            # Clear filter with Esc
+            os.write(fd, b"\x1b")
+            read_until(fd, output, b"/: filter")
+            time.sleep(0.05)
+
+            # Return to Home
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
 
@@ -612,7 +645,7 @@ def main() -> None:
             time.sleep(0.05)
             # Posting 2 Amount: type 100 then press Enter to propose
             os.write(fd, b"100\n")
-            read_until(fd, output, b"ADMISSION PREVIEW")
+            read_until(fd, output, b"Ready to commit to authority.")
             assert "昼食".encode("utf-8") in output
             # Commit
             os.write(fd, b"\n")

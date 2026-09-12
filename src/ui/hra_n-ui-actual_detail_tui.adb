@@ -11,6 +11,7 @@ with HRA_N.Application.Relation_Command; use HRA_N.Application.Relation_Command;
 with HRA_N.Application.Relation_Query;
 with HRA_N.Application.Review; use HRA_N.Application.Review;
 with HRA_N.UI.Capacity_CLI;
+with HRA_N.UI.Date_Correction_TUI;
 with HRA_N.UI.Line_Edit; use HRA_N.UI.Line_Edit;
 with HRA_N.UI.Record_TUI; use HRA_N.UI.Record_TUI;
 with HRA_N.UI.Relation_CLI;
@@ -373,11 +374,11 @@ package body HRA_N.UI.Actual_Detail_TUI is
                         Scroll_Hint : constant String :=
                           (if Total_Lines > Avail_Rows then "j/k/wheel: scroll   " else "");
                      begin
-                        if not View.Is_Superseded and then not View.Is_Reversed
-                          and then View.Status /= Query_Rejected
-                        then
-                           Put_Clipped (Rows - 2, Scroll_Hint & "c: correct   v: reverse   l: relate   d: settle   r: reload   b/Esc: Actual");
-                        else
+                         if not View.Is_Superseded and then not View.Is_Reversed
+                           and then View.Status /= Query_Rejected
+                         then
+                            Put_Clipped (Rows - 2, Scroll_Hint & "c: correct   d: date   v: reverse   l: relate   s: settle   r: reload   b/Esc: Actual");
+                         else
                            Put_Clipped (Rows - 2, Scroll_Hint & "r: reload   b/Esc: Actual");
                         end if;
                      end;
@@ -526,8 +527,27 @@ package body HRA_N.UI.Actual_Detail_TUI is
                         end;
                      end if;
                   end;
-               elsif (Key = Character'Pos ('l') or else Key = Character'Pos ('L')
-                 or else Key = Character'Pos ('d') or else Key = Character'Pos ('D'))
+                elsif (Key = Character'Pos ('d') or else Key = Character'Pos ('D'))
+                  and then not View.Is_Superseded
+                  and then not View.Is_Reversed
+                  and then View.Status /= Query_Rejected
+                then
+                   declare
+                      New_Id    : Token_Text;
+                      Committed : Boolean := False;
+                   begin
+                      HRA_N.UI.Date_Correction_TUI.Run
+                        (Paths        => Current_Paths,
+                         Detail       => View,
+                         New_Event_Id => New_Id,
+                         Committed    => Committed);
+                      if Committed then
+                         Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
+                         Current_Event_Id := New_Id;
+                      end if;
+                   end;
+                elsif (Key = Character'Pos ('l') or else Key = Character'Pos ('L')
+                  or else Key = Character'Pos ('s') or else Key = Character'Pos ('S'))
                  and then not View.Is_Superseded
                  and then not View.Is_Reversed
                  and then View.Status /= Query_Rejected
