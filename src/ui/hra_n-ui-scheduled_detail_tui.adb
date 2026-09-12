@@ -7,6 +7,7 @@ with HRA_N.Application.Scheduled_Command; use HRA_N.Application.Scheduled_Comman
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.UI.Snapshot_Label;
+with HRA_N.UI.Record_TUI;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with HRA_N.UI.Terminal_Style;
 with HRA_N.UI.TUI_Input;
@@ -127,34 +128,49 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                           and then View.Lifecycle_Status = Status_Open
                           and then View.Status /= Query_Rejected
                         then
-                  Put_Clipped (Rows - 1, "Complete obligation and record Actual movement? (y/n): ");
-                  Curses.Refresh;
-                  declare
-                     Confirm : constant Integer := Integer (Curses.Get_Keystroke);
-                  begin
-                     if Confirm = Character'Pos ('y') or else Confirm = Character'Pos ('Y') then
-                        declare
-                           Prop : constant Proposal_Result :=
-                             Propose_Completion
-                               (Current_Paths,
-                                (Target_Id          => Current_Id,
-                                 Has_Execution_Date => False,
-                                 Execution_Date     => View.Expected_Day,
-                                 Description        => (0, [others => ' ']),
-                                 Existing_Actual_Id => (0, [others => ' '])));
-                        begin
-                           if Prop.Success then
-                              declare
-                                 Rec : constant Scheduled_Receipt := Commit (Prop.Proposal);
-                              begin
-                                 if Rec.Success then
-                                    Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
-                                 end if;
-                              end;
-                           end if;
-                        end;
-                     end if;
-                  end;
+                            declare
+                               Init_From : Token_Text := (Length => 0, Value => [others => ' ']);
+                               Init_To   : Token_Text := (Length => 0, Value => [others => ' ']);
+                               Init_Amt  : Quanta_Type := 0;
+                            begin
+                               for Index in 1 .. View.Change_Count loop
+                                  if View.Changes (Index).Amount < 0 then
+                                     Init_From := View.Changes (Index).Locus;
+                                     if Init_Amt = 0 then
+                                        Init_Amt := abs View.Changes (Index).Amount;
+                                     end if;
+                                  elsif View.Changes (Index).Amount > 0 then
+                                     Init_To := View.Changes (Index).Locus;
+                                     if Init_Amt = 0 then
+                                        Init_Amt := View.Changes (Index).Amount;
+                                     end if;
+                                  end if;
+                               end loop;
+
+                               declare
+                                  New_Evt   : Token_Text;
+                                  Committed : Boolean := False;
+                                  Init      : constant HRA_N.UI.Record_TUI.Movement_Initial_Values :=
+                                    (Target_Id           => (Length => 0, Value => [others => ' ']),
+                                     Target_Scheduled_Id => Current_Id,
+                                     Date                => View.Expected_Day,
+                                     From_Locus          => Init_From,
+                                     To_Locus            => Init_To,
+                                     Amount              => Init_Amt,
+                                     Description         => (Length => 0, Value => [others => ' ']));
+                               begin
+                                  HRA_N.UI.Record_TUI.Run_Scheduled_Complete
+                                    (Paths        => Current_Paths,
+                                     Init         => Init,
+                                     New_Event_Id => New_Evt,
+                                     Committed    => Committed);
+                                  if Committed then
+                                     Current_Paths :=
+                                       HRA_N.Application.Path_Resolver.Resolve_Paths
+                                         (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                                  end if;
+                               end;
+                            end;
                elsif (Key = Character'Pos ('x') or else Key = Character'Pos ('X'))
                  and then View.Lifecycle_Status = Status_Open
                  and then View.Status /= Query_Rejected

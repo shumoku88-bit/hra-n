@@ -5,6 +5,7 @@ with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Storage.Scheduled_Journal_Reader; use HRA_N.Storage.Scheduled_Journal_Reader;
 with HRA_N.UI.Scheduled_Detail_TUI;
+with HRA_N.UI.Record_TUI;
 with HRA_N.UI.Output; use HRA_N.UI.Output;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with HRA_N.UI.Terminal_Style;
@@ -85,7 +86,7 @@ package body HRA_N.UI.Scheduled_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "j/k/wheel: select   Enter: detail   f: scope   b/Esc/q: home");
+            "j/k/wheel: select   n: create   Enter: detail   f: scope   b/Esc/q: home");
       end if;
       Curses.Refresh;
    end Draw;
@@ -200,6 +201,23 @@ package body HRA_N.UI.Scheduled_TUI is
                              when Scope_All          => Scope_Current_Open);
                         Cursor := 1;
                         Recompute_View;
+                     elsif Key = Character'Pos ('n') or else Key = Character'Pos ('N') then
+                        declare
+                           New_Sched_Id : Token_Text;
+                           Committed    : Boolean := False;
+                        begin
+                           HRA_N.UI.Record_TUI.Run_Scheduled_Create
+                             (Paths        => Current_Paths,
+                              Expected_Day => Selected_Day,
+                              New_Sched_Id => New_Sched_Id,
+                              Committed    => Committed);
+                           if Committed then
+                              Current_Paths :=
+                                HRA_N.Application.Path_Resolver.Resolve_Paths
+                                  (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
+                              Reload;
+                           end if;
+                        end;
                      elsif HRA_N.UI.TUI_Input.Is_Enter (Key) then
                         if Count > 0 and then Cursor <= Natural (Current_View.Row_Count) then
                            HRA_N.UI.Scheduled_Detail_TUI.Run

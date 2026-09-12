@@ -164,15 +164,47 @@ def main() -> None:
             assert b"OPEN" in output
             time.sleep(0.05)
 
-            # Test completing s0001 from detail
+            # Test completing s0001 from detail via interactive Record_TUI editor
             os.write(fd, b"c")
-            read_until(fd, output, b"Complete obligation")
-            os.write(fd, b"y")
+            read_until(fd, output, b"Complete Scheduled: s0001")
+            time.sleep(0.05)
+            # Accept Description and seeded postings by advancing with Enter
+            os.write(fd, b"\n\n\n\n\n")
+            read_until(fd, output, b"ADMISSION PREVIEW")
+            assert b"Completes:    s0001" in output
+            time.sleep(0.05)
+            # Commit completion
+            os.write(fd, b"\n")
             read_until(fd, output, b"COMPLETED (Actual: e0004)")
 
             # Return to Scheduled list (now 0 open items)
             os.write(fd, b"b")
             read_until(fd, output, b"No Scheduled obligations in this scope.")
+            time.sleep(0.05)
+
+            # Test creating a new scheduled obligation with 'n'
+            os.write(fd, b"n")
+            read_until(fd, output, b"Create Scheduled Obligation")
+            time.sleep(0.05)
+            # Description: Rent
+            os.write(fd, b"Rent\n")
+            time.sleep(0.05)
+            # Posting 1: cash, -50000
+            os.write(fd, b"cash\n")
+            time.sleep(0.05)
+            os.write(fd, b"-50000\n")
+            time.sleep(0.05)
+            # Posting 2: food, 50000
+            os.write(fd, b"food\n")
+            time.sleep(0.05)
+            os.write(fd, b"50000\n")
+            time.sleep(0.05)
+            read_until(fd, output, b"ADMISSION PREVIEW")
+            assert b"Rent" in output
+            # Commit new scheduled obligation
+            os.write(fd, b"\n")
+            read_until(fd, output, b"s0002")
+            assert b"OPEN" in output
             time.sleep(0.05)
 
             # Cycle scope to all recognized to verify completed item

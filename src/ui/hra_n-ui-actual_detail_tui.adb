@@ -471,12 +471,13 @@ package body HRA_N.UI.Actual_Detail_TUI is
                         end if;
                      end loop;
                      Init :=
-                       (Target_Id   => Current_Event_Id,
-                        Date        => View.Valid_On,
-                        From_Locus  => From_Tok,
-                        To_Locus    => To_Tok,
-                        Amount      => Amt,
-                        Description =>
+                       (Target_Id           => Current_Event_Id,
+                        Target_Scheduled_Id => (0, [others => ' ']),
+                        Date                => View.Valid_On,
+                        From_Locus          => From_Tok,
+                        To_Locus            => To_Tok,
+                        Amount              => Amt,
+                        Description         =>
                           (if View.Description.Length > 0
                            then Make_Token (To_String (View.Description))
                            else (Length => 0, Value => [others => ' '])));

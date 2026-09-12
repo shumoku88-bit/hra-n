@@ -8,6 +8,8 @@
 --    2. Loam ergonomics: Smart-Enter progression (Description -> Locus ->
 --       Amount -> Next Posting -> Preview), real-time balanced diff feedback,
 --       and role context in candidate picker.
+--    3. Scheduled lifecycle operations: Interactive completion with seeded draft
+--       and full-screen scheduled obligation creation.
 -------------------------------------------------------------------------------
 
 with Ada.Characters.Handling;
@@ -18,7 +20,9 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 with HRA_N.Application.Movement_Command; use HRA_N.Application.Movement_Command;
+with HRA_N.Application.Scheduled_Command; use HRA_N.Application.Scheduled_Command;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
+with HRA_N.Application.Proposal;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with HRA_N.UI.Terminal_UTF8;
 with Terminal_Interface.Curses;
@@ -43,6 +47,12 @@ package body HRA_N.UI.Record_TUI is
    end record;
 
    type Editor_Mode is (Mode_Editing, Mode_Preview);
+
+   type Operation_Kind is
+     (Op_Record_Actual,
+      Op_Correct_Actual,
+      Op_Create_Scheduled,
+      Op_Complete_Scheduled);
 
    type Posting_Entry is record
       Locus_Str : String (1 .. 32) := [others => ' '];
@@ -130,12 +140,12 @@ package body HRA_N.UI.Record_TUI is
    end Parse_Signed_Quanta;
 
    procedure Run_Unified
-     (Paths         : HRA_N.Application.Path_Resolver.Path_Config;
-      Selected_Day  : HRA_N.Core.Validity.Date_Type;
-      Is_Correction : Boolean;
-      Init          : Movement_Initial_Values;
-      New_Event_Id  : out Token_Text;
-      Committed     : out Boolean)
+     (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
+      Op           : Operation_Kind;
+      Selected_Day : HRA_N.Core.Validity.Date_Type;
+      Init         : Movement_Initial_Values;
+      New_Id       : out Token_Text;
+      Committed    : out Boolean)
    is
       Running : Boolean := True;
       Mode    : Editor_Mode := Mode_Editing;
@@ -151,9 +161,11 @@ package body HRA_N.UI.Record_TUI is
       Notice_Len : Natural := 0;
 
       Target_Str : constant String :=
-        Init.Target_Id.Value (1 .. Init.Target_Id.Length);
+        (if Op = Op_Correct_Actual then Init.Target_Id.Value (1 .. Init.Target_Id.Length)
+         elsif Op = Op_Complete_Scheduled then Init.Target_Scheduled_Id.Value (1 .. Init.Target_Scheduled_Id.Length)
+         else "");
 
-      Proposal : Movement_Proposal;
+      Proposal_Obj : HRA_N.Application.Proposal.Authority_Proposal;
 
       Policy     : constant Policy_Result := Read_Policy_File (Policy_Path_Str (Paths));
       Loci       : Locus_Array;
@@ -279,6 +291,10 @@ package body HRA_N.UI.Record_TUI is
 
       procedure Add_Posting_Row is
       begin
+         if Op in Op_Create_Scheduled then
+            Set_Notice ("Scheduled obligation supports 2 postings (outflow and inflow).");
+            return;
+         end if;
          if Posting_Count < Max_Postings then
             Posting_Count := Posting_Count + 1;
             Postings (Posting_Count) :=
@@ -454,7 +470,7 @@ package body HRA_N.UI.Record_TUI is
          All_Valid  : Boolean;
          Sum        : Long_Long_Integer;
          Pos_Total  : Quanta_Type;
-         Res        : Proposal_Result;
+         Res        : HRA_N.Application.Proposal.Proposal_Result;
       begin
          Notice_Len := 0;
 
@@ -497,57 +513,74 @@ package body HRA_N.UI.Record_TUI is
             end loop;
          end loop;
 
-         --  Admit proposals
-         if Is_Correction then
-            --  Correction: if exactly 2 postings with 1 negative and 1 positive, use Propose_Correction
-            if Posting_Count = 2 then
-               declare
-                  Val1, Val2 : Quanta_Type;
-                  P1_Ok : constant Boolean :=
-                    Parse_Signed_Quanta (Postings (1).Amt_Str (1 .. Postings (1).Amt_Len), Val1);
-                  P2_Ok : constant Boolean :=
-                    Parse_Signed_Quanta (Postings (2).Amt_Str (1 .. Postings (2).Amt_Len), Val2);
-               begin
-                  pragma Assert (P1_Ok and P2_Ok);
+         case Op is
+            when Op_Create_Scheduled =>
+               if Posting_Count = 2 then
                   declare
-                     From_Loc : constant String :=
-                       (if Val1 < 0
-                        then Postings (1).Locus_Str (1 .. Postings (1).Locus_Len)
-                        else Postings (2).Locus_Str (1 .. Postings (2).Locus_Len));
-                     To_Loc   : constant String :=
-                       (if Val1 > 0
-                        then Postings (1).Locus_Str (1 .. Postings (1).Locus_Len)
-                        else Postings (2).Locus_Str (1 .. Postings (2).Locus_Len));
-                     Amt      : constant Quanta_Type := (if Val1 > 0 then Val1 else Val2);
-                     Intent   : constant Correction_Intent :=
-                       (Target_Id   => Init.Target_Id,
-                        From_Locus  => (Token => Make_Token (From_Loc)),
-                        To_Locus    => (Token => Make_Token (To_Loc)),
-                        Measure     => (Token => Make_Token ("jpy")),
-                        Amount      => Amt,
-                        Valid_On    => Selected_Day,
-                        Description => Make_Token (Desc_Str (1 .. Desc_Len)));
+                     Val1, Val2 : Quanta_Type;
+                     P1_Ok : constant Boolean :=
+                       Parse_Signed_Quanta (Postings (1).Amt_Str (1 .. Postings (1).Amt_Len), Val1);
+                     P2_Ok : constant Boolean :=
+                       Parse_Signed_Quanta (Postings (2).Amt_Str (1 .. Postings (2).Amt_Len), Val2);
                   begin
-                     Res := Propose_Correction (Paths, Intent);
+                     pragma Assert (P1_Ok and P2_Ok);
+                     if (Val1 < 0 and Val2 > 0) or else (Val1 > 0 and Val2 < 0) then
+                        declare
+                           From_Loc : constant String :=
+                             (if Val1 < 0
+                              then Postings (1).Locus_Str (1 .. Postings (1).Locus_Len)
+                              else Postings (2).Locus_Str (1 .. Postings (2).Locus_Len));
+                           To_Loc   : constant String :=
+                             (if Val1 > 0
+                              then Postings (1).Locus_Str (1 .. Postings (1).Locus_Len)
+                              else Postings (2).Locus_Str (1 .. Postings (2).Locus_Len));
+                           Amt      : constant Quanta_Type := (if Val1 > 0 then Val1 else Val2);
+                           Intent   : constant Create_Intent :=
+                             (Id           => (0, [others => ' ']),
+                              Expected_Day => Selected_Day,
+                              From_Locus   => (Token => Make_Token (From_Loc)),
+                              To_Locus     => (Token => Make_Token (To_Loc)),
+                              Measure      => (Token => Make_Token ("jpy")),
+                              Amount       => Amt);
+                        begin
+                           Res := Propose_Create (Paths, Intent);
+                        end;
+                     else
+                        Set_Notice ("Scheduled obligation must have one outflow and one inflow.");
+                        return;
+                     end if;
                   end;
-               end;
-            else
-               Set_Notice ("Correction currently supports 2-leg replacement.");
-               return;
-            end if;
-         else
-            --  Standard recording:
-            --  If 2 postings (1 negative and 1 positive), use Propose for automatic routing/purpose
-            if Posting_Count = 2 then
+               else
+                  Set_Notice ("Scheduled obligation creation requires exactly 2 postings.");
+                  return;
+               end if;
+
+            when Op_Complete_Scheduled =>
                declare
-                  Val1, Val2 : Quanta_Type;
-                  P1_Ok : constant Boolean :=
-                    Parse_Signed_Quanta (Postings (1).Amt_Str (1 .. Postings (1).Amt_Len), Val1);
-                  P2_Ok : constant Boolean :=
-                    Parse_Signed_Quanta (Postings (2).Amt_Str (1 .. Postings (2).Amt_Len), Val2);
+                  Desc_Tok : constant Token_Text :=
+                    (if Desc_Len > 0
+                     then Make_Token (Desc_Str (1 .. Desc_Len))
+                     else Make_Token ("Scheduled completion: " & Target_Str));
+                  Intent   : constant Complete_Intent :=
+                    (Target_Id          => Init.Target_Scheduled_Id,
+                     Has_Execution_Date => True,
+                     Execution_Date     => Selected_Day,
+                     Description        => Desc_Tok,
+                     Existing_Actual_Id => (0, [others => ' ']));
                begin
-                  pragma Assert (P1_Ok and P2_Ok);
-                  if (Val1 < 0 and Val2 > 0) or else (Val1 > 0 and Val2 < 0) then
+                  Res := Propose_Completion (Paths, Intent);
+               end;
+
+            when Op_Correct_Actual =>
+               if Posting_Count = 2 then
+                  declare
+                     Val1, Val2 : Quanta_Type;
+                     P1_Ok : constant Boolean :=
+                       Parse_Signed_Quanta (Postings (1).Amt_Str (1 .. Postings (1).Amt_Len), Val1);
+                     P2_Ok : constant Boolean :=
+                       Parse_Signed_Quanta (Postings (2).Amt_Str (1 .. Postings (2).Amt_Len), Val2);
+                  begin
+                     pragma Assert (P1_Ok and P2_Ok);
                      declare
                         From_Loc : constant String :=
                           (if Val1 < 0
@@ -558,50 +591,87 @@ package body HRA_N.UI.Record_TUI is
                            then Postings (1).Locus_Str (1 .. Postings (1).Locus_Len)
                            else Postings (2).Locus_Str (1 .. Postings (2).Locus_Len));
                         Amt      : constant Quanta_Type := (if Val1 > 0 then Val1 else Val2);
-                        Intent   : constant Movement_Intent :=
-                          (From_Locus  => (Token => Make_Token (From_Loc)),
+                        Intent   : constant Correction_Intent :=
+                          (Target_Id   => Init.Target_Id,
+                           From_Locus  => (Token => Make_Token (From_Loc)),
                            To_Locus    => (Token => Make_Token (To_Loc)),
                            Measure     => (Token => Make_Token ("jpy")),
                            Amount      => Amt,
                            Valid_On    => Selected_Day,
                            Description => Make_Token (Desc_Str (1 .. Desc_Len)));
                      begin
-                        Res := Propose (Paths, Intent);
+                        Res := Propose_Correction (Paths, Intent);
                      end;
-                  else
-                     --  Both negative or both positive (which shouldn't happen if sum=0)
-                     Set_Notice ("2-posting movement must have one outflow and one inflow.");
-                     return;
-                  end if;
-               end;
-            else
-               --  Multi-leg movement (3..8 postings): use Propose_Split
-               declare
-                  Intent : Record_Split_Intent;
-               begin
-                  Intent.Count := Natural (Posting_Count);
-                  Intent.Valid_On := Selected_Day;
-                  Intent.Description := Make_Token (Desc_Str (1 .. Desc_Len));
-                  for I in 1 .. Posting_Count loop
-                     declare
-                        Val : Quanta_Type;
-                        V_Ok : constant Boolean :=
-                          Parse_Signed_Quanta (Postings (I).Amt_Str (1 .. Postings (I).Amt_Len), Val);
-                     begin
-                        pragma Assert (V_Ok);
-                        Intent.Changes (I) :=
-                          (Locus   => (Token => Make_Token (Postings (I).Locus_Str (1 .. Postings (I).Locus_Len))),
-                           Measure => (Token => Make_Token ("jpy")),
-                           Amount  => Val);
-                     end;
-                  end loop;
-                  Res := Propose_Split (Paths, Intent);
-               end;
-            end if;
-         end if;
+                  end;
+               else
+                  Set_Notice ("Correction currently supports 2-leg replacement.");
+                  return;
+               end if;
+
+            when Op_Record_Actual =>
+               if Posting_Count = 2 then
+                  declare
+                     Val1, Val2 : Quanta_Type;
+                     P1_Ok : constant Boolean :=
+                       Parse_Signed_Quanta (Postings (1).Amt_Str (1 .. Postings (1).Amt_Len), Val1);
+                     P2_Ok : constant Boolean :=
+                       Parse_Signed_Quanta (Postings (2).Amt_Str (1 .. Postings (2).Amt_Len), Val2);
+                  begin
+                     pragma Assert (P1_Ok and P2_Ok);
+                     if (Val1 < 0 and Val2 > 0) or else (Val1 > 0 and Val2 < 0) then
+                        declare
+                           From_Loc : constant String :=
+                             (if Val1 < 0
+                              then Postings (1).Locus_Str (1 .. Postings (1).Locus_Len)
+                              else Postings (2).Locus_Str (1 .. Postings (2).Locus_Len));
+                           To_Loc   : constant String :=
+                             (if Val1 > 0
+                              then Postings (1).Locus_Str (1 .. Postings (1).Locus_Len)
+                              else Postings (2).Locus_Str (1 .. Postings (2).Locus_Len));
+                           Amt      : constant Quanta_Type := (if Val1 > 0 then Val1 else Val2);
+                           Intent   : constant Movement_Intent :=
+                             (From_Locus  => (Token => Make_Token (From_Loc)),
+                              To_Locus    => (Token => Make_Token (To_Loc)),
+                              Measure     => (Token => Make_Token ("jpy")),
+                              Amount      => Amt,
+                              Valid_On    => Selected_Day,
+                              Description => Make_Token (Desc_Str (1 .. Desc_Len)));
+                        begin
+                           Res := Propose (Paths, Intent);
+                        end;
+                     else
+                        Set_Notice ("2-posting movement must have one outflow and one inflow.");
+                        return;
+                     end if;
+                  end;
+               else
+                  --  Multi-leg movement (3..8 postings): use Propose_Split
+                  declare
+                     Intent : Record_Split_Intent;
+                  begin
+                     Intent.Count := Natural (Posting_Count);
+                     Intent.Valid_On := Selected_Day;
+                     Intent.Description := Make_Token (Desc_Str (1 .. Desc_Len));
+                     for I in 1 .. Posting_Count loop
+                        declare
+                           Val : Quanta_Type;
+                           V_Ok : constant Boolean :=
+                             Parse_Signed_Quanta (Postings (I).Amt_Str (1 .. Postings (I).Amt_Len), Val);
+                        begin
+                           pragma Assert (V_Ok);
+                           Intent.Changes (I) :=
+                             (Locus   => (Token => Make_Token (Postings (I).Locus_Str (1 .. Postings (I).Locus_Len))),
+                              Measure => (Token => Make_Token ("jpy")),
+                              Amount  => Val);
+                        end;
+                     end loop;
+                     Res := Propose_Split (Paths, Intent);
+                  end;
+               end if;
+         end case;
 
          if Res.Success then
-            Proposal := Res.Proposal;
+            Proposal_Obj := Res.Proposal;
             Mode := Mode_Preview;
          else
             Set_Notice (Res.Error (1 .. Res.Error_Len));
@@ -651,9 +721,15 @@ package body HRA_N.UI.Record_TUI is
          --  Header
          declare
             Title : constant String :=
-              (if Is_Correction
-               then "Correct Actual: " & Target_Str & " (" & Format_Iso_Date (Selected_Day) & ")  "
-               else "Record Actual: " & Format_Iso_Date (Selected_Day) & "  ");
+              (case Op is
+                 when Op_Record_Actual =>
+                    "Record Actual: " & Format_Iso_Date (Selected_Day) & "  ",
+                 when Op_Correct_Actual =>
+                    "Correct Actual: " & Target_Str & " (" & Format_Iso_Date (Selected_Day) & ")  ",
+                 when Op_Create_Scheduled =>
+                    "Create Scheduled Obligation: " & Format_Iso_Date (Selected_Day) & "  ",
+                 when Op_Complete_Scheduled =>
+                    "Complete Scheduled: " & Target_Str & " (" & Format_Iso_Date (Selected_Day) & ")  ");
             Snap_Str : constant String :=
               (if Paths.Is_Versioned then Snapshot_Id_Str (Paths) else "(unversioned)");
          begin
@@ -855,18 +931,27 @@ package body HRA_N.UI.Record_TUI is
          Current_Row := Current_Row + 1;
          Put_Clipped
            (Current_Row,
-            (if Is_Correction
-             then " CORRECT ACTUAL - ADMISSION PREVIEW"
-             else " RECORD ACTUAL - ADMISSION PREVIEW"));
+            (case Op is
+               when Op_Record_Actual =>
+                  " RECORD ACTUAL - ADMISSION PREVIEW",
+               when Op_Correct_Actual =>
+                  " CORRECT ACTUAL - ADMISSION PREVIEW",
+               when Op_Create_Scheduled =>
+                  " CREATE SCHEDULED OBLIGATION - ADMISSION PREVIEW",
+               when Op_Complete_Scheduled =>
+                  " COMPLETE SCHEDULED OBLIGATION - ADMISSION PREVIEW"));
          Current_Row := Current_Row + 1;
          Put_Clipped (Current_Row, "================================================================================");
          Current_Row := Current_Row + 1;
 
-         Put_Clipped (Current_Row, " Proposed ID:  " & Proposed_Event_Id (Proposal));
+         Put_Clipped (Current_Row, " Proposed ID:  " & HRA_N.Application.Proposal.Primary_Id (Proposal_Obj));
          Current_Row := Current_Row + 1;
 
-         if Is_Correction then
-            Put_Clipped (Current_Row, " Replaces:     " & Replaced_Target_Id (Proposal) & " (will be superseded)");
+         if Op = Op_Correct_Actual then
+            Put_Clipped (Current_Row, " Replaces:     " & Target_Str & " (will be superseded)");
+            Current_Row := Current_Row + 1;
+         elsif Op = Op_Complete_Scheduled then
+            Put_Clipped (Current_Row, " Completes:    " & Target_Str & " (obligation fulfilled)");
             Current_Row := Current_Row + 1;
          end if;
 
@@ -922,7 +1007,7 @@ package body HRA_N.UI.Record_TUI is
 
          Put_Clipped
            (Current_Row,
-            " Snapshot:     " & Expected_Snapshot (Proposal) & " -> next immutable generation");
+            " Snapshot:     " & HRA_N.Application.Proposal.Expected_Snapshot (Proposal_Obj) & " -> next immutable generation");
          Current_Row := Current_Row + 1;
 
          Put_Clipped (Current_Row, "--------------------------------------------------------------------------------");
@@ -948,7 +1033,7 @@ package body HRA_N.UI.Record_TUI is
 
    begin
       Committed := False;
-      New_Event_Id := (Length => 0, Value => [others => ' ']);
+      New_Id := (Length => 0, Value => [others => ' ']);
 
       --  Load candidate loci from Policy
       if Policy.Success then
@@ -967,7 +1052,7 @@ package body HRA_N.UI.Record_TUI is
       end if;
 
       --  Initialize values
-      if Is_Correction then
+      if Op in Op_Correct_Actual | Op_Complete_Scheduled then
          if Init.Description.Length > 0 then
             Desc_Len := Init.Description.Length;
             Desc_Str (1 .. Desc_Len) := Init.Description.Value (1 .. Desc_Len);
@@ -1094,11 +1179,12 @@ package body HRA_N.UI.Record_TUI is
                                     or else Key = Integer (Curses.Key_Enter_Or_Send)))
                then
                   declare
-                     Receipt : constant Movement_Receipt := Commit (Proposal);
+                     Receipt : constant HRA_N.Application.Proposal.Receipt :=
+                       HRA_N.Application.Proposal.Commit (Proposal_Obj);
                   begin
                      if Receipt.Success then
                         Committed := True;
-                        New_Event_Id :=
+                        New_Id :=
                           Make_Token (Receipt.Primary_Id (1 .. Receipt.Primary_Len));
                         Running := False;
                      else
@@ -1137,20 +1223,21 @@ package body HRA_N.UI.Record_TUI is
    is
       Dummy_Id : Token_Text;
       Init     : constant Movement_Initial_Values :=
-        (Target_Id   => (Length => 0, Value => [others => ' ']),
-         Date        => Selected_Day,
-         From_Locus  => (Length => 0, Value => [others => ' ']),
-         To_Locus    => (Length => 0, Value => [others => ' ']),
-         Amount      => 0,
-         Description => (Length => 0, Value => [others => ' ']));
+        (Target_Id           => (Length => 0, Value => [others => ' ']),
+         Target_Scheduled_Id => (Length => 0, Value => [others => ' ']),
+         Date                => Selected_Day,
+         From_Locus          => (Length => 0, Value => [others => ' ']),
+         To_Locus            => (Length => 0, Value => [others => ' ']),
+         Amount              => 0,
+         Description         => (Length => 0, Value => [others => ' ']));
    begin
       Run_Unified
-        (Paths         => Paths,
-         Selected_Day  => Selected_Day,
-         Is_Correction => False,
-         Init          => Init,
-         New_Event_Id  => Dummy_Id,
-         Committed     => Committed);
+        (Paths        => Paths,
+         Op           => Op_Record_Actual,
+         Selected_Day => Selected_Day,
+         Init         => Init,
+         New_Id       => Dummy_Id,
+         Committed    => Committed);
    end Run;
 
    procedure Run_Correction
@@ -1161,12 +1248,12 @@ package body HRA_N.UI.Record_TUI is
    is
    begin
       Run_Unified
-        (Paths         => Paths,
-         Selected_Day  => Init.Date,
-         Is_Correction => True,
-         Init          => Init,
-         New_Event_Id  => New_Event_Id,
-         Committed     => Committed);
+        (Paths        => Paths,
+         Op           => Op_Correct_Actual,
+         Selected_Day => Init.Date,
+         Init         => Init,
+         New_Id       => New_Event_Id,
+         Committed    => Committed);
    end Run_Correction;
 
    procedure Run_Split
@@ -1178,5 +1265,45 @@ package body HRA_N.UI.Record_TUI is
       --  Unified editor naturally supports multi-leg split movements.
       Run (Paths, Selected_Day, Committed);
    end Run_Split;
+
+   procedure Run_Scheduled_Create
+     (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
+      Expected_Day : HRA_N.Core.Validity.Date_Type;
+      New_Sched_Id : out HRA_N.Core.Types.Token_Text;
+      Committed    : out Boolean)
+   is
+      Init : constant Movement_Initial_Values :=
+        (Target_Id           => (Length => 0, Value => [others => ' ']),
+         Target_Scheduled_Id => (Length => 0, Value => [others => ' ']),
+         Date                => Expected_Day,
+         From_Locus          => (Length => 0, Value => [others => ' ']),
+         To_Locus            => (Length => 0, Value => [others => ' ']),
+         Amount              => 0,
+         Description         => (Length => 0, Value => [others => ' ']));
+   begin
+      Run_Unified
+        (Paths        => Paths,
+         Op           => Op_Create_Scheduled,
+         Selected_Day => Expected_Day,
+         Init         => Init,
+         New_Id       => New_Sched_Id,
+         Committed    => Committed);
+   end Run_Scheduled_Create;
+
+   procedure Run_Scheduled_Complete
+     (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
+      Init         : Movement_Initial_Values;
+      New_Event_Id : out HRA_N.Core.Types.Token_Text;
+      Committed    : out Boolean)
+   is
+   begin
+      Run_Unified
+        (Paths        => Paths,
+         Op           => Op_Complete_Scheduled,
+         Selected_Day => Init.Date,
+         Init         => Init,
+         New_Id       => New_Event_Id,
+         Committed    => Committed);
+   end Run_Scheduled_Complete;
 
 end HRA_N.UI.Record_TUI;
