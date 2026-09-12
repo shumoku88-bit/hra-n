@@ -181,6 +181,12 @@ package body HRA_N.UI.Report_TUI is
          return;
       end if;
 
+      if Tab /= Tab_Balances and then not Supports_Measures (Journal) then
+         Emit (" [ERROR] " & Unsupported_Measure_Diagnostic);
+         Total_Lines := Line_Num;
+         return;
+      end if;
+
       case Tab is
          when Tab_Statement =>
             declare
@@ -1225,7 +1231,9 @@ package body HRA_N.UI.Report_TUI is
          HRA_N.UI.Output.Put_Line (Lines (I).Text (1 .. Lines (I).Len));
       end loop;
 
-      if not J_Res.Success or else not P_Res.Success then
+      if not J_Res.Success or else not P_Res.Success
+        or else (Tab /= Tab_Balances and then not Supports_Measures (J_Res))
+      then
          Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
       end if;
    end Export_Cli;

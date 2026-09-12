@@ -106,6 +106,11 @@ Daily Flow, Invariant Audit) are added through the same shared query boundary,
 featuring universal mouse-wheel scrolling, in-memory projection caching for
 zero-disk-I/O navigation, semantic styling, and headless CLI exports
 (`hra-n report --flow`, `--pace`, `--audit`, `--mom`, `--budget`, `--balances`).
+Scalar financial reports currently reject non-JPY journal effects rather than
+combine or relabel measures; use `hra-n balance` for coordinate balances.
+`report --statement -m MM -y YYYY` selects a month-end as-of date, not a monthly
+P/L interval. Remaining report-authority and completeness gaps are listed under
+P0 in the capability matrix; the seven tabs do not establish semantic parity.
 
 The combined repository gate is:
 

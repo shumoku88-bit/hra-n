@@ -42,9 +42,10 @@ Versioned authorities store them under `.hra/generations/<id>/`; `.hra/CURRENT`
 is the sole activation edge. A selected generation is immutable. Legacy root
 files are read-only, explicitly unversioned compatibility input.
 
-At the current baseline, versioned initialization and reads exist, but the
-transaction writer does not. Direct writes to selected generations are correctly
-rejected. Do not bypass this guard to make a frontend action appear functional.
+Versioned initialization, reads, and generation transactions exist. Named
+Application commands publish through the shared proposal/commit boundary.
+Direct writes to selected generations remain rejected; do not bypass this guard
+to make a frontend action appear functional.
 
 ## Vertical-slice rule
 

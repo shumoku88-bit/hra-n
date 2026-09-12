@@ -33,6 +33,54 @@ class TestHraNCli(unittest.TestCase):
         with open(current_file, "r", encoding="utf-8") as f:
             return f.read().strip()
 
+    def write_report_fixture(self, journal: str) -> None:
+        # Explicitly unversioned synthetic input; never mutate a generation.
+        for name, text in {
+            "journal.hra": journal,
+            "policy.hra": "ROLE cash: ASSET\nROLE food: EXPENSE\n",
+            "scheduled.hra": "",
+        }.items():
+            with open(os.path.join(self.test_dir, name), "w", encoding="utf-8") as f:
+                f.write(text)
+
+    def test_statement_period_and_status_correction(self) -> None:
+        self.write_report_fixture(
+            'TX e0001 2026-09-01 cash:-10 food:10 "old"\n'
+            'TX e0002 2026-09-01 cash:-20 food:20 "corrected" replaces:e0001\n'
+            'TX e0003 2026-10-01 cash:-50 food:50 "future"\n'
+        )
+        res = self.run_cmd("report", "--statement", "-m", "9", "-y", "2026")
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn("2026-09-30", res.stdout)
+        self.assertRegex(res.stdout, r"Total EXPENSE\s*:\s*20 JPY")
+        status = self.run_cmd("status")
+        self.assertEqual(status.returncode, 0, status.stdout + status.stderr)
+        self.assertIn("Savings   : -70", status.stdout)
+        for args in [
+            ("--as-of", "2026-09-15", "-m", "10"),
+            ("-m", "10", "--as-of", "2026-09-15"),
+        ]:
+            res = self.run_cmd("statement", *args)
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("cannot be combined", res.stdout + res.stderr)
+
+    def test_financial_reports_reject_foreign_measures(self) -> None:
+        self.write_report_fixture(
+            'TX e0001 2026-09-01 cash:-10:usd food:10:usd "USD"\n'
+        )
+        for args in [("statement",), ("status",)] + [
+            ("report", tab, "-m", "9", "-y", "2026")
+            for tab in ["--statement", "--budget", "--pace", "--mom", "--flow", "--audit"]
+        ]:
+            with self.subTest(args=args):
+                res = self.run_cmd(*args)
+                self.assertNotEqual(res.returncode, 0)
+                self.assertIn("support jpy only", res.stdout + res.stderr)
+                self.assertNotIn("[PASS]", res.stdout)
+        res = self.run_cmd("balance")
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn("usd", res.stdout)
+
     def test_cli_lifecycle(self) -> None:
         # 1. Initialize household
         res = self.run_cmd("init")

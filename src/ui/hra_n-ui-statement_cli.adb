@@ -277,6 +277,7 @@ package body HRA_N.UI.Statement_Cli is
       Sys_Date     : constant Date_Type := HRA_N.Application.Review.Get_System_Date;
       As_Of_Val    : Date_Type := Sys_Date;
       Has_As_Of    : Boolean := False;
+      Has_Period   : Boolean := False;
       Year_Val     : Year_Type := Sys_Date.Year;
       Month_Val    : Month_Type := Sys_Date.Month;
       Selected_Tab : HRA_N.UI.Report_TUI.Report_Tab := HRA_N.UI.Report_TUI.Tab_Statement;
@@ -326,6 +327,7 @@ package body HRA_N.UI.Statement_Cli is
                   end;
                   if Y_Num in Year_Type'Range then
                      Year_Val := Year_Type (Y_Num);
+                     Has_Period := True;
                   else
                      Put_Error_Line ("hra-n report: year out of range '" & Y_Str & "'");
                      Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
@@ -353,6 +355,7 @@ package body HRA_N.UI.Statement_Cli is
                   end;
                   if M_Num in Month_Type'Range then
                      Month_Val := Month_Type (M_Num);
+                     Has_Period := True;
                   else
                      Put_Error_Line ("hra-n report: month out of range '" & M_Str & "' (expected 1..12)");
                      Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
@@ -383,6 +386,16 @@ package body HRA_N.UI.Statement_Cli is
          end;
          Arg_Idx := Arg_Idx + 1;
       end loop;
+
+      if Has_Period and then Has_As_Of then
+         Put_Error_Line ("hra-n report: --as-of cannot be combined with --month/--year");
+         Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         return;
+      elsif Has_Period then
+         As_Of_Val := (Year => Year_Val, Month => Month_Val,
+                       Day => Days_In_Month (Year_Val, Month_Val));
+         Has_As_Of := True;
+      end if;
 
       if Is_TUI then
          declare

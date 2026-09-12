@@ -47,6 +47,41 @@ named command.
 
 ## 2. Delivery order
 
+### P0 — report authority gaps (before external adapters)
+
+The Reports row above describes available surfaces, not qualified Loam/HRA
+semantic parity. Current source inspection exposes these remaining gaps:
+
+- `UI.Report_TUI.Generate_Report_Lines` still owns daily-flow, pacing, MoM,
+  and backing arithmetic. Move semantic results into shared Application queries;
+  CLI delegating to a TUI renderer is not the required adapter boundary. Compare
+  old HRA's `Household_Report_Observation` (typed semantic report book) and Loam's
+  `StockFlowReview` (correction-aware half-open window over explicit coverage).
+- Statement completeness currently measures role classification, not known
+  opening balance evidence. A fully classified locus without zero-origin
+  coverage must not become a qualified known net-worth claim. Carry coverage
+  status from the shared balance boundary before claiming full report parity.
+- Daily Flow counts only positive income/expense effects; refunds and reversal
+  effects need explicit gross/net semantics and cross-report tests. MoM uses
+  cumulative statement values and needs distinct monthly-flow versus stock
+  comparison coordinates. Non-statement `--as-of` currently resolves a month,
+  not the precise day; introduce typed interval queries rather than imply exact
+  day semantics.
+- Home Actual counters still count retained rows rather than the current
+  correction frontier; align their labels or projection with Actual_Query.
+- Full three-stream admission, overflow propagation through all report tabs,
+  and snapshot/completeness propagation need dedicated cross-surface evidence.
+
+Current safeguards: scalar financial reports reject journals containing any
+non-`jpy` effect (including retained history); coordinate Balance remains
+available without conversion. Statement rejects account-capacity overflow and
+invalid as-of dates. Home classification and status financial totals share
+Statement.Project, including supersession. Statement `--month/--year` selects
+month-end; combining these with `--as-of` rejects. Focused Statement tests and CLI
+regressions cover these boundaries; the existing PTY suite covers shared report
+navigation, not complete semantic parity. These guards are not multi-measure
+valuation support.
+
 ### P1 — Actual vertical slice
 
 1. Actual correction, date correction, and reversal from selected detail.
@@ -94,8 +129,13 @@ Baseline at `e3280aa` before the generation transaction implementation:
 | Loam production Lean | 34,017 | 23,816 |
 | Loam TUI Lean | 8,920 | 7,475 |
 
-The current HRA-N number is not a parity result. Much of the matrix is missing or
-legacy.
+The baseline HRA-N number is not a parity result. Current measurements on the
+working tree based on `98c7279` are 25,817 production Ada code lines and 7,810
+Curses TUI code lines, versus Loam `cd41d5f` at 23,425 production and 7,561 TUI
+code lines (`./tools/metrics --loam-root ../loam`). HRA-N has exceeded the planning
+ranges while report semantics and external adapters remain incomplete; no
+implementation-reduction result can currently be claimed. Prioritize shared
+semantic report queries and removal of duplicate paths, not line-count cuts.
 
 A planning guardrail—not a safety limit—is:
 

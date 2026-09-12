@@ -7,6 +7,7 @@ with Ada.Strings.Fixed;              use Ada.Strings.Fixed;
 with HRA_N.Core.Types;               use HRA_N.Core.Types;
 with HRA_N.Core.Scheduled;           use HRA_N.Core.Scheduled;
 with HRA_N.Core.Accounting_Role;     use HRA_N.Core.Accounting_Role;
+with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Statement;    use HRA_N.Application.Statement;
 with HRA_N.UI.Output;                use HRA_N.UI.Output;
 with HRA_N.Storage.Policy_Reader;
@@ -36,7 +37,11 @@ package body HRA_N.UI.Status_CLI is
          return;
       end if;
 
-      Generate_Report (Events, PR.Roles, Statement);
+      Statement := Execute_Statement_Query (Paths);
+      if Statement.Status = Query_Rejected then
+         Put_Error_Line (Statement.Diagnostic (1 .. Statement.Diagnostic_Len));
+         return;
+      end if;
 
       Put_Line ("============================================================");
       Put_Line (" HRA-N Household Status (Canonical Storage)");

@@ -93,6 +93,37 @@ package body Test_Home_Query is
          Assert (View.Diagnostic_Len > 0, "Partial Home query carries a diagnostic");
       end;
 
+      Assert
+        (Write_File_Atomically
+           (Journal_Path_Str (Paths),
+            "TX e0001 2026-09-11 cash:-50 unclassified:50" & ASCII.LF &
+            "TX e0002 2026-09-11 cash:-50 food:50 replaces:e0001" & ASCII.LF,
+            Error, Error_Len), "Corrected Home fixture installs");
+      declare
+         View : constant HRA_N.Application.Home_Query.Home_View :=
+           HRA_N.Application.Home_Query.Execute (Paths, (Selected_Day => Day));
+      begin
+         Assert (View.Status = Query_Complete,
+                 "Superseded unclassified effects do not taint Home");
+         Assert_Equal_Int (0, Long_Long_Integer (View.Unresolved_Loci),
+                           "Home classification uses current frontier");
+      end;
+
+      Assert
+        (Write_File_Atomically
+           (Journal_Path_Str (Paths),
+            "TX e0001 2026-09-11 cash:-50:usd food:50:usd" & ASCII.LF,
+            Error, Error_Len), "Foreign-measure Home fixture installs");
+      declare
+         View : constant HRA_N.Application.Home_Query.Home_View :=
+           HRA_N.Application.Home_Query.Execute (Paths, (Selected_Day => Day));
+      begin
+         Assert (View.Status = Query_Partial,
+                 "Home does not strengthen rejected statement into complete");
+         Assert (View.Diagnostic_Len > 0,
+                 "Home preserves unsupported measure diagnostic");
+      end;
+
       declare
          Missing : constant HRA_N.Application.Home_Query.Home_View :=
            HRA_N.Application.Home_Query.Execute

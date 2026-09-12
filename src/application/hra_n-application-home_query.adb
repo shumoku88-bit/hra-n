@@ -89,11 +89,15 @@ package body HRA_N.Application.Home_Query is
       end loop;
 
       declare
-         Statement : Statement_Report;
+         Statement : constant Statement_Report :=
+           HRA_N.Application.Statement.Project (JR, PR);
       begin
-         Generate_Report (JR.Events, PR.Roles, Statement);
          Result.Unresolved_Loci := Statement.Unresolved_Count;
-         if Statement.Summary.Status = Statement_Complete then
+         if Statement.Status = Query_Rejected then
+            Result.Status := Query_Partial;
+            Set_Diagnostic
+              (Statement.Diagnostic (1 .. Statement.Diagnostic_Len));
+         elsif Statement.Summary.Status = Statement_Complete then
             Result.Status := Query_Complete;
          else
             Result.Status := Query_Partial;

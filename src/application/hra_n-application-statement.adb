@@ -66,142 +66,19 @@ package body HRA_N.Application.Statement is
       end if;
    end Date_Less_Or_Equal;
 
-   procedure Generate_Report
-     (Events : in Event_Vectors.Vector;
-      Roles  : in Role_Map;
-      Report : out Statement_Report)
-   is
-      function Find_Account (Locus : Locus_Id) return Natural is
-      begin
-         for I in 1 .. Report.Account_Count loop
-            if Equal_Token (Report.Accounts (I).Locus.Token, Locus.Token) then
-               return I;
-            end if;
-         end loop;
-         return 0;
-      end Find_Account;
-
-      procedure Ensure_Account (Locus : Locus_Id; Idx : out Natural) is
-         Found_Role : Accounting_Role;
-         Has        : Boolean;
-      begin
-         Idx := Find_Account (Locus);
-         if Idx > 0 then
-            return;
-         end if;
-
-         if Report.Account_Count < Max_Statement_Accounts then
-            Report.Account_Count := Report.Account_Count + 1;
-            Idx := Report.Account_Count;
-            Find_Role (Roles, Locus, Found_Role, Has);
-            Report.Accounts (Idx) :=
-              (Locus       => Locus,
-               Role        => Found_Role,
-               Has_Role    => Has,
-               Raw_Quanta  => 0,
-               Natural_Amt => 0,
-               Event_Count => 0);
-         else
-            Idx := 0;
-         end if;
-      end Ensure_Account;
-
+   function Supports_Measures (Journal : Journal_Result) return Boolean is
    begin
-      Report := (Snapshot         => (Length => 0, Value => [others => ' ']),
-                 Is_Versioned     => False,
-                 Has_As_Of        => False,
-                 As_Of_Date       => (Year => 2026, Month => 1, Day => 1),
-                 Status           => Query_Complete,
-                 Diagnostic       => [others => ' '],
-                 Diagnostic_Len   => 0,
-                 Account_Count    => 0,
-                 Accounts         => [others => Empty_Account],
-                 Summary          => Empty_Financial_Summary,
-                 Unresolved_Count => 0,
-                 Total_Events     => Natural (Events.Length));
-
-      --  1. Pre-populate accounts from Role_Map to show all configured accounts
-      for I in 1 .. Entry_Count (Roles) loop
-         declare
-            Assignment : constant Role_Assignment := Entry_At (Roles, I);
-         begin
-            if Report.Account_Count < Max_Statement_Accounts then
-               Report.Account_Count := Report.Account_Count + 1;
-               Report.Accounts (Report.Account_Count) :=
-                 (Locus       => Assignment.Locus,
-                  Role        => Assignment.Role,
-                  Has_Role    => True,
-                  Raw_Quanta  => 0,
-                  Natural_Amt => 0,
-                  Event_Count => 0);
+      for E of Journal.Events loop
+         for I in 1 .. Effect_Count (E) loop
+            if not Equal_Token
+              (Effect_At (E, I).Measure.Token, Make_Token ("jpy"))
+            then
+               return False;
             end if;
-         end;
-      end loop;
-
-      --  2. Aggregate effects across all events
-      for Ev of Events loop
-         for E_Idx in 1 .. Effect_Count (Ev) loop
-            declare
-               Eff   : constant Effect := Effect_At (Ev, E_Idx);
-               A_Idx : Natural;
-            begin
-               Ensure_Account (Eff.Locus, A_Idx);
-               if A_Idx > 0 then
-                  Report.Accounts (A_Idx).Raw_Quanta :=
-                    Report.Accounts (A_Idx).Raw_Quanta + Long_Long_Integer (Eff.Amount.Quanta);
-                  Report.Accounts (A_Idx).Event_Count :=
-                    Report.Accounts (A_Idx).Event_Count + 1;
-               end if;
-            end;
          end loop;
       end loop;
-
-      --  3. Compute natural amounts and summary aggregation
-      for I in 1 .. Report.Account_Count loop
-         declare
-            Acc : Account_Balance renames Report.Accounts (I);
-         begin
-            if Acc.Has_Role then
-               case Acc.Role is
-                  when Role_Asset =>
-                     Acc.Natural_Amt := Acc.Raw_Quanta;
-                     Report.Summary.Total_Assets :=
-                       Report.Summary.Total_Assets + Acc.Natural_Amt;
-                  when Role_Liability =>
-                     Acc.Natural_Amt := -Acc.Raw_Quanta;
-                     Report.Summary.Total_Liabilities :=
-                       Report.Summary.Total_Liabilities + Acc.Natural_Amt;
-                  when Role_Equity =>
-                     Acc.Natural_Amt := -Acc.Raw_Quanta;
-                     Report.Summary.Total_Equity :=
-                       Report.Summary.Total_Equity + Acc.Natural_Amt;
-                  when Role_Income =>
-                     Acc.Natural_Amt := -Acc.Raw_Quanta;
-                     Report.Summary.Total_Income :=
-                       Report.Summary.Total_Income + Acc.Natural_Amt;
-                  when Role_Expense =>
-                     Acc.Natural_Amt := Acc.Raw_Quanta;
-                     Report.Summary.Total_Expense :=
-                       Report.Summary.Total_Expense + Acc.Natural_Amt;
-               end case;
-            else
-               Acc.Natural_Amt := Acc.Raw_Quanta;
-               Report.Summary.Unresolved_Quanta :=
-                 Report.Summary.Unresolved_Quanta + Acc.Raw_Quanta;
-               Report.Unresolved_Count := Report.Unresolved_Count + 1;
-            end if;
-         end;
-      end loop;
-
-      Report.Summary.Unresolved_Count := Report.Unresolved_Count;
-      if Report.Unresolved_Count > 0 then
-         Report.Summary.Status := Statement_Partial;
-      else
-         Report.Summary.Status := Statement_Complete;
-      end if;
-
-      Sort_Accounts (Report);
-   end Generate_Report;
+      return True;
+   end Supports_Measures;
 
    function Project
      (Journal      : Journal_Result;
@@ -249,6 +126,7 @@ package body HRA_N.Application.Statement is
                Event_Count => 0);
          else
             Idx := 0;
+            Fail ("statement account limit exceeded");
          end if;
       end Ensure_Account;
 
@@ -265,6 +143,17 @@ package body HRA_N.Application.Statement is
       elsif not Policy.Success then
          Fail ("cannot read policy for statement: " &
                Policy.Error_Reason (1 .. Policy.Error_Len));
+         return Result;
+      end if;
+
+      if not Supports_Measures (Journal) then
+         Fail (Unsupported_Measure_Diagnostic);
+         return Result;
+      end if;
+      if Has_As_Of and then not Is_Valid_Date
+        (As_Of.Year, As_Of.Month, As_Of.Day)
+      then
+         Fail ("statement requires a valid as-of date");
          return Result;
       end if;
 
@@ -345,6 +234,10 @@ package body HRA_N.Application.Statement is
             end if;
          end;
       end loop;
+
+      if Result.Status = Query_Rejected then
+         return Result;
+      end if;
 
       --  3. Determine Role for each account as of the evaluation date
       for I in 1 .. Result.Account_Count loop

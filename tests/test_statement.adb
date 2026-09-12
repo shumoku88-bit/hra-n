@@ -90,6 +90,54 @@ package body Test_Statement is
                            "Full assets reflect cash outflow (bank 290k + cash 1.5k)");
       end;
 
+      declare
+         Rep : constant Statement_Report := Execute_Statement_Query
+           (Paths, (Year => 2026, Month => 2, Day => 30), Has_As_Of => True);
+      begin
+         Assert (Rep.Status = Query_Rejected, "Invalid as-of date rejects");
+      end;
+
+      Assert
+        (Write_File_Atomically
+           (Journal_Path_Str (Paths),
+            "TX e0001 2026-09-01 cash:-10:usd food:10:usd" & ASCII.LF,
+            Error, Error_Len), "Foreign measure fixture writes");
+      declare
+         Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+      begin
+         Assert (Rep.Status = Query_Rejected,
+                 "Statement never relabels USD quantities as JPY");
+         Assert (Rep.Diagnostic (1 .. Rep.Diagnostic_Len) =
+                   Unsupported_Measure_Diagnostic,
+                 "Unsupported measure has an explicit diagnostic");
+      end;
+
+      --  Valid balanced history exceeding the bounded projection must not be
+      --  silently truncated into an apparently complete statement.
+      declare
+         F : Ada.Text_IO.File_Type;
+      begin
+         Ada.Text_IO.Create (F, Ada.Text_IO.Out_File, Journal_Path_Str (Paths));
+         for I in 1 .. Max_Statement_Accounts + 1 loop
+            declare
+               Image : constant String := Integer'Image (I);
+               N : constant String := Image (2 .. Image'Last);
+            begin
+               Ada.Text_IO.Put_Line
+                 (F, "TX e" & N & " 2026-09-01 cash:-1 account" & N & ":1");
+            end;
+         end loop;
+         Ada.Text_IO.Close (F);
+      end;
+      declare
+         Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+      begin
+         Assert (Rep.Status = Query_Rejected, "Account overflow rejects");
+         Assert (Rep.Diagnostic (1 .. Rep.Diagnostic_Len) =
+                   "statement account limit exceeded",
+                 "Account overflow is not silent truncation");
+      end;
+
       --  Cleanup
       if Ada.Directories.Exists (Test_Dir) then
          Ada.Directories.Delete_Tree (Test_Dir);

@@ -53,11 +53,11 @@ package HRA_N.Application.Statement is
       Total_Events     : Natural           := 0;
    end record;
 
-   --  Generate complete financial statement from event history and role mappings
-   procedure Generate_Report
-     (Events : in Event_Vectors.Vector;
-      Roles  : in Role_Map;
-      Report : out Statement_Report);
+   --  Scalar financial reports currently support JPY only. Never implicitly
+   --  value other measures; inspect them through the coordinate balance query.
+   Unsupported_Measure_Diagnostic : constant String :=
+     "financial reports support jpy only; use balance for other measures";
+   function Supports_Measures (Journal : Journal_Result) return Boolean;
 
    --  In-memory projection of Financial Statement query from preloaded journal and policy
    function Project
