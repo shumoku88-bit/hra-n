@@ -3,8 +3,9 @@
 --  Main test runner
 -------------------------------------------------------------------------------
 
-with Ada.Text_IO; use Ada.Text_IO;
 with Ada.Command_Line;
+with Ada.Directories;
+with Ada.Text_IO; use Ada.Text_IO;
 with Test_Support;
 with Test_Quantity;
 with Test_Relation_Command;
@@ -16,6 +17,7 @@ with Test_Initializer;
 with Test_Path_Resolver;
 with Test_Atomic_Writer;
 with Test_HRA_Storage;
+with Test_HRA_Storage_Portable;
 with Test_Home_Query;
 with Test_Actual_Query;
 with Test_Generation_Transaction;
@@ -40,6 +42,14 @@ procedure Test_Runner is
         or else (Ada.Command_Line.Argument_Count = 1
                  and then Ada.Command_Line.Argument (1) = Name);
    end Selected;
+
+   function Legacy_HRA_Data_Available return Boolean is
+      Base : constant String := "/Users/user/Projects/moko/hra-data";
+   begin
+      return Ada.Directories.Exists (Base & "/journal.hra")
+        and then Ada.Directories.Exists (Base & "/policy.hra")
+        and then Ada.Directories.Exists (Base & "/scheduled.hra");
+   end Legacy_HRA_Data_Available;
 
    procedure Announce (Name : String) is
    begin
@@ -103,8 +113,16 @@ begin
    end if;
 
    if Selected ("Test_HRA_Storage") then
-      Announce ("Test_HRA_Storage");
-      Test_HRA_Storage.Run;
+      Announce ("Test_HRA_Storage_Portable");
+      Test_HRA_Storage_Portable.Run;
+      if Legacy_HRA_Data_Available then
+         Put_Line ("--> Running Test_HRA_Storage real-data regression...");
+         Test_HRA_Storage.Run;
+      else
+         Put_Line
+           ("--> Skipping optional Test_HRA_Storage real-data regression;"
+            & " legacy local household data is not present.");
+      end if;
    end if;
 
    if Selected ("Test_Home_Query") then
