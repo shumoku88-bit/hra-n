@@ -69,8 +69,9 @@ semantic parity. Current source inspection exposes these remaining gaps:
   Daily Flow and Statement. Monthly report tabs and the report TUI do not yet
   have exact-day or arbitrary interval queries; `--as-of` rejects on these
   surfaces rather than silently resolving a month.
-- Home Actual counters still count retained rows rather than the current
-  correction frontier; align their labels or projection with Actual_Query.
+- Home Actual projection (Selected_Actual and calendar presence markers)
+  aligns directly with Actual_Query, resolving occurrence dates from
+  retained events in lockstep with the selected day Actual listing.
 - Full three-stream admission, overflow propagation through all report tabs,
   and snapshot/completeness propagation need dedicated cross-surface evidence.
 

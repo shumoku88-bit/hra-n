@@ -3,6 +3,7 @@
 -------------------------------------------------------------------------------
 
 with HRA_N.Core.Types;           use HRA_N.Core.Types;
+with HRA_N.Core.Event;           use HRA_N.Core.Event;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Attention;
 with HRA_N.Core.Coverage;        use HRA_N.Core.Coverage;
@@ -66,12 +67,17 @@ package body HRA_N.Application.Home_Query is
       Result.Open_Attentions  :=
         Natural (HRA_N.Core.Attention.Open_Count (PR.Attention));
 
-      for Index in 1 .. Entry_Count (JR.Validities) loop
-         if Equal_Date
-           (Entry_At (JR.Validities, Index).Valid_On, Query.Selected_Day)
-         then
-            Result.Selected_Actual := Result.Selected_Actual + 1;
-         end if;
+      for Index in 1 .. Natural (JR.Events.Length) loop
+         declare
+            Item      : constant Event := JR.Events.Element (Positive (Index));
+            Item_Date : Date_Type;
+            Has_Date  : Boolean;
+         begin
+            Find_Occurrence_Date (JR.Validities, Id (Item), Item_Date, Has_Date);
+            if Has_Date and then Equal_Date (Item_Date, Query.Selected_Day) then
+               Result.Selected_Actual := Result.Selected_Actual + 1;
+            end if;
+         end;
       end loop;
 
       for Index in 1 .. SR.Lifecycle.Sched_Count loop

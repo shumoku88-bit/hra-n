@@ -530,8 +530,8 @@ def main() -> None:
             time.sleep(0.05)
             # Edit date: backspace last char '2' and change to '3' (2026-09-13)
             os.write(fd, b"\x7f3\n")
-            read_until(fd, output, b"DATE CORRECTION - ADMISSION PREVIEW")
             read_until(fd, output, b"Ready to commit date correction to authority.")
+            assert b"DATE CORRECTION - ADMISSION PREVIEW" in output
             time.sleep(0.05)
             # Commit date correction
             os.write(fd, b"\n")

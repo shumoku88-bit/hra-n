@@ -7,6 +7,7 @@ with Test_Support; use Test_Support;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
+with HRA_N.Application.Actual_Query;
 with HRA_N.Application.Home_Query;
 with HRA_N.Application.Initializer; use HRA_N.Application.Initializer;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
@@ -107,6 +108,55 @@ package body Test_Home_Query is
                  "Superseded unclassified effects do not taint Home");
          Assert_Equal_Int (0, Long_Long_Integer (View.Unresolved_Loci),
                            "Home classification uses current frontier");
+      end;
+
+      --  Date correction / replacement fixture: e0001 on 2026-09-11 replaced by
+      --  e0002 on 2026-09-12. Verify Selected_Actual matches Actual_Query on both
+      --  days and Total_Actual matches Scope_All.
+      Assert
+        (Write_File_Atomically
+           (Journal_Path_Str (Paths),
+            "TX e0001 2026-09-11 cash:-100 food:100 ""Lunch""" & ASCII.LF &
+            "TX e0002 2026-09-12 cash:-100 food:100 ""Corrected Lunch"" replaces:e0001" & ASCII.LF,
+            Error, Error_Len), "Date-corrected Home fixture installs");
+      declare
+         Day11 : constant Date_Type := (Year => 2026, Month => 9, Day => 11);
+         Day12 : constant Date_Type := (Year => 2026, Month => 9, Day => 12);
+         Home11 : constant HRA_N.Application.Home_Query.Home_View :=
+           HRA_N.Application.Home_Query.Execute (Paths, (Selected_Day => Day11));
+         Act11  : constant HRA_N.Application.Actual_Query.Actual_View :=
+           HRA_N.Application.Actual_Query.Execute
+             (Paths,
+              (Scope        => HRA_N.Application.Actual_Query.Scope_Selected_Day,
+               Selected_Day => Day11,
+               Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First));
+         Home12 : constant HRA_N.Application.Home_Query.Home_View :=
+           HRA_N.Application.Home_Query.Execute (Paths, (Selected_Day => Day12));
+         Act12  : constant HRA_N.Application.Actual_Query.Actual_View :=
+           HRA_N.Application.Actual_Query.Execute
+             (Paths,
+              (Scope        => HRA_N.Application.Actual_Query.Scope_Selected_Day,
+               Selected_Day => Day12,
+               Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First));
+         Act_All : constant HRA_N.Application.Actual_Query.Actual_View :=
+           HRA_N.Application.Actual_Query.Execute
+             (Paths,
+              (Scope        => HRA_N.Application.Actual_Query.Scope_All,
+               Selected_Day => Day11,
+               Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First));
+      begin
+         Assert_Equal_Int
+           (Long_Long_Integer (Act11.Row_Count),
+            Long_Long_Integer (Home11.Selected_Actual),
+            "Home Selected_Actual matches Actual_Query on Day 11");
+         Assert_Equal_Int
+           (Long_Long_Integer (Act12.Row_Count),
+            Long_Long_Integer (Home12.Selected_Actual),
+            "Home Selected_Actual matches Actual_Query on Day 12");
+         Assert_Equal_Int
+           (Long_Long_Integer (Act_All.Row_Count),
+            Long_Long_Integer (Home11.Total_Actual),
+            "Home Total_Actual matches Actual_Query Scope_All");
       end;
 
       Assert

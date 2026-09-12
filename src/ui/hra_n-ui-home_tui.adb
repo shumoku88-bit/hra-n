@@ -11,6 +11,7 @@
 with Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
+with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Core.Attention; use HRA_N.Core.Attention;
@@ -171,19 +172,23 @@ package body HRA_N.UI.Home_TUI is
                Current_Day : Natural := 1;
                Cal_Row     : Natural := 4;
             begin
-               --  Populate Actual flags
-               for Index in 1 .. Entry_Count (JR.Validities) loop
-                  declare
-                     V_Date : constant Date_Type := Entry_At (JR.Validities, Index).Valid_On;
-                  begin
-                     if V_Date.Year = Selected_Day.Year
-                       and then V_Date.Month = Selected_Day.Month
-                       and then V_Date.Day in 1 .. Days_In_Month_Val
-                     then
-                        Flags (V_Date.Day).Has_Actual := True;
-                     end if;
-                  end;
-               end loop;
+                --  Populate Actual flags
+                for Index in 1 .. Natural (JR.Events.Length) loop
+                   declare
+                      Item      : constant Event := JR.Events.Element (Positive (Index));
+                      Item_Date : Date_Type;
+                      Has_Date  : Boolean;
+                   begin
+                      Find_Occurrence_Date (JR.Validities, Id (Item), Item_Date, Has_Date);
+                      if Has_Date
+                        and then Item_Date.Year = Selected_Day.Year
+                        and then Item_Date.Month = Selected_Day.Month
+                        and then Item_Date.Day in 1 .. Days_In_Month_Val
+                      then
+                         Flags (Item_Date.Day).Has_Actual := True;
+                      end if;
+                   end;
+                end loop;
 
                --  Populate Scheduled flags
                for Index in 1 .. SR.Lifecycle.Sched_Count loop
