@@ -25,7 +25,11 @@ m4_tool = "*"
 
 [[actions]]
 type = "post-fetch"
-command = ["sh", "configure", "--with-ada-libname=adacurses", "--enable-widec", "--without-cxx-binding"]
+command = ["sh", "configure", "--with-ada-libname=adacurses", "--enable-widec", "--without-cxx-binding", "--with-terminfo-dirs=/etc/terminfo:/lib/terminfo:/usr/share/terminfo", "--with-default-terminfo-dir=/usr/share/terminfo"]
+
+[[actions]]
+type = "post-fetch"
+command = ["sh", "-c", "tmp=Ada95/lib_adacurses.gpr.hra_n; sed -e 's/-lncurses\"/-lncursesw\"/g' -e 's/-lpanel\"/-lpanelw\"/g' -e 's/-lmenu\"/-lmenuw\"/g' -e 's/-lform\"/-lformw\"/g' Ada95/lib_adacurses.gpr > $tmp && mv $tmp Ada95/lib_adacurses.gpr"]
 
 [[actions]]
 type = "post-fetch"
