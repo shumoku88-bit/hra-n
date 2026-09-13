@@ -4,9 +4,37 @@ Status: **canonical-ledger-v2 design authority**
 
 ## 1. Product boundary
 
+HRA-N is Loam's Ada/SPARK long-term continuity hedge, not a competing feature
+portfolio; see [`LOAM_ALIGNMENT.md`](LOAM_ALIGNMENT.md). Preserving daily human
+operation is part of that hedge, not optional decoration after porting the Core.
+The benchmark evolves with reviewed Loam progress; each slice pins its comparison
+revision and observable contract rather than chasing every upstream UI change.
+HRA-N's own improvements and counterexamples should feed back into Loam through
+synthetic workflow evidence. Minimum benchmark quality is not a prohibition on
+independent interaction or canonical-data exploration.
+
 HRA-N is not complete with a storage engine and line CLI alone. A keyboard-first
 TUI comparable in practical reach to the HRA and Loam household workspaces is a
 minimum release surface.
+
+HRA and Loam's daily TUI interaction quality is a minimum benchmark, not merely
+inspiration or a command-count parity target. HRA-N must meet that baseline and
+then improve clarity, navigation, editing, Japanese text handling, responsive
+layout, and recovery. Compare concrete workflows and their evidence; do not copy
+known defects or obsolete storage semantics. A passing PTY smoke test alone does
+not establish usability parity.
+
+The user's concrete calendar-summary and canonical-data discoverability reports,
+confirmed observations, remaining uncertainties, and acceptance criteria are in
+[`AUDIT_REPORT.md`, section 0A](AUDIT_REPORT.md). In particular, daily summaries
+must foreground recognizable descriptions and exact amounts/measures rather
+than internal IDs. Immutable storage safety must coexist with understandable,
+safe access to the selected canonical data; direct generation editing or a
+second writable authority is not an acceptable usability shortcut. The current
+three-stream/generation layout itself is open to redesign through an explicit,
+qualified transition. Compare canonical-data candidates for human readability,
+exact evidence retention, and recovery, rather than requiring every usability
+problem to be hidden behind a new view over the current layout.
 
 The supported frontend families are:
 
@@ -54,6 +82,14 @@ an origin. Missing evidence produces `Query_Partial`, not invented balances.
 Renderers use report-level completeness before showing net worth, savings rate,
 or backing verdicts; partial numeric subtotals must be identified as retained
 changes. This is not a claim that all classified assets are liquid funding.
+
+Monthly Budget/Pace/Audit use `Budget_Query.Project_Month` over the cached
+Journal/Policy snapshot, not three UI-local date constructions. The shared
+`Project` also serves explicit-window budget queries. Month coordinates normalize
+to `[first day, next month's first day)`; the unrepresentable exclusive end of
+December 2100 rejects rather than clipping. Stock as-of stays at month end.
+This adapter change does not establish complete three-stream admission or make
+remaining UI-local pace/backing arithmetic a qualified shared semantic boundary.
 
 ### Intents
 
@@ -120,8 +156,13 @@ known-through semantics.
 ### Reports
 
 - explicit date/range selection;
-- 7 core reporting tabs: Financial Statement (B/S & P/L), Budget Envelopes, Account Balances, Spending Pace & Daily Burn, Month-over-Month Comparison (MoM), Daily Cash Flow Timeline, and Fail-Closed Invariant Audit & Coherence;
-- pure in-memory projection caching across navigation for instant sub-millisecond response;
+- the current seven report surfaces (Statement, Budget, Balances, Pace, MoM,
+  Daily Flow, Audit) are presentations over qualified shared answers, not seven
+  mandatory Core concepts or seven independent calculation engines; composition
+  and tab layout may simplify without losing a supported observable;
+- in-memory projection caching for responsive navigation, with latency measured
+  against explicit terminal/workload conditions rather than an unqualified
+  sub-millisecond guarantee;
 - comprehensive mouse wheel scroll support across all TUI workspaces;
 - headless CLI export (`hra-n report [--flow/--pace/--audit/--mom/--budget/--balances/--statement] [-m MM] [-y YYYY]`);
 - exact query coordinates visible to the user.
@@ -204,15 +245,20 @@ does not change these authority rules.
 - cross-surface contract tests submit the same intent through CLI/TUI/protocol
   adapters and require the same proposal or rejection.
 
-## 9. Delivery order
+## 9. Delivery discipline
 
-1. stabilize admitted snapshot/query/intent types;
-2. implement one read-only Home/selected-day vertical slice;
-3. implement movement proposal/commit and reload through CLI and TUI;
-4. add Actual correction/reversal and Scheduled lifecycle workspaces;
-5. add balances, reconciliation, budget, and reports;
-6. expose one versioned external query and proposal operation;
-7. grow GUI and AI/chat surfaces only from demonstrated operations.
+Use the current priorities in [`CAPABILITY_MATRIX.md`](CAPABILITY_MATRIX.md),
+not a fresh feature checklist for surfaces already present. For each slice:
 
-This order keeps the TUI continuously real without allowing presentation code to
-freeze an unfinished storage model.
+1. review the relevant Loam delta and pin the observable/interaction contract;
+2. fix incorrect answers or strengthen the shared admitted-snapshot boundary;
+3. expose the same typed query/intent through CLI and a usable TUI workflow;
+4. qualify description/amount visibility, selection, editing, cancellation,
+   freshness, receipt-to-parent reload, Unicode, and terminal recovery;
+5. assess discoveries worth returning to Loam, then update comparison evidence,
+   the capability matrix, deferrals, and reverse-feedback status.
+
+Data discoverability, backup/restore, independent operation, and long-history
+capacity are continuity requirements. GUI/AI protocols remain optional later
+adapters and must not displace those requirements. No feature is complete merely
+because it has a tab, command, or passing startup PTY specimen.

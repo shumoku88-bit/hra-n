@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import calendar
 import datetime
+import re
 import fcntl
 import os
 import pty
@@ -85,6 +87,84 @@ def test_statement_evidence() -> None:
                     os.waitpid(pid, 0)
                 os.close(fd)
     print("Statement PTY: unknown origin and assertion conflict remain partial")
+
+
+def test_month_end_budget() -> None:
+    """Cached Budget/Pace/Audit include month end and exclude next month."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    harness = os.path.join(root, 'tests', 'bin', 'tui_harness')
+    first = datetime.date.today().replace(day=1)
+    last = first.replace(day=calendar.monthrange(first.year, first.month)[1])
+    following = last + datetime.timedelta(days=1)
+    with tempfile.TemporaryDirectory(prefix='hra_n_month_end_pty_') as household:
+        generation = os.path.join(household, '.hra', 'generations', 'g00000001')
+        os.makedirs(generation)
+        fixtures = {
+            'journal.hra': f'TX e1 {last} cash:-10 food:10 "month end"\n'
+                f'TX e2 {following} cash:-50 food:50 "outside"\n',
+            'policy.hra': 'ROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n'
+                f'TRANSFER unallocated Food 100 jpy {first}\n'
+                f'TRANSFER unallocated Food 20 jpy {last}\n'
+                f'TRANSFER unallocated Food 500 jpy {following}\n'
+                'ROUTE food INITIAL MANAGED Food\n',
+            'scheduled.hra': '',
+        }
+        for name, text in fixtures.items():
+            with open(os.path.join(generation, name), 'w', encoding='utf-8') as stream:
+                stream.write(text)
+        # Select only after constructing the complete synthetic generation.
+        selector = os.path.join(household, '.hra', 'CURRENT')
+        with open(selector, 'w', encoding='utf-8') as stream:
+            stream.write('g00000001\n')
+        pid, fd = pty.fork()
+        if pid == 0:
+            env = os.environ.copy()
+            env['TERM'] = 'xterm-256color'
+            os.execve(harness, [harness, household], env)
+        reaped = False
+        try:
+            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 80, 160, 0, 0))
+            output = bytearray()
+            read_until(fd, output, b'Markers:')
+            os.write(fd, b'p')
+            read_until(fd, output, b'COHERENCE & VERIFICATION')
+            for key, marker, expected in [
+                (b'2', b'Liquid Assets (Funding)', rb'Total Budget Envelopes\s+120\s+10\s+110'),
+                (b'4', b'PURPOSE PACING BREAKDOWN', rb'Spent So Far\s*:\s*10 JPY'),
+                (b'7', b'Liquidity Deficit', rb'Active Envelope Requirements\s*:\s*110 JPY'),
+                (b'2', b'Liquid Assets (Funding)', rb'Total Budget Envelopes\s+120\s+10\s+110'),
+            ]:
+                start = len(output)
+                os.write(fd, key)
+                read_until(fd, output, marker)
+                # Rendered ASCII fields may be separated by cursor positioning.
+                text = re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]', b' ', bytes(output[start:]))
+                assert re.search(expected, text), text
+            os.write(fd, b'q')
+            read_until(fd, output, b'Evidence')
+            os.write(fd, b'q')
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                exited, status = os.waitpid(pid, os.WNOHANG)
+                if exited:
+                    reaped = True
+                    assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+                    break
+                ready, _, _ = select.select([fd], [], [], 0.05)
+                if ready:
+                    try:
+                        os.read(fd, 4096)
+                    except OSError:
+                        pass
+            assert reaped, 'Month-end PTY did not quit'
+            with open(selector, encoding='utf-8') as stream:
+                assert stream.read() == 'g00000001\n'
+        finally:
+            if not reaped:
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+            os.close(fd)
+    print('Month-end PTY: Budget, Pace, Audit and cached tab return passed')
 
 
 def main() -> None:
@@ -765,3 +845,4 @@ def main() -> None:
 if __name__ == "__main__":
     main()
     test_statement_evidence()
+    test_month_end_budget()

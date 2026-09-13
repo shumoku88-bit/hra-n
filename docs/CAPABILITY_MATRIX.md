@@ -2,21 +2,31 @@
 
 Status: **active current-state authority**
 
-This document tracks only current implementation gaps and delivery order. Git
-history owns completed migrations and retired designs.
+This document tracks current implementation gaps, delivery order, and the latest
+Loam review checkpoint and reverse-feedback queue. HRA-N is the Ada/SPARK
+continuity hedge and independent design/canonical-data exploration partner for
+Loam's evolving small-core effort, not a feature race. Follow
+[`LOAM_ALIGNMENT.md`](LOAM_ALIGNMENT.md) for observable contracts and the review
+cadence. Git history owns completed migrations and retired designs.
 
 ## 1. Completion standard
 
 Statuses:
 
-- **V2**: uses admitted versioned-snapshot boundaries and has current tests.
+- **V2**: implementation uses versioned-snapshot paths and has tests; this is
+  implementation inventory, not a claim of complete admission, all failure-path
+  coverage, Loam equivalence, or long-term readiness. Audit findings qualify the
+  status of each affected row until revalidated and fixed.
 - **Legacy**: executable code exists but does not satisfy canonical-ledger-v2.
 - **Blocked**: frontend or operation exists conceptually but safe authority is
   missing.
 - **Missing**: no current implementation.
 
 A Loam-parity capability requires all applicable columns, not merely a similarly
-named command.
+named command. Also name the pinned Loam contract/revision, semantic fixtures and
+expected results, explicit differences, and independent HRA-N qualification.
+Whole-system Loam equivalence and a qualified data-transfer path have not yet
+been established.
 
 | Capability | Domain/admission | Storage | Shared Application API | CLI | TUI | Evidence | Status |
 |---|---|---|---|---|---|---|---|
@@ -39,7 +49,7 @@ named command.
 | Actual routing | retained `(locus, effective)` assertions; effective is `initial` or a real date; target is managed Purpose or explicit unmanaged; coordinate uniqueness and date-aware projection, no row-order authority | append-only historical `ROUTE` facts via generation transaction; legacy grouped rows decode as initial managed evidence | `Policy_Command.Propose_Routing` -> snapshot-bound Proposal -> Receipt; `Policy_Query.Execute_Routing_Query`; movement, scheduled completion, and budget projection resolve at occurrence date | `hra-n route set/clear/list [--as-of/--history]` | Routing workspace (`r` from Home) with managed/unmanaged editor, selected-day effective default, history toggle, preview, and reload | coordinate-law, managed/unmanaged transition, as-of/history, stale-proposal, retry, E2E CLI, and PTY tests + Alloy historical routing model | **V2** |
 | Relations/discharges | directional claim anchored to a source event with household-side guard; one discharge row per (settlement, claim); aggregate never above face; open requires effective source and settlement | append-only RELATION/DISCHARGE facts in `journal.hra` admitted via generation transaction | `Relation_Command` raise/discharge Intents -> snapshot-bound Proposal -> Receipt; `Relation_Query` open answer plus per-event links | `hra-n relation` / `raise` / `discharge` | Actual detail renders linked claims/discharges with `l` raise and `d` discharge-via-picker actions (no separate lifecycle screen by design); reversal of referenced events refused | raise/discharge-law, stale-proposal, retry, wire-admission, reversal-guard, E2E CLI, and PTY tests + Alloy shape model | **V2** |
 | Attention | retained matters with explicit due (dated/none/undetermined) and one closure each; provenance never closes | append-only ATTENTION/ATTENTION-CLOSE facts in `policy.hra` admitted via generation transaction | `Attention_Command` raise/close Intents -> snapshot-bound Proposal -> Receipt; `Attention_Query` open answer in retained order | `hra-n attention` / `raise` / `resolve` / `drop` | Attention workspace (`i`, shared raise/resolve/drop editors with preview and reload); Home shows open count | raise/close-law, stale-proposal, retry, wire-admission, E2E CLI, and PTY tests + Alloy shape model | **V2** |
-| Reports | explicit snapshot and effective interval; no implicit conversion; supersession and reversal exclusion, fail-closed unclassified frontier | versioned snapshot reading (`policy.hra`, `journal.hra`) | `Statement.Execute_Statement_Query` (`Paths`, `As_Of`, `Has_As_Of`, deterministic ordering, complete/partial classification), `Daily_Flow_Query` (`Execute`, `Project`, gross/refund/net flows), `MoM_Query` (`Execute`, `Project`, monthly flow vs month-end stock), & `Budget_Window` | `hra-n statement [--as-of DATE]`, `hra-n report [--flow/--pace/--audit/--mom/--budget/--balances/--statement] [-m MM] [-y YYYY]` | Financial report workspace (`R` from Home, Tab 1..7: Statement, Budget, Balances, Pace, MoM, Flow, Audit) with mouse wheel scroll and in-memory caching | unit, E2E CLI, and PTY tests | **V2** |
+| Reports | explicit snapshot and effective interval; no implicit conversion; supersession and reversal exclusion, fail-closed unclassified frontier | versioned snapshot reading (`policy.hra`, `journal.hra`) | `Statement.Execute_Statement_Query` (`Paths`, `As_Of`, `Has_As_Of`, deterministic ordering, complete/partial classification), `Daily_Flow_Query` (`Execute`, `Project`, gross/refund/net flows), `MoM_Query` (`Execute`, `Project`, monthly flow vs month-end stock), & `Budget_Query.Project_Month` (shared half-open budget projection) | `hra-n statement [--as-of DATE]`, `hra-n report [--flow/--pace/--audit/--mom/--budget/--balances/--statement] [-m MM] [-y YYYY]` | Financial report workspace (`R` from Home, Tab 1..7: Statement, Budget, Balances, Pace, MoM, Flow, Audit) with mouse wheel scroll and in-memory caching | unit, E2E CLI, and PTY tests | **V2** |
 | Policy administration | versioned role/routing facts with effective coordinates, and explicit add-only Locus admission vocabulary; fail-closed admission via core and Alloy laws | append-only policy.hra via generation transaction with exact selected-candidate comparison | `Policy_Command` (Propose_Role, Propose_Window, Propose_Routing, Propose_Locus, Commit) & `Policy_Query` (`Execute_Locus_Query`) | `hra-n role assign`, `hra-n window add`, `hra-n route set/clear`, `hra-n locus [add/list]` | Actual routing workspace (`r`), Locus workspace (`v`) | unit, proposal/commit/stale/retry, E2E CLI, PTY, and formal tests | **V2** |
 | Machine-readable adapter | same Query/Intent semantics | no direct storage access | schema not defined | optional JSON absent | n/a | none | **Missing** |
 | AI/chat tools | least authority, proposal-first, redaction | no direct storage access | adapter absent | n/a | n/a | none | **Missing** |
@@ -50,8 +60,31 @@ named command.
 ### P0 — report authority gaps (before external adapters)
 
 The Reports row above describes available surfaces, not qualified Loam/HRA
-semantic parity. Current source inspection exposes these remaining gaps:
+semantic parity. First revalidate and fix the scoped audit counterexamples in
+[`AUDIT_REPORT.md`](AUDIT_REPORT.md): F01 month-end exclusion, F02 capacity-measure
+loss, F03 role-change MoM, F04 unknown stock presentation, F05 rejected exit status,
+F06 silent truncation, F07 funding/safe-spending semantics, and F08 complete read
+admission. F15 ensures their tests actually run in CI. Their original reproduction
+revision remains `fb2725d`; reading a newer Loam revision does not resolve them.
 
+The following inventory describes implemented safeguards and remaining work, not
+proof that adjacent counterexamples are covered:
+
+- F01 month-end exclusion is fixed in the working implementation:
+  `Budget_Query.Project_Month` normalizes `[month start, next month start)`;
+  Budget/Pace/Audit use this one answer, while Statement stock remains month-end.
+  The interval is a query coordinate, not a new retained fact. December 2100
+  rejects with a diagnostic and nonzero report CLI exit because its exclusive
+  end is outside `Year_Type`; explicit-window queries reject invalid/reversed
+  dates. Existing core projection semantics and publication are unchanged.
+  `Test_Budget_Query` exhausts all 2,412 supported month coordinates and checks
+  snapshot retention and invalid input (7 assertions). CLI tests cover leap,
+  non-leap, December rollover, first/last supported year, month-end transfers,
+  correction/date-correction, next-month reversal and exclusion: entitlement
+  `100+20=120`, consumption `3+10+4+2=19`, remaining `101`.
+  A versioned CLI fixture also compares explicit-window and monthly answers;
+  PTY checks Budget/Pace/Audit and cached return on a synthetic generation.
+  This does not resolve F02/F07/F08 or qualify Loam equivalence.
 - `UI.Report_TUI.Generate_Report_Lines` still owns pacing and backing
   arithmetic. Daily flow and MoM have moved to shared Application queries
   (`Application.Daily_Flow_Query`, `Application.MoM_Query`); move remaining
@@ -95,41 +128,52 @@ frontiers. PTY specimens check unknown/conflicting Statement rendering and
 shared report navigation, not complete semantic parity. These guards are not multi-measure
 valuation support.
 
-### P1 — Actual vertical slice
+### P1 — shared semantics from minimal evidence
 
-1. Actual correction, date correction, and reversal from selected detail.
-2. Equivalent scriptable CLI operations through the same Application boundary.
+Pin relevant Loam observable contracts. Complete common read admission and typed
+projection boundaries (F08/F14/F16); derive flow, budget, funding, and pace from
+shared evidence rather than adding report-specific engines. Loam simplifications
+are candidates only after equivalent HRA-N preconditions are established.
+HRA-N may also test alternative contracts or retained representations; identify
+the hypothesis separately from production parity and return findings to Loam.
 
-### P2 — Scheduled vertical slice
+### P2 — daily TUI continuity
 
-1. Current-open and selected-day shared query.
-2. Scheduled detail.
-3. Create, complete, retire, and replace intents.
-4. Completion creates or references Actual through one qualified transaction.
+Meet HRA/Loam's interaction baseline through existing vertical slices: meaningful
+calendar summaries, current/history selection, exact amounts/measures, Unicode
+search/editing, typed drill-down, receipt-to-parent reload, mouse/session ownership,
+and cancellation/signal/resize recovery (audit section 0A and F17–F23). Do not
+reimplement already-present lifecycle features merely to fill a checklist.
 
-### P3 — balances and reconciliation
+### P3 — independent long-term operation
 
-1. Shared coordinate balance query with known/unknown/conflict results.
-2. TUI balance workspace.
-3. Append-only balance assertion evidence and mismatch diagnostics.
+Resolve lifetime bounds and generation growth (F09/F10), canonical-data
+discoverability, portable export/import with loss reporting, backup/restore,
+schema/migration and root selection (F11/F12/F13). Prove observable continuity on
+synthetic data before any separately authorized real-data transition. These are
+core hedge requirements, not post-GUI maintenance tasks. The present three-stream
+and generation representation is not the only permitted solution. Compare minimal
+canonical-data alternatives on synthetic histories, preserving required meaning
+and qualifying migration separately from exploration.
 
-### P4 — policy, capacity, and budget
+### P4 — qualification and maintainability
 
-1. Versioned role and effective-window policy.
-2. Capacity query and transfer/rebalance intents.
-3. Current-cycle Budget decision surface without presentation-owned arithmetic.
+Qualify clean-environment Ada build/run without Lean runtime, long-history
+workloads, public contracts, supported environments, and contributor/release
+procedures (F15/F24/F25). Keep a language-neutral specification and expected-answer
+specimens usable even if Loam cannot be built in the future.
 
-### P5 — reports
+### P5 — optional external adapters
 
-Add explicit report queries without introducing generic issue or
-universal-event frameworks. Relation/discharge lifecycle and current-open
-attention are complete (see the matrix).
+Only after demonstrated need, expose a versioned query and proposal operation,
+then expand GUI/AI clients. They do not establish continuity-hedge readiness and
+must not introduce a separate semantic engine or writer.
 
-### P6 — external adapters
-
-Expose demonstrated Query and Intent operations through a versioned protocol,
-then add AI/chat and GUI surfaces. Do not design a universal protocol ahead of a
-real operation.
+Loam review and reverse feedback recur across every priority, not a final parity
+phase. At each slice, check for a reusable simplification, counterexample, or
+clearer canonical representation; do not invent findings to fill a quota.
+Within each slice, preserve CLI/TUI usability and the relevant durability/proof
+gates rather than postponing all UI work to the end.
 
 ## 3. Size baseline and budget
 
@@ -142,23 +186,80 @@ Baseline at `e3280aa` before the generation transaction implementation:
 | Loam production Lean | 34,017 | 23,816 |
 | Loam TUI Lean | 8,920 | 7,475 |
 
-The baseline HRA-N number is not a parity result. Current measurements on the
-working tree based on `98c7279` are 25,817 production Ada code lines and 7,810
-Curses TUI code lines, versus Loam `cd41d5f` at 23,425 production and 7,561 TUI
-code lines (`./tools/metrics --loam-root ../loam`). HRA-N has exceeded the planning
-ranges while report semantics and external adapters remain incomplete; no
-implementation-reduction result can currently be claimed. Prioritize shared
-semantic report queries and removal of duplicate paths, not line-count cuts.
+The baseline HRA-N number is not a parity result. The last measured comparison
+is HRA-N `fb2725d` plus the month-window working changes: 26,410 production Ada
+code lines and 7,640 Curses TUI code lines; Loam `1fa8953`: 22,201 production Lean
+and 7,622 TUI code lines (`tools/metrics --loam-root ../loam`, 2026-09-13 UTC).
+The initial audit measured 26,401/7,666 and 22,372/7,524 respectively at its own
+revisions. This is scoped inventory, not equal-observable reduction evidence.
+No equal-capability implementation-reduction result can currently be claimed.
 
-A planning guardrail—not a safety limit—is:
+Do not set a fixed 40–60% cross-language reduction or a fixed total line budget
+as an acceptance gate. First compare retained meanings, observable coverage,
+failure behavior, daily TUI reach, long-history capacity, duplicated semantic
+paths, dependencies, and operating burden. Measure code size at that scope.
 
-- full production parity target: approximately 10,000–15,000 code lines;
-- complete TUI target: approximately 2,500–4,000 code lines;
-- expected structural reduction from current Loam: 40–60% at equal capability.
+Growth should trigger inspection of duplicated readers, publishers, frontend
+sessions, and projections. Never reduce size by weakening laws, proof,
+diagnostics, durability, test isolation, or supported capabilities. A smaller
+Core with duplicated Application/UI arithmetic is not a smaller system.
 
-If growth exceeds these ranges, first inspect duplicated readers, publishers,
-frontend sessions, and projections. Never recover the budget by weakening laws,
-proof, diagnostics, durability, or user-visible capability.
+Use `./tools/metrics --loam-root ../loam` at meaningful architectural/comparable
+capability checkpoints, not at every upstream commit.
 
-Use `./tools/metrics --loam-root ../loam` to refresh measurements. Update this
-baseline only at meaningful equal-capability checkpoints, not every commit.
+## 4. Current Loam review checkpoint
+
+This section is overwritten with the latest scoped review and open decisions;
+it is not a chronological progress diary. A reviewed source revision is **not**
+an adopted or qualified equivalence baseline.
+
+| Field | Current evidence |
+|---|---|
+| Review time | 2026-09-13 UTC; month-window slice and local source review |
+| HRA-N source | `fb2725d77a72ae428eac6c41d7938107e0a62f27` plus current month-window implementation/tests and documentation changes |
+| Prior audit comparison | Loam `6869de2`; numerical audit evidence remains pinned there |
+| Pinned Loam review tip | `1fa89531029d4ef3cc6a33ed34e0a7875932c39c` |
+| Repository scope | Local `../loam`, observed `main`, clean at check; HEAD advanced during review, so delta inspection was pinned |
+| Remote/CI | Not fetched/queried in this review; no latest-remote or CI-success claim |
+| Review scope | Delta inventory from prior `ebede738` via `31abd1a` to pinned tip; Actual admission/closure and publisher simplifications; BudgetWindowReview and StockFlowReview interval contracts; RoleFlowReview/RoleBalanceReview source, Reports/CLI diff; observation 243 temporal-support rationale (not a model rerun) |
+| Executed qualification | HRA-N build and test-project build; Budget_Query 7, Capacity_Command 30, Daily_Flow_Query 33, MoM_Query 38, Statement 36 assertions; CLI 8 tests, observation 3 tests, full PTY script all pass. SPARK/Alloy/TLC/SPIN, full Ada suite and Loam tests not rerun |
+| Adopted parity baseline | None at whole-system level; local month-window contract qualified as scoped in P0, no differential Loam execution |
+| Next review | Next HRA-N session checks newer local/remote scope as available; focused review before affected slice/merge; at least weekly during active work |
+
+### Open adoption decisions
+
+| Loam delta | Decision now | HRA-N next action / recheck trigger |
+|---|---|---|
+| Scheduled drafts carry BalancedMovement rather than effects plus redundant total | Adoption candidate, not implemented/qualified here | Inspect creation/replacement publisher and tests; map to an admitted Ada draft only if it removes duplicate state without losing per-measure evidence |
+| Inverse movement law and removal of derived reversal revalidation | Conditional candidate | Prove bounded negation/conservation and admission provenance before removing any HRA-N check; revisit during reversal slice |
+| Correction trusts canonical decoding/closure and removes impossible resume state/derived acknowledgements | Hold implementation pending boundary comparison | Complete F08 shared admission; inspect publisher/fault tests; do not copy deletion of retry logic across different publication protocols |
+| Actual admission establishes validity closure; derived frontier checks, request echoes and publisher telemetry removed | Conditional candidate | Finish F08 before deleting reader checks; preserve HRA-N generation/snapshot receipts needed for authoritative reload |
+| RoleFlow overlays roles on shared TransactionsFlow; Income & Expense TUI preserves measure and unresolved Effect witnesses | Candidate for F03/F14 comparison, not ported | HRA-N effective-dated roles differ from Loam's role map; preserve temporal distinctions and compare synthetic unresolved/cancelling effects before adoption |
+| RoleBalance separates unsupported quantities from unresolved roles; observation 243 distinguishes current anchors from historical zero-origin support | Research input, no production anchor adoption | Inspect bounded model evidence and design an explicit anchor/coverage contract before any Balance_Query change; a current anchor cannot justify an earlier stock boundary |
+| Production fixture moved into tests; workflow/test changes in delta | Inventory seen, detailed test/CI review pending | Inspect execution inventory at F15; no qualification or automatic port claim |
+
+Per-observable adopted revisions and executable evidence belong with their
+capability/test contracts. A pending decision remains visible even after the
+review tip advances; do not mark adoption complete just because the source was
+read. Before the next implementation, classify any additional delta after this
+pinned tip instead of chasing live HEAD during the current task.
+
+## 5. Current HRA-N exploration and reverse-feedback queue
+
+This is a queue of open questions, not evidence that Loam has these defects or
+that changes have been proposed/adopted there. No Loam implementation or operational
+data was changed by the documentation work that created this queue. Use the packet
+in `LOAM_ALIGNMENT.md` §3 before classifying a candidate as an upstream finding.
+
+| Question / local basis | State and current evidence | Next discriminating check / return condition |
+|---|---|---|
+| Can canonical data be easier to inspect with fewer retained pieces and no weaker publication? Audit §0A, F09–F11 | Exploration question; HRA-N's hidden layout and bounded-history concerns are documented, but no replacement format has been qualified | Compare current and minimal alternative shapes on synthetic correction/terminal/coverage histories; return only generally applicable laws and measured trade-offs |
+| Can trusted admission remove duplicate state/checks without obscuring failure? F08/F14, Loam correction delta in §4 | Adoption candidate and potential reciprocal question; HRA-N's complete read boundary is still incomplete | Establish the Ada boundary, then distinguish reusable closure laws from language/protocol-specific constraints; never copy check deletion blindly |
+| Can interval/measure/availability laws expose shared report assumptions? F01–F07 | F01 local month-end regression qualified (P0); Loam BudgetWindowReview already requires explicit half-open dates. No Loam defect or upstream proposal established | Reuse endpoint/exclusive-end range law, without introducing a retained month/Period. Finite end-date refusal is an Ada range constraint, not a Loam defect. Next compare measure and coverage laws with RoleFlow/RoleBalance; differential execution remains pending |
+| Can calendar-to-detail workflows improve both TUIs? Audit §0A, F17–F23 | HRA-N user reports and static findings; no comparative usability result or upstream proposal yet | Compare synthetic workflows and narrow terminal layouts; return concrete rendering/interaction evidence, not private screenshots |
+
+For each packet, track direction, pinned references, hypothesis, evidence link,
+proposal/validation/adoption status, trade-offs, and next action. Actual upstream
+issues/PRs or observations are linked only after they exist. Weekly review includes
+this queue; a reviewed Loam SHA does not close it. Once resolved, retain the law in
+current specifications/tests and let Git own the retired queue entry.

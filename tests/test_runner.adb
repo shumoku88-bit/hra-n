@@ -30,6 +30,7 @@ with Test_Balance_Query;
 with Test_Assertion;
 with Test_Attention_Command;
 with Test_Capacity_Command;
+with Test_Budget_Query;
 with Test_Policy;
 with Test_Statement;
 with Test_Daily_Flow_Query;
@@ -181,6 +182,11 @@ begin
    if Selected ("Test_Capacity_Command") then
       Announce ("Test_Capacity_Command");
       Test_Capacity_Command.Run;
+   end if;
+
+   if Selected ("Test_Budget_Query") then
+      Announce ("Test_Budget_Query");
+      Test_Budget_Query.Run;
    end if;
 
    if Selected ("Test_Attention_Command") then

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import calendar
+import datetime
 import os
 import shutil
 import subprocess
@@ -122,6 +124,78 @@ class TestHraNCli(unittest.TestCase):
         # Month-coordinate queries remain available and include the full month.
         res = self.run_cmd("report", "--flow", "-m", "9", "-y", "2026")
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+
+    def test_month_end_budget_reports(self) -> None:
+        # Same current frontier and [month start, next month start) everywhere.
+        for year, month in [(2026, 2), (2024, 2), (2026, 9), (2026, 12),
+                            (1900, 1), (2100, 2), (2100, 11)]:
+            first = datetime.date(year, month, 1)
+            last = first.replace(day=calendar.monthrange(year, month)[1])
+            following = last + datetime.timedelta(days=1)
+            journal = (
+                f'TX e1 {first} cash:-3 food:3 "first"\n'
+                f'TX e2 {last} cash:-100 food:100 "original"\n'
+                f'TX e3 {last} cash:-10 food:10 "corrected" replaces:e2\n'
+                f'TX e4 {last} cash:-4 food:4 "reversed next month"\n'
+                f'TX e5 {following} cash:4 food:-4 "inverse" reverses:e4\n'
+                f'TX e6 {following} cash:-50 food:50 "excluded"\n'
+                f'TX e7 {following} cash:-2 food:2 "wrong date"\n'
+                f'TX e8 {last} cash:-2 food:2 "date corrected" replaces:e7\n'
+            )
+            policy = (
+                'ROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n'
+                f'TRANSFER unallocated Food 100 jpy {first}\n'
+                f'TRANSFER unallocated Food 20 jpy {last}\n'
+                f'TRANSFER unallocated Food 500 jpy {following}\n'
+                'ROUTE food INITIAL MANAGED Food\n'
+            )
+            for name, text in [('journal', journal), ('policy', policy), ('scheduled', '')]:
+                with open(os.path.join(self.test_dir, name + '.hra'), 'w', encoding='utf-8') as f:
+                    f.write(text)
+            for tab, expected in [
+                ('--budget', r'Total Budget Envelopes\s+120\s+19\s+101'),
+                ('--pace', r'Spent So Far\s*:\s*19 JPY'),
+                ('--audit', r'Active Envelope Requirements\s*:\s*101 JPY'),
+                ('--flow', r'Total Monthly Flow\s+0\s+19\s+-19'),
+            ]:
+                with self.subTest(year=year, month=month, tab=tab):
+                    res = self.run_cmd('report', tab, '-m', str(month), '-y', str(year))
+                    self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+                    self.assertRegex(res.stdout, expected)
+
+    def test_versioned_month_end_budget(self) -> None:
+        for args in [
+            ('init',),
+            ('capacity', 'transfer', 'unallocated', 'Food', '100', '2026-09-01'),
+            ('capacity', 'transfer', 'unallocated', 'Food', '20', '2026-09-30'),
+            ('route', 'set', 'food', 'Food', 'initial'),
+            ('movement', 'cash', 'food', '10', '2026-09-30', 'month end'),
+            ('movement', 'cash', 'food', '50', '2026-10-01', 'next month'),
+        ]:
+            res = self.run_cmd(*args)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        selected = self.current_snapshot()
+        res = self.run_cmd('report', '--budget', '-m', '9', '-y', '2026')
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertRegex(res.stdout, r'Total Budget Envelopes\s+120\s+10\s+110')
+        # The explicit-window CLI consumes the same projector, with no writes.
+        res = self.run_cmd('budget', '2026-09-01', '2026-10-01')
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertRegex(res.stdout, r'Food\s+120 JPY\s+10 JPY\s+110 JPY')
+        self.assertEqual(self.current_snapshot(), selected)
+
+    def test_month_end_unrepresentable_boundary(self) -> None:
+        self.write_report_fixture('')
+        for tab in ['--budget', '--pace', '--audit']:
+            with self.subTest(tab=tab):
+                res = self.run_cmd('report', tab, '-m', '12', '-y', '2100')
+                self.assertNotEqual(res.returncode, 0)
+                self.assertIn('exclusive end is outside supported date range', res.stdout)
+                self.assertNotIn('[PASS]', res.stdout)
+        # A month-end stock query does not require the next day.
+        res = self.run_cmd('report', '--statement', '-m', '12', '-y', '2100')
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn('2100-12-31', res.stdout)
 
     def test_financial_reports_reject_foreign_measures(self) -> None:
         self.write_report_fixture(

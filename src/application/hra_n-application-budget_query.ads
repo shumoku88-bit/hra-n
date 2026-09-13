@@ -13,6 +13,8 @@ with HRA_N.Application.Budget_Window; use HRA_N.Application.Budget_Window;
 with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
+with HRA_N.Storage.Journal_Reader;
+with HRA_N.Storage.Policy_Reader;
 
 package HRA_N.Application.Budget_Query is
 
@@ -27,6 +29,32 @@ package HRA_N.Application.Budget_Query is
       Diagnostic     : Frontend_Types.Diagnostic_Text := [others => ' '];
       Diagnostic_Len : Frontend_Types.Diagnostic_Length := 0;
    end record;
+
+   --  A query coordinate only; never a retained cycle or policy fact.
+   type Date_Interval is record
+      Start_Date    : Date_Type;
+      End_Exclusive : Date_Type;
+   end record;
+
+   --  In-memory projection shared by explicit-window and calendar adapters.
+   --  Reader success is checked here; complete three-stream admission remains
+   --  a separate boundary requirement (audit F08).
+   function Project
+     (Journal  : HRA_N.Storage.Journal_Reader.Journal_Result;
+      Policy   : HRA_N.Storage.Policy_Reader.Policy_Result;
+      Window   : Date_Interval;
+      Snapshot : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned)) return Budget_View;
+
+   --  Normalize a month to [first day, first day of next month) once.
+   --  Reject when the exclusive end cannot be represented (December 2100).
+   function Project_Month
+     (Journal  : HRA_N.Storage.Journal_Reader.Journal_Result;
+      Policy   : HRA_N.Storage.Policy_Reader.Policy_Result;
+      Year     : Year_Type;
+      Month    : Month_Type;
+      Snapshot : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned)) return Budget_View;
 
    --  Answer the current policy window at the selected snapshot. A missing
    --  window preset is rejected; the caller never invents a cycle.

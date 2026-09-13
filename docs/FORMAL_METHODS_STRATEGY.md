@@ -4,6 +4,16 @@ Status: **design authority for the canonical-ledger-v2 work**
 
 ## 1. Objective
 
+HRA-N is the Ada/SPARK long-term continuity hedge for the actively developing
+Loam small-core effort, as defined in [`LOAM_ALIGNMENT.md`](LOAM_ALIGNMENT.md).
+Its semantic target is qualified observable contracts, not a literal translation
+of Lean types or unexplained semantic divergence. HRA-N also independently
+explores canonical representations and challenges shared assumptions with
+counterexamples. Those findings should inform Loam, not only the Ada port.
+Ordinary accounting/PTA tools supply questions and adversarial examples, not
+mandatory Core primitives. Rich answers should be derived from minimal retained
+evidence.
+
 HRA-N aims to be a small, auditable household accounting program rather than a
 feature-for-feature clone of a particular Plain Text Accounting (PTA) tool. A
 keyboard-first TUI is a minimum release surface; CLI, GUI/Web, and AI/chat use
@@ -15,7 +25,9 @@ silently discarded.
 
 The physical three-file layout is not itself a semantic claim. The authority is
 the admitted fact model and deterministic replay semantics carried by those
-files.
+files. Bounded proof-facing operations must not silently become lifetime bounds
+on retained household history. Size reduction applies to the whole production
+system and must preserve supported observables, diagnostics, and daily usability.
 
 ## 2. Claims discipline
 
@@ -33,6 +45,23 @@ Documentation must not call a bounded Alloy result an unqualified proof. A
 property copied directly into a model fact is an assumption, not an independently
 established theorem. Every published assurance claim must name its assumptions,
 scope, model, command, and result.
+
+Loam comparison claims must additionally name both source revisions, the adopted
+observable contract, identity/encoding mappings, numeric range differences, and
+synthetic expected answers or rejections. A newer reviewed Loam SHA is not proof
+of HRA-N parity. Lean proofs do not transfer automatically to SPARK; Ada contracts,
+bounded range admission, concrete persistence, and frontend behavior need their
+own evidence. Differential tests are necessary evidence, not an oracle that can
+override a mathematical law when both implementations give the same wrong answer.
+
+A representation or contract hypothesis must be distinguished from an adopted
+production law. Compare the current and candidate representations with explicit
+identity/history mappings and adversarial specimens. For proposed field/state
+removal, search for histories that become observationally indistinguishable.
+An Ada proof difficulty may expose a shared semantic gap, or only a bounded
+implementation constraint; record which before proposing a Loam change.
+Return minimal evidence, assumptions, trade-offs, and the unverified scope via
+LOAM_ALIGNMENT's reverse-feedback process. A proposal is not an upstream result.
 
 ## 3. Semantic pipeline
 

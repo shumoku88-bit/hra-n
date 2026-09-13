@@ -8,6 +8,7 @@ with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Application.Actual_Query;
 with HRA_N.Application.Balance_Query;
 with HRA_N.Application.Budget_Window;
+with HRA_N.Application.Budget_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;  use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Review;
@@ -144,6 +145,9 @@ package body HRA_N.UI.Report_TUI is
       Result_Status : out Query_Status)
    is
       Line_Num : Natural := 0;
+      Budget : HRA_N.Application.Budget_Query.Budget_View;
+      B_Rep : HRA_N.Application.Budget_Window.Budget_Window_Report
+        renames Budget.Report;
 
       procedure Emit (Text : String) is
       begin
@@ -189,6 +193,20 @@ package body HRA_N.UI.Report_TUI is
          Emit (" [ERROR] " & Unsupported_Measure_Diagnostic);
          Total_Lines := Line_Num;
          return;
+      end if;
+
+      if Tab in Tab_Budget | Tab_Pacing | Tab_Audit then
+         Budget := HRA_N.Application.Budget_Query.Project_Month
+           (Journal, Policy, Year, Month,
+            (if Paths.Is_Versioned then
+               (Kind => Snapshot_Versioned, Identity => Make_Token (Snapshot_Id_Str (Paths)))
+             else (Kind => Snapshot_Unversioned)));
+         Result_Status := Budget.Status;
+         if Budget.Status = Query_Rejected then
+            Emit (" [ERROR] " & Budget.Diagnostic (1 .. Budget.Diagnostic_Len));
+            Total_Lines := Line_Num;
+            return;
+         end if;
       end if;
 
       case Tab is
@@ -382,23 +400,7 @@ package body HRA_N.UI.Report_TUI is
             end;
 
          when Tab_Budget =>
-            declare
-               B_Rep : HRA_N.Application.Budget_Window.Budget_Window_Report;
             begin
-               HRA_N.Application.Budget_Window.Project_Budget_Window
-                 (Capacity_Mem => Policy.Capacities,
-                  Events       => Journal.Events,
-                  Validities   => Journal.Validities,
-                  Metadata     => Journal.Metadata,
-                  Routing      => Policy.Routing,
-                  Start_Y      => Year,
-                  Start_M      => Month,
-                  Start_D      => 1,
-                  End_Y        => Year,
-                  End_M        => Month,
-                  End_D        => End_D,
-                  Report       => B_Rep);
-
                Emit ("--- BUDGET & ENVELOPE PROJECTION (" & Period_Str & ") ---");
                Emit ("");
                Emit ("  " & Pad_Right ("Purpose", 24) & " " &
@@ -568,22 +570,7 @@ package body HRA_N.UI.Report_TUI is
                   elsif Year < Sys_D.Year or else (Year = Sys_D.Year and then Month < Sys_D.Month)
                   then 0
                   else Days_Total);
-               B_Rep : HRA_N.Application.Budget_Window.Budget_Window_Report;
             begin
-               HRA_N.Application.Budget_Window.Project_Budget_Window
-                 (Capacity_Mem => Policy.Capacities,
-                  Events       => Journal.Events,
-                  Validities   => Journal.Validities,
-                  Metadata     => Journal.Metadata,
-                  Routing      => Policy.Routing,
-                  Start_Y      => Year,
-                  Start_M      => Month,
-                  Start_D      => 1,
-                  End_Y        => Year,
-                  End_M        => Month,
-                  End_D        => End_D,
-                  Report       => B_Rep);
-
                Emit ("--- DAILY SPENDING PACE & TARGET (" & Period_Str & ") ---");
                Emit ("");
                Emit ("[CALENDAR HORIZON]");
@@ -906,22 +893,7 @@ package body HRA_N.UI.Report_TUI is
                Bal_View : constant HRA_N.Application.Balance_Query.Balance_View :=
                  HRA_N.Application.Balance_Query.Project (Journal, Policy, Bal_Q, Snap);
 
-               B_Rep : HRA_N.Application.Budget_Window.Budget_Window_Report;
             begin
-               HRA_N.Application.Budget_Window.Project_Budget_Window
-                 (Capacity_Mem => Policy.Capacities,
-                  Events       => Journal.Events,
-                  Validities   => Journal.Validities,
-                  Metadata     => Journal.Metadata,
-                  Routing      => Policy.Routing,
-                  Start_Y      => Year,
-                  Start_M      => Month,
-                  Start_D      => 1,
-                  End_Y        => Year,
-                  End_M        => Month,
-                  End_D        => End_D,
-                  Report       => B_Rep);
-
                Emit ("--- FAIL-CLOSED AUDIT, INTEGRITY & COHERENCE ---");
                Emit ("  Evaluation Date : " & Y_Str & "-" & Pad_M & "-" & Pad_D);
                Emit ("");
