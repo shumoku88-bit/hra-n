@@ -88,6 +88,11 @@ Journal/Policy snapshot, not three UI-local date constructions. The shared
 `Project` also serves explicit-window budget queries. Month coordinates normalize
 to `[first day, next month's first day)`; the unrepresentable exclusive end of
 December 2100 rejects rather than clipping. Stock as-of stays at month end.
+The ordinary/explicit-window `budget` CLI and policy-window Budget TUI also use
+Budget_Query; CLI no longer bypasses its read/interval checks. This JPY-only
+query refuses any retained foreign capacity or journal effect before arithmetic,
+even outside the selected interval. Renderers propagate rejection rather than
+showing a numeric budget, SAFE verdict, or conservation PASS.
 This adapter change does not establish complete three-stream admission or make
 remaining UI-local pace/backing arithmetic a qualified shared semantic boundary.
 

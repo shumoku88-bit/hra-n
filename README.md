@@ -144,6 +144,10 @@ Budget/Pace/Audit normalize a selected month through the shared Application
 query to `[month start, next month start)`, including the final day's facts.
 December 2100 is rejected on these tabs because its exclusive end is outside
 the supported date range; month-end Statement remains available.
+Both `budget [START END]` and budget-based report tabs reject retained non-JPY
+capacity, including outside the selected interval, instead of labeling it JPY.
+The shared budget query also rejects non-JPY journal effects and malformed policy.
+This is conservative refusal, not multi-currency budgeting or conversion support.
 Remaining report-authority and completeness gaps are listed under
 P0 in the capability matrix; the seven tabs do not establish semantic parity.
 

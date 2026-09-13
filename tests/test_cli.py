@@ -197,11 +197,52 @@ class TestHraNCli(unittest.TestCase):
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         self.assertIn('2100-12-31', res.stdout)
 
+    def test_budget_query_admission(self) -> None:
+        self.write_report_fixture('')
+        for dates in [('2026-09-01',), ('2026-09-01', '2026-10-01', 'extra'),
+                      ('2026-02-30', '2026-03-01'),
+                      ('2026-09-01', '2026-09-01'), ('2026-10-01', '2026-09-01')]:
+            res = self.run_cmd('budget', *dates)
+            self.assertNotEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertNotIn('[PASS]', res.stdout)
+        with open(os.path.join(self.test_dir, 'policy.hra'), 'a', encoding='utf-8') as f:
+            f.write('WINDOW monthly 2026-09-01 2026-10-01\n'
+                    'TRANSFER unallocated Food 0 usd 2026-09-01\n')
+        for dates in [(), ('2026-09-01', '2026-10-01')]:
+            res = self.run_cmd('budget', *dates)
+            self.assertNotEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertIn('Invalid TRANSFER amount', res.stdout + res.stderr)
+            self.assertNotIn('[PASS]', res.stdout)
+
+    def test_budget_rejects_foreign_capacity(self) -> None:
+        for foreign in [
+            'TRANSFER unallocated Food 100 usd 2026-09-01\n',
+            'TRANSFER unallocated Food 100 usd 2026-10-01\n',
+            'TRANSFER unallocated Food 100 jpy 2026-09-01\n'
+            'TRANSFER unallocated Food 100 usd 2026-09-01\n',
+        ]:
+            self.write_report_fixture('')
+            with open(os.path.join(self.test_dir, 'policy.hra'), 'a', encoding='utf-8') as f:
+                f.write(foreign + 'WINDOW monthly 2026-09-01 2026-10-01\n')
+            for args in [('budget',), ('budget', '2026-09-01', '2026-10-01')] + [
+                ('report', tab, '-m', '9', '-y', '2026')
+                for tab in ['--budget', '--pace', '--audit']
+            ]:
+                with self.subTest(foreign=foreign, args=args):
+                    res = self.run_cmd(*args)
+                    self.assertNotEqual(res.returncode, 0, res.stdout + res.stderr)
+                    self.assertIn('budget queries support jpy capacity only', res.stdout + res.stderr)
+                    self.assertNotIn('[PASS]', res.stdout)
+                    self.assertNotIn('Unallocated Funds', res.stdout)
+            # Capacity does not contaminate an unrelated stock query.
+            res = self.run_cmd('report', '--statement', '-m', '9', '-y', '2026')
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+
     def test_financial_reports_reject_foreign_measures(self) -> None:
         self.write_report_fixture(
             'TX e0001 2026-09-01 cash:-10:usd food:10:usd "USD"\n'
         )
-        for args in [("statement",), ("status",)] + [
+        for args in [("statement",), ("status",), ('budget', '2026-09-01', '2026-10-01')] + [
             ("report", tab, "-m", "9", "-y", "2026")
             for tab in ["--statement", "--budget", "--pace", "--mom", "--flow", "--audit"]
         ]:

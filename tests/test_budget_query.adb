@@ -49,6 +49,21 @@ package body Test_Budget_Query is
       Assert (View.Status = Query_Rejected, "Invalid start date rejects");
       View := Project (Journal, Policy, ((2026, 2, 1), (2026, 2, 30)), Snap);
       Assert (View.Status = Query_Rejected, "Invalid exclusive end rejects");
+      Policy.Capacities.Movement_Count := 1;
+      Policy.Capacities.Movements (1).Currency := Make_Token ("usd");
+      View := Project_Month (Journal, Policy, 2026, 9, Snap);
+      Assert (View.Status = Query_Rejected and then
+              View.Diagnostic (1 .. View.Diagnostic_Len) =
+                "budget queries support jpy capacity only; no conversion is implied",
+              "Foreign capacity rejects even before it has dated contributions");
+      Assert (View.Report.Row_Count = 0 and then
+              View.Snapshot.Kind = Snapshot_Versioned and then
+              Equal_Token (View.Snapshot.Identity, Snap.Identity),
+              "Rejected budget has no numeric rows and retains snapshot");
+      Policy.Capacities.Movements (1).Currency := Make_Token ("JPY");
+      View := Project_Month (Journal, Policy, 2026, 9, Snap);
+      Assert (View.Status = Query_Rejected, "Measure tokens are not case-folded aliases");
+      Policy.Capacities.Movement_Count := 0;
       Journal.Success := False;
       View := Project_Month (Journal, Policy, 2026, 9, Snap);
       Assert (View.Status = Query_Rejected, "Failed journal read is not an empty budget");

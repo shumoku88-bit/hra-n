@@ -36,7 +36,9 @@ package HRA_N.Application.Budget_Query is
       End_Exclusive : Date_Type;
    end record;
 
-   --  In-memory projection shared by explicit-window and calendar adapters.
+   --  In-memory JPY-only projection shared by explicit-window and calendar
+   --  adapters. Reject any retained non-jpy journal effect or capacity movement,
+   --  including outside this interval; never convert, relabel, or silently omit.
    --  Reader success is checked here; complete three-stream admission remains
    --  a separate boundary requirement (audit F08).
    function Project

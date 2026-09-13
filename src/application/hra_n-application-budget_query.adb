@@ -1,4 +1,5 @@
 with HRA_N.Core.Types; use HRA_N.Core.Types;
+with HRA_N.Application.Statement;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 
@@ -34,7 +35,19 @@ package body HRA_N.Application.Budget_Query is
         or else not Date_Less (First, Ending)
       then
          Reject (Result, "explicit budget window must be two valid dates with START < END");
+      elsif not Statement.Supports_Measures (Journal) then
+         Reject (Result, Statement.Unsupported_Measure_Diagnostic);
       else
+         --  This scalar answer is JPY-only. Check retained evidence before
+         --  interval selection: absence from a window is not currency support.
+         for I in 1 .. Policy.Capacities.Movement_Count loop
+            if not Equal_Token
+              (Policy.Capacities.Movements (I).Currency, Make_Token ("jpy"))
+            then
+               Reject (Result, "budget queries support jpy capacity only; no conversion is implied");
+               return Result;
+            end if;
+         end loop;
          Project_Budget_Window
            (Capacity_Mem => Policy.Capacities,
             Events       => Journal.Events,

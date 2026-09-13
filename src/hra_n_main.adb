@@ -7,12 +7,12 @@ with Ada.Command_Line;
 with HRA_N.Core.Types;                use HRA_N.Core.Types;
 with HRA_N.Core.Validity;             use HRA_N.Core.Validity;
 with HRA_N.Storage.Journal_Reader;    use HRA_N.Storage.Journal_Reader;
-with HRA_N.Storage.Policy_Reader;     use HRA_N.Storage.Policy_Reader;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Initializer;   use HRA_N.Application.Initializer;
 with HRA_N.Application.Doctor;        use HRA_N.Application.Doctor;
 with HRA_N.Application.Movement_Command; use HRA_N.Application.Movement_Command;
-with HRA_N.Application.Budget_Window; use HRA_N.Application.Budget_Window;
+with HRA_N.Application.Budget_Query;
+with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Review;        use HRA_N.Application.Review;
 with HRA_N.UI.Output;                 use HRA_N.UI.Output;
 with HRA_N.UI.Home_CLI;
@@ -97,7 +97,6 @@ begin
       Rem_Args  : constant Natural :=
         (if Arg_Count >= Command_Idx then Arg_Count - Command_Idx else 0);
       J_Path    : constant String  := Journal_Path_Str (Paths);
-      P_Path    : constant String  := Policy_Path_Str (Paths);
       Data_Dir  : constant String  := Data_Dir_Str (Paths);
    begin
       --  Branch: Help message
@@ -586,10 +585,47 @@ begin
          return;
       end if;
 
-      --  Load Journal & Policy for reporting commands
+      if Command = "budget" then
+         declare
+            use HRA_N.Application.Budget_Query;
+            use HRA_N.Application.Frontend_Types;
+            View : Budget_View;
+            Date_S, Date_E : Date_Type;
+         begin
+            if Rem_Args = 0 then
+               View := Execute (Paths);
+            elsif Rem_Args = 2 then
+               if not Parse_Iso_Date
+                 (Ada.Command_Line.Argument (Command_Idx + 1), Date_S)
+                 or else not Parse_Iso_Date
+                   (Ada.Command_Line.Argument (Command_Idx + 2), Date_E)
+               then
+                  Put_Line ("hra-n: budget window endpoints must be real YYYY-MM-DD calendar dates");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  return;
+               end if;
+               View := Execute_Window (Paths, Date_S, Date_E);
+            else
+               Put_Line ("hra-n: budget expects either no arguments or START END");
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               return;
+            end if;
+            if View.Status = Query_Rejected then
+               Put_Line ("[ERROR] " & View.Diagnostic (1 .. View.Diagnostic_Len));
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+            else
+               HRA_N.UI.Budget_CLI.Display_Budget_Window
+                 (View.Report,
+                  (if Rem_Args = 2 then "Custom"
+                   else View.Window_Name (1 .. View.Window_Len)));
+            end if;
+            return;
+         end;
+      end if;
+
+      --  Load Journal for legacy review.
       declare
          J_Res : constant Journal_Result := Read_Journal_File (J_Path);
-         P_Res : constant Policy_Result := Read_Policy_File (P_Path);
       begin
          if not J_Res.Success then
             Put_Line ("[ERROR] Failed to load journal: " &
@@ -598,61 +634,7 @@ begin
             return;
          end if;
 
-         if Command = "budget" then
-            declare
-               SY, SM, SD  : Natural := 0;
-               EY, EM, ED  : Natural := 0;
-               Preset_Name : String (1 .. 64) := [others => ' '];
-               P_Name_Len  : Natural := 0;
-               Report      : Budget_Window_Report;
-            begin
-               if Rem_Args >= 2 then
-               declare
-                  S_Str : constant String := Ada.Command_Line.Argument (Command_Idx + 1);
-                  E_Str : constant String := Ada.Command_Line.Argument (Command_Idx + 2);
-                  Date_S, Date_E : Date_Type;
-               begin
-                  if not Parse_Iso_Date (S_Str, Date_S) or else not Parse_Iso_Date (E_Str, Date_E) then
-                     Put_Line ("hra-n: budget window endpoints must be real YYYY-MM-DD calendar dates");
-                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                     return;
-                  end if;
-                  SY := Date_S.Year; SM := Date_S.Month; SD := Date_S.Day;
-                  EY := Date_E.Year; EM := Date_E.Month; ED := Date_E.Day;
-                  Preset_Name (1 .. 6) := "Custom";
-                  P_Name_Len := 6;
-               end;
-            elsif P_Res.Has_Window then
-               SY := P_Res.Window_Start.Year; SM := P_Res.Window_Start.Month; SD := P_Res.Window_Start.Day;
-               EY := P_Res.Window_End.Year;   EM := P_Res.Window_End.Month;   ED := P_Res.Window_End.Day;
-               P_Name_Len := Natural'Min (P_Res.Window_Name.Length, Preset_Name'Length);
-               Preset_Name (1 .. P_Name_Len) := P_Res.Window_Name.Value (1 .. P_Name_Len);
-            else
-               Put_Line ("[ERROR] No budget window declared in policy.hra, and no START END dates specified.");
-               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-               return;
-            end if;
-
-            Project_Budget_Window
-              (Capacity_Mem => P_Res.Capacities,
-               Events       => J_Res.Events,
-               Validities   => J_Res.Validities,
-               Metadata     => J_Res.Metadata,
-               Routing      => P_Res.Routing,
-               Start_Y      => SY,
-               Start_M      => SM,
-               Start_D      => SD,
-               End_Y        => EY,
-               End_M        => EM,
-               End_D        => ED,
-               Report       => Report);
-
-            HRA_N.UI.Budget_CLI.Display_Budget_Window
-              (Report      => Report,
-               Preset_Name => Preset_Name (1 .. P_Name_Len));
-            return;
-         end;
-      elsif Command = "review" then
+         if Command = "review" then
          declare
             Sys_Date : constant Date_Type := Get_System_Date;
             Q        : Review_Query;

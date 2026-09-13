@@ -84,7 +84,17 @@ proof that adjacent counterexamples are covered:
   `100+20=120`, consumption `3+10+4+2=19`, remaining `101`.
   A versioned CLI fixture also compares explicit-window and monthly answers;
   PTY checks Budget/Pace/Audit and cached return on a synthetic generation.
-  This does not resolve F02/F07/F08 or qualify Loam equivalence.
+  This month-window qualification does not resolve F07/F08 or qualify Loam equivalence.
+- F02 is guarded at `Budget_Query.Project`: scalar budget answers reject any
+  retained non-`jpy` capacity movement or journal effect, including out-of-window
+  evidence. No currency conversion or omission is inferred. The ordinary and
+  explicit-window `budget` CLI now use Execute/Execute_Window rather than calling
+  Budget_Window directly; malformed policy and invalid windows also reject.
+  CLI tests cover USD-only, mixed JPY/USD, future USD, journal USD, malformed
+  policy and argument/date errors; existing JPY month-end tests still pass.
+  Versioned PTY fixtures check refusal on Budget/Pace/Audit, cached return and
+  the policy-window Budget workspace; unrelated Statement remains available.
+  This conservative whole-input guard is not multi-measure budget support.
 - `UI.Report_TUI.Generate_Report_Lines` still owns pacing and backing
   arithmetic. Daily flow and MoM have moved to shared Application queries
   (`Application.Daily_Flow_Query`, `Application.MoM_Query`); move remaining
@@ -187,9 +197,9 @@ Baseline at `e3280aa` before the generation transaction implementation:
 | Loam TUI Lean | 8,920 | 7,475 |
 
 The baseline HRA-N number is not a parity result. The last measured comparison
-is HRA-N `fb2725d` plus the month-window working changes: 26,410 production Ada
-code lines and 7,640 Curses TUI code lines; Loam `1fa8953`: 22,201 production Lean
-and 7,622 TUI code lines (`tools/metrics --loam-root ../loam`, 2026-09-13 UTC).
+is HRA-N `c465eec` plus the F02 working changes: 26,404 production Ada
+code lines and 7,640 Curses TUI code lines; Loam `8b3b814`: 22,776 production Lean
+and 8,010 TUI code lines (`tools/metrics --loam-root ../loam`, 2026-09-13 UTC).
 The initial audit measured 26,401/7,666 and 22,372/7,524 respectively at its own
 revisions. This is scoped inventory, not equal-observable reduction evidence.
 No equal-capability implementation-reduction result can currently be claimed.
@@ -215,15 +225,15 @@ an adopted or qualified equivalence baseline.
 
 | Field | Current evidence |
 |---|---|
-| Review time | 2026-09-13 UTC; month-window slice and local source review |
-| HRA-N source | `fb2725d77a72ae428eac6c41d7938107e0a62f27` plus current month-window implementation/tests and documentation changes |
+| Review time | 2026-09-13 UTC; F02 budget-measure slice and local source review |
+| HRA-N source | `c465eec` plus current F02 implementation/tests and documentation changes |
 | Prior audit comparison | Loam `6869de2`; numerical audit evidence remains pinned there |
-| Pinned Loam review tip | `1fa89531029d4ef3cc6a33ed34e0a7875932c39c` |
-| Repository scope | Local `../loam`, observed `main`, clean at check; HEAD advanced during review, so delta inspection was pinned |
+| Pinned Loam review tip | `8b3b814756386d4dce1fffb6312a9e33dd801ea0` |
+| Repository scope | Local `../loam`, observed `main`, clean at initial check; review pinned independently of ongoing Loam work |
 | Remote/CI | Not fetched/queried in this review; no latest-remote or CI-success claim |
-| Review scope | Delta inventory from prior `ebede738` via `31abd1a` to pinned tip; Actual admission/closure and publisher simplifications; BudgetWindowReview and StockFlowReview interval contracts; RoleFlowReview/RoleBalanceReview source, Reports/CLI diff; observation 243 temporal-support rationale (not a model rerun) |
-| Executed qualification | HRA-N build and test-project build; Budget_Query 7, Capacity_Command 30, Daily_Flow_Query 33, MoM_Query 38, Statement 36 assertions; CLI 8 tests, observation 3 tests, full PTY script all pass. SPARK/Alloy/TLC/SPIN, full Ada suite and Loam tests not rerun |
-| Adopted parity baseline | None at whole-system level; local month-window contract qualified as scoped in P0, no differential Loam execution |
+| Review scope | Delta inventory `1fa8953..8b3b814`; OpeningSupport and RoleBalanceReview production source and focused test source; RoleBalances presentation support/measure domains; observation 246 findings and production gate. Observations 244/245 and CLI integration inventoried, not independently qualified |
+| Executed qualification | HRA-N build and test-project build; Budget_Query 10 and Capacity_Command 30 assertions, CLI 10 tests, observation 3 tests, full PTY script all pass. SPARK/Alloy/TLC/SPIN, full Ada suite and Loam tests not rerun |
+| Adopted parity baseline | None at whole-system level; local month-window and budget-measure contracts scoped in P0, no differential Loam execution |
 | Next review | Next HRA-N session checks newer local/remote scope as available; focused review before affected slice/merge; at least weekly during active work |
 
 ### Open adoption decisions
@@ -235,7 +245,9 @@ an adopted or qualified equivalence baseline.
 | Correction trusts canonical decoding/closure and removes impossible resume state/derived acknowledgements | Hold implementation pending boundary comparison | Complete F08 shared admission; inspect publisher/fault tests; do not copy deletion of retry logic across different publication protocols |
 | Actual admission establishes validity closure; derived frontier checks, request echoes and publisher telemetry removed | Conditional candidate | Finish F08 before deleting reader checks; preserve HRA-N generation/snapshot receipts needed for authoritative reload |
 | RoleFlow overlays roles on shared TransactionsFlow; Income & Expense TUI preserves measure and unresolved Effect witnesses | Candidate for F03/F14 comparison, not ported | HRA-N effective-dated roles differ from Loam's role map; preserve temporal distinctions and compare synthetic unresolved/cancelling effects before adoption |
-| RoleBalance separates unsupported quantities from unresolved roles; observation 243 distinguishes current anchors from historical zero-origin support | Research input, no production anchor adoption | Inspect bounded model evidence and design an explicit anchor/coverage contract before any Balance_Query change; a current anchor cannot justify an earlier stock boundary |
+| OpeningSupport now names an existing current Event for a coordinate, with no second quantity/date; RoleBalance composes it without weakening ZeroOriginCoverage | Production source reviewed; HRA-N adoption deferred | Preserve current-vs-historical support, witness/frontier validation and existing ASSERT meaning; compare synthetic opening and correction histories before introducing any new evidence family |
+| RoleBalances exposes per-measure Balance Sheet / Net Worth / Trial Balance support domains and answerability | Presentation adoption candidate | Compare F04/F07: unresolved role blocks claims conservatively; missing Income/Expense stock support need not block Net Worth. No UI/CLI parity claim from source review |
+| Observation 246 shared reflected correction-root cut plus per-coordinate quantities | Bounded research candidate, not production support or HRA-N adoption | One genuine reconciliation session may share a cut; distinct observation cuts cannot be merged. Late historical publication requires explicit reflected-root evidence, not date inference. Revisit only at an anchor slice |
 | Production fixture moved into tests; workflow/test changes in delta | Inventory seen, detailed test/CI review pending | Inspect execution inventory at F15; no qualification or automatic port claim |
 
 Per-observable adopted revisions and executable evidence belong with their
@@ -255,7 +267,7 @@ in `LOAM_ALIGNMENT.md` §3 before classifying a candidate as an upstream finding
 |---|---|---|
 | Can canonical data be easier to inspect with fewer retained pieces and no weaker publication? Audit §0A, F09–F11 | Exploration question; HRA-N's hidden layout and bounded-history concerns are documented, but no replacement format has been qualified | Compare current and minimal alternative shapes on synthetic correction/terminal/coverage histories; return only generally applicable laws and measured trade-offs |
 | Can trusted admission remove duplicate state/checks without obscuring failure? F08/F14, Loam correction delta in §4 | Adoption candidate and potential reciprocal question; HRA-N's complete read boundary is still incomplete | Establish the Ada boundary, then distinguish reusable closure laws from language/protocol-specific constraints; never copy check deletion blindly |
-| Can interval/measure/availability laws expose shared report assumptions? F01–F07 | F01 local month-end regression qualified (P0); Loam BudgetWindowReview already requires explicit half-open dates. No Loam defect or upstream proposal established | Reuse endpoint/exclusive-end range law, without introducing a retained month/Period. Finite end-date refusal is an Ada range constraint, not a Loam defect. Next compare measure and coverage laws with RoleFlow/RoleBalance; differential execution remains pending |
+| Can interval/measure/availability laws expose shared report assumptions? F01–F07 | F01 month-end and F02 JPY-only refusal regressions qualified locally (P0); Loam BudgetWindowReview already requires explicit half-open dates. No Loam defect or upstream proposal established | Reuse endpoint/exclusive-end range law, without introducing a retained month/Period. Finite end-date refusal is an Ada range constraint, not a Loam defect. Next compare measure and coverage laws with RoleFlow/RoleBalance; differential execution remains pending |
 | Can calendar-to-detail workflows improve both TUIs? Audit §0A, F17–F23 | HRA-N user reports and static findings; no comparative usability result or upstream proposal yet | Compare synthetic workflows and narrow terminal layouts; return concrete rendering/interaction evidence, not private screenshots |
 
 For each packet, track direction, pinned references, hypothesis, evidence link,

@@ -89,10 +89,11 @@ def test_statement_evidence() -> None:
     print("Statement PTY: unknown origin and assertion conflict remain partial")
 
 
-def test_month_end_budget() -> None:
+def test_month_end_budget(foreign_capacity: bool = False) -> None:
     """Cached Budget/Pace/Audit include month end and exclude next month."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     harness = os.path.join(root, 'tests', 'bin', 'tui_harness')
+    currency = 'usd' if foreign_capacity else 'jpy'
     first = datetime.date.today().replace(day=1)
     last = first.replace(day=calendar.monthrange(first.year, first.month)[1])
     following = last + datetime.timedelta(days=1)
@@ -103,10 +104,11 @@ def test_month_end_budget() -> None:
             'journal.hra': f'TX e1 {last} cash:-10 food:10 "month end"\n'
                 f'TX e2 {following} cash:-50 food:50 "outside"\n',
             'policy.hra': 'ROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n'
-                f'TRANSFER unallocated Food 100 jpy {first}\n'
+                f'TRANSFER unallocated Food 100 {currency} {first}\n'
                 f'TRANSFER unallocated Food 20 jpy {last}\n'
                 f'TRANSFER unallocated Food 500 jpy {following}\n'
-                'ROUTE food INITIAL MANAGED Food\n',
+                'ROUTE food INITIAL MANAGED Food\n'
+                f'WINDOW monthly {first} {following}\n',
             'scheduled.hra': '',
         }
         for name, text in fixtures.items():
@@ -127,21 +129,35 @@ def test_month_end_budget() -> None:
             output = bytearray()
             read_until(fd, output, b'Markers:')
             os.write(fd, b'p')
-            read_until(fd, output, b'COHERENCE & VERIFICATION')
-            for key, marker, expected in [
+            read_until(fd, output, b'Esc/q: back')
+            diagnostic = b'budget queries support jpy capacity only; no conversion is implied'
+            cases = [(key, diagnostic, re.escape(diagnostic)) for key in [b'2', b'4', b'7', b'2']] if foreign_capacity else [
                 (b'2', b'Liquid Assets (Funding)', rb'Total Budget Envelopes\s+120\s+10\s+110'),
                 (b'4', b'PURPOSE PACING BREAKDOWN', rb'Spent So Far\s*:\s*10 JPY'),
                 (b'7', b'Liquidity Deficit', rb'Active Envelope Requirements\s*:\s*110 JPY'),
                 (b'2', b'Liquid Assets (Funding)', rb'Total Budget Envelopes\s+120\s+10\s+110'),
-            ]:
+            ]
+            for key, marker, expected in cases:
                 start = len(output)
                 os.write(fd, key)
                 read_until(fd, output, marker)
                 # Rendered ASCII fields may be separated by cursor positioning.
                 text = re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]', b' ', bytes(output[start:]))
                 assert re.search(expected, text), text
+                if foreign_capacity:
+                    assert b'[PASS]' not in text and b'Unallocated Funds' not in text, text
+                    # ncurses does not re-emit identical diagnostic text when
+                    # switching between rejected tabs. Leave through Statement
+                    # so the next tab must visibly replace a different answer.
+                    os.write(fd, b'1')
+                    read_until(fd, output, b'quanta strictly conserved across all events)')
             os.write(fd, b'q')
             read_until(fd, output, b'Evidence')
+            if foreign_capacity:
+                os.write(fd, b'c')
+                read_until(fd, output, diagnostic)
+                os.write(fd, b'q')
+                read_until(fd, output, b'Evidence')
             os.write(fd, b'q')
             deadline = time.monotonic() + 8
             while time.monotonic() < deadline:
@@ -164,7 +180,7 @@ def test_month_end_budget() -> None:
                 os.kill(pid, signal.SIGKILL)
                 os.waitpid(pid, 0)
             os.close(fd)
-    print('Month-end PTY: Budget, Pace, Audit and cached tab return passed')
+    print(f'Budget PTY: month end, foreign_capacity={foreign_capacity}, cached return passed')
 
 
 def main() -> None:
@@ -846,3 +862,4 @@ if __name__ == "__main__":
     main()
     test_statement_evidence()
     test_month_end_budget()
+    test_month_end_budget(foreign_capacity=True)
