@@ -225,14 +225,14 @@ an adopted or qualified equivalence baseline.
 
 | Field | Current evidence |
 |---|---|
-| Review time | 2026-09-13 UTC; F02 budget-measure slice and local source review |
-| HRA-N source | `c465eec` plus current F02 implementation/tests and documentation changes |
+| Review time | 2026-09-13 UTC; user-directed isolated transaction-log representation experiment |
+| HRA-N source | `e1e5f120d5cbafa63bb65a3b39af05ee0d94dcad` plus isolated representation/POSIX experiment, CI and documentation changes; production source unchanged |
 | Prior audit comparison | Loam `6869de2`; numerical audit evidence remains pinned there |
-| Pinned Loam review tip | `8b3b814756386d4dce1fffb6312a9e33dd801ea0` |
+| Pinned Loam review tip | `3e3c96e72d46368b68d8f61aaa0785dd34728d8c` |
 | Repository scope | Local `../loam`, observed `main`, clean at initial check; review pinned independently of ongoing Loam work |
 | Remote/CI | Not fetched/queried in this review; no latest-remote or CI-success claim |
-| Review scope | Delta inventory `1fa8953..8b3b814`; OpeningSupport and RoleBalanceReview production source and focused test source; RoleBalances presentation support/measure domains; observation 246 findings and production gate. Observations 244/245 and CLI integration inventoried, not independently qualified |
-| Executed qualification | HRA-N build and test-project build; Budget_Query 10 and Capacity_Command 30 assertions, CLI 10 tests, observation 3 tests, full PTY script all pass. SPARK/Alloy/TLC/SPIN, full Ada suite and Loam tests not rerun |
+| Review scope | Delta inventory `8b3b814..3e3c96e`; CurrentQuantityAnchor and CurrentQuantityAnchorPublisher source; CLI/TUI and RoleBalance integration inventoried, not independently qualified |
+| Executed qualification | HRA-N production/test-project builds; isolated log suite 9 tests pass (including 4 offline tests, 7 synthetic generations and 2,138 byte-prefix cuts); POSIX child exits, immediate receipt retry, interrupted tail repair, short writes, admission/sync failure, 5 two-process races. Existing Generation_Transaction 37 assertions pass. Full production suites, PTY, SPARK/Alloy/TLC/SPIN and Loam tests not rerun; matched fault-harness qualification remains pending |
 | Adopted parity baseline | None at whole-system level; local month-window and budget-measure contracts scoped in P0, no differential Loam execution |
 | Next review | Next HRA-N session checks newer local/remote scope as available; focused review before affected slice/merge; at least weekly during active work |
 
@@ -247,7 +247,7 @@ an adopted or qualified equivalence baseline.
 | RoleFlow overlays roles on shared TransactionsFlow; Income & Expense TUI preserves measure and unresolved Effect witnesses | Candidate for F03/F14 comparison, not ported | HRA-N effective-dated roles differ from Loam's role map; preserve temporal distinctions and compare synthetic unresolved/cancelling effects before adoption |
 | OpeningSupport now names an existing current Event for a coordinate, with no second quantity/date; RoleBalance composes it without weakening ZeroOriginCoverage | Production source reviewed; HRA-N adoption deferred | Preserve current-vs-historical support, witness/frontier validation and existing ASSERT meaning; compare synthetic opening and correction histories before introducing any new evidence family |
 | RoleBalances exposes per-measure Balance Sheet / Net Worth / Trial Balance support domains and answerability | Presentation adoption candidate | Compare F04/F07: unresolved role blocks claims conservatively; missing Income/Expense stock support need not block Net Worth. No UI/CLI parity claim from source review |
-| Observation 246 shared reflected correction-root cut plus per-coordinate quantities | Bounded research candidate, not production support or HRA-N adoption | One genuine reconciliation session may share a cut; distinct observation cuts cannot be merged. Late historical publication requires explicit reflected-root evidence, not date inference. Revisit only at an anchor slice |
+| CurrentQuantityAnchor now implements observation 246's shared correction-root cut and per-coordinate quantities | Loam production source reviewed; HRA-N adoption deferred | Publisher derives the cut under ownership from admitted Actual and refuses overlap with zero-origin/opening support; replaces one current session rather than retaining an anchor correction graph. Do not reinterpret HRA-N ASSERT or silently discard required history; compare explicit synthetic late-publication and retry semantics at an anchor slice |
 | Production fixture moved into tests; workflow/test changes in delta | Inventory seen, detailed test/CI review pending | Inspect execution inventory at F15; no qualification or automatic port claim |
 
 Per-observable adopted revisions and executable evidence belong with their
@@ -265,7 +265,7 @@ in `LOAM_ALIGNMENT.md` §3 before classifying a candidate as an upstream finding
 
 | Question / local basis | State and current evidence | Next discriminating check / return condition |
 |---|---|---|
-| Can canonical data be easier to inspect with fewer retained pieces and no weaker publication? Audit §0A, F09–F11 | Exploration question; HRA-N's hidden layout and bounded-history concerns are documented, but no replacement format has been qualified | Compare current and minimal alternative shapes on synthetic correction/terminal/coverage histories; return only generally applicable laws and measured trade-offs |
+| Can canonical data be easier to inspect with fewer retained pieces and no weaker publication? Audit §0A, F09–F11 | [Transaction-log probes](../experiments/TRANSACTION_LOG.md): framed deltas reconstruct 7 synthetic generations; isolated POSIX writer passes process-exit/retry/race tests using an exact synthetic-image admission whitelist. Ownership, admission, sync and recovery remain necessary. Not production, power-loss, migration or readability qualification | Align generation/log process-fault harnesses and investigate shared complete admission (F08) before replacing the whitelist; do not introduce a second accounting engine. Return packet remains local, no Loam proposal/adoption. Retain current writer until equal-scope evidence exists |
 | Can trusted admission remove duplicate state/checks without obscuring failure? F08/F14, Loam correction delta in §4 | Adoption candidate and potential reciprocal question; HRA-N's complete read boundary is still incomplete | Establish the Ada boundary, then distinguish reusable closure laws from language/protocol-specific constraints; never copy check deletion blindly |
 | Can interval/measure/availability laws expose shared report assumptions? F01–F07 | F01 month-end and F02 JPY-only refusal regressions qualified locally (P0); Loam BudgetWindowReview already requires explicit half-open dates. No Loam defect or upstream proposal established | Reuse endpoint/exclusive-end range law, without introducing a retained month/Period. Finite end-date refusal is an Ada range constraint, not a Loam defect. Next compare measure and coverage laws with RoleFlow/RoleBalance; differential execution remains pending |
 | Can calendar-to-detail workflows improve both TUIs? Audit §0A, F17–F23 | HRA-N user reports and static findings; no comparative usability result or upstream proposal yet | Compare synthetic workflows and narrow terminal layouts; return concrete rendering/interaction evidence, not private screenshots |

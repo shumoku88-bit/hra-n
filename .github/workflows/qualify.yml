@@ -114,6 +114,9 @@ jobs:
         run: |
           python3 ./tests/test_cli.py
 
+      - name: Isolated transaction-log probes (not power-loss qualification)
+        run: python3 -B ./experiments/test_disk_transaction_log.py
+
       - name: Run Household Observation E2E
         run: |
           python3 ./tests/test_observation.py

@@ -160,6 +160,16 @@ The combined repository gate is:
 Passing the current gate only qualifies the currently exercised implementation;
 it does not imply that unfinished canonical-ledger-v2 capabilities exist.
 
+## Canonical representation research
+
+Isolated [transaction-log probes](experiments/TRANSACTION_LOG.md) compare framed
+append-only deltas with existing synthetic generations, including a POSIX-only
+experimental writer, process interruption, competing writers and receipt retry.
+They preserve current facts and queries without adding a production writer or
+migration path. Process-exit tests are not power-loss qualification, and the two
+writers' fault harnesses are not yet equivalent. The existing immutable-generation
+authority remains unchanged.
+
 ## License
 
 Licensed under the Apache License 2.0 or MIT license, at your option. See
