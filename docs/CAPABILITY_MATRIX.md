@@ -198,6 +198,16 @@ and generation representation is not the only permitted solution. Compare minima
 canonical-data alternatives on synthetic histories, preserving required meaning
 and qualifying migration separately from exploration.
 
+The first long-history semantics checkpoint is
+[`ACTUAL_LONG_HISTORY.md`](ACTUAL_LONG_HISTORY.md). Its bounded Alloy fragment
+shows that keeping only an aggregate physical total while forgetting
+identity-indexed target payload is insufficient for later correction and exact
+reversal admission. This is a rejection of that specific summary strategy, not a
+decision that bounded-memory streaming is impossible. The next capacity slice
+must identify the minimum retained correction/reversal state and a
+reference/production correspondence relation before removing the current
+working-set limit.
+
 ### P4 — qualification and maintainability
 
 Qualify clean-environment Ada build/run without Lean runtime, long-history
