@@ -1,6 +1,11 @@
 # HRA-N Formal Methods Strategy
 
-Status: **design authority for the canonical-ledger-v2 work**
+Status: **formal-evidence authority**
+
+The overall development loop lives in
+[`DEVELOPMENT_METHOD.md`](DEVELOPMENT_METHOD.md). This document answers a narrower
+question: which formal method is responsible for which class of claim, and what
+its result does and does not establish.
 
 ## 1. Objective
 
@@ -28,6 +33,15 @@ the admitted fact model and deterministic replay semantics carried by those
 files. Bounded proof-facing operations must not silently become lifetime bounds
 on retained household history. Size reduction applies to the whole production
 system and must preserve supported observables, diagnostics, and daily usability.
+
+
+HRA-N's default development posture is **reference semantics plus independent
+production representation** when an implementation is optimized or structurally
+changed. A list scan may become an index; whole-image replay may become
+streaming; a frontier may become cached. In each case, the optimization is
+accepted only with explicit correspondence evidence to the reference semantics
+on the stated domain. Formal methods are used to keep meaning stable while the
+implementation strategy changes.
 
 ## 2. Claims discipline
 
@@ -148,7 +162,8 @@ with a precise diagnostic.
 
 ### Alloy
 
-Use for relational shape and bounded counterexample discovery:
+Use for relational shape, retained-information sufficiency, and bounded
+counterexample discovery:
 
 - identity uniqueness and referential closure;
 - acyclic, non-branching supersession;
@@ -156,7 +171,9 @@ Use for relational shape and bounded counterexample discovery:
 - relation discharge bounds;
 - versioned policy tips;
 - epistemic known/unknown boundaries;
-- separation of physical and valuation facts.
+- separation of physical and valuation facts;
+- whether a proposed streaming/index/cache summary forgets information needed by
+  a later correction, reversal, date revision, relation, or other retained fact.
 
 Alloy models raw snapshots separately from the `Admitted` predicate so malformed
 worlds remain representable and rejection scenarios can be checked.
@@ -198,6 +215,8 @@ Use for implementation-level deductive verification:
 - per-measure conservation admission;
 - unique bounded collections;
 - deterministic frontier and projection functions;
+- correspondence between a small bounded reference semantics and an optimized
+  bounded implementation where that relation can be stated deductively;
 - date and index safety;
 - absence of runtime errors in the verified kernel.
 
@@ -205,7 +224,26 @@ Filesystem calls, dynamic text parsing, terminal rendering, frontend transport,
 and OS locks remain outside the pure SPARK kernel and are checked through narrow
 contracts and executable tests.
 
-## 7. Qualification gates
+## 7. Correspondence gate for representation changes
+
+A production representation change is not justified by performance or passing
+fixtures alone. Before replacing a qualified representation with an index,
+stream, cache, segmented replay, or other strategy:
+
+1. retain or define a small reference semantics for the observable result;
+2. identify the abstraction relation between production state and reference
+   state;
+3. use Alloy to search for histories that become observationally
+   indistinguishable when information is discarded;
+4. prove the bounded implementation relation in SPARK where practical;
+5. keep differential executable specimens across exact boundaries and malformed
+   inputs;
+6. record any domain where equivalence is not yet established.
+
+The reference semantics is a specification aid, not a second production
+authority.
+
+## 8. Qualification gates
 
 A semantic change is not complete until:
 
@@ -219,7 +257,7 @@ A semantic change is not complete until:
 No gate may be replaced by a badge count or by restating the desired property as
 an assumption.
 
-## 8. Reproducible commands
+## 9. Reproducible commands
 
 Install the pinned TLC jar and report optional local dependencies:
 

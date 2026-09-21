@@ -5,10 +5,11 @@ This file is the mandatory starting point for any pit working in this repository
 ## Read order
 
 1. [`README.md`](README.md)
-2. [`docs/LOAM_ALIGNMENT.md`](docs/LOAM_ALIGNMENT.md)
-3. [`docs/FORMAL_METHODS_STRATEGY.md`](docs/FORMAL_METHODS_STRATEGY.md)
-4. [`docs/FRONTEND_ARCHITECTURE.md`](docs/FRONTEND_ARCHITECTURE.md)
-5. [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md)
+2. [`docs/DEVELOPMENT_METHOD.md`](docs/DEVELOPMENT_METHOD.md)
+3. [`docs/LOAM_ALIGNMENT.md`](docs/LOAM_ALIGNMENT.md)
+4. [`docs/FORMAL_METHODS_STRATEGY.md`](docs/FORMAL_METHODS_STRATEGY.md)
+5. [`docs/FRONTEND_ARCHITECTURE.md`](docs/FRONTEND_ARCHITECTURE.md)
+6. [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md)
 
 For TUI quality, canonical-data usability, or audit remediation, also read
 [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md), especially sections 0A/0B:
@@ -27,8 +28,10 @@ not as a substitute for current design intent.
 Loam is the primary, actively developing effort to derive rich accounting and
 household capabilities from few concepts, retained facts, and mechanisms.
 HRA-N is its Ada/SPARK long-term continuity hedge and an independent design
-exploration/cross-checking partner. It may explore canonical data shape and
-challenge shared semantic assumptions with evidence, not merely translate Loam.
+exploration/cross-checking partner. It is developed as a **second semantic
+witness**: preserve shared laws through an independently structured Ada/SPARK
+implementation, not through source-level translation. It may explore canonical
+data shape and challenge shared semantic assumptions with evidence.
 Avoid unexplained semantic drift and feature races, not justified alternatives.
 HRA supplies historical semantic, reporting, terminal, and test assets; it is
 not the target storage schema.
@@ -98,22 +101,31 @@ Do not retain parallel old/new authorities after qualification. Alternative data
 shapes may still be explored on synthetic fixtures as research, but they are not
 candidate production authorities unless Loam itself adopts them.
 
-## Vertical-slice rule
+## Development-loop and vertical-slice rule
 
-Implement one user capability through all required layers before starting the
-next:
+Follow [`docs/DEVELOPMENT_METHOD.md`](docs/DEVELOPMENT_METHOD.md) before
+choosing an implementation shape. For semantic or architectural changes:
 
-1. pinned observable contract or explicit alternative hypothesis, minimum
-   necessary facts, and admission law;
-2. shared Application Query or Intent/Proposal;
-3. CLI where useful for scripting;
-4. TUI interaction and rendering;
-5. stale/concurrency/crash behavior for writes;
-6. unit, adversarial, round-trip, and PTY evidence;
-7. capability matrix update and Loam reverse-feedback assessment.
+1. state the household question / observable and the minimum authority;
+2. search for representation counterexamples when information may be lost;
+3. keep a small reference semantics before introducing indexing, streaming,
+   caching, or another optimized representation;
+4. implement the law in native Ada/SPARK form;
+5. establish correspondence between reference semantics and the production
+   representation on the stated domain;
+6. model temporal behavior before introducing or changing canonical writes;
+7. qualify parser/OS/frontend boundaries with executable tests;
+8. complete the smallest useful CLI/TUI vertical slice;
+9. retire the superseded authority path.
+
+Not every slice needs Alloy, TLA+, SPIN, and SPARK. Use the tool that addresses
+the changed claim. A frontend-only change should not manufacture a formal model;
+a representation change must not bypass correspondence evidence merely because
+the old and new implementations currently pass the same fixtures.
 
 The immediate P0 item is always the first incomplete item in
-[`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md).
+[`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md), but P0 ordering does
+not override the development method above.
 
 ## Formal-method allocation
 

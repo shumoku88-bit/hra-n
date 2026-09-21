@@ -69,6 +69,24 @@ semantics are otherwise qualified. Do not add compatibility work for old HRA-N
 household data. Port the vertical slice to Loam canonical data, qualify the same
 observable and failure behavior, then delete the superseded storage path.
 
+## Development-method constraint
+
+Priority order does not authorize a shortcut around the development method in
+[`DEVELOPMENT_METHOD.md`](DEVELOPMENT_METHOD.md). In particular:
+
+- a new representation must first state the reference semantics it preserves;
+- streaming/index/cache changes require correspondence evidence rather than
+  fixture agreement alone;
+- writes require temporal safety modeling appropriate to stale state,
+  interruption, retry, and recovery;
+- proof-facing working-set bounds must not silently become lifetime authority
+  limits;
+- Loam proof results identify laws to preserve but do not replace HRA-N's own
+  Ada/SPARK qualification.
+
+A capability can move forward in the table only with the kind of evidence
+appropriate to the claim it changes.
+
 ## 2. Delivery order
 
 ### P0 — report authority gaps (before external adapters)

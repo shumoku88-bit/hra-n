@@ -1,7 +1,8 @@
 # HRA-N
 
 HRA-N is an experimental, formally designed household accounting engine written
-in Ada 2022 and SPARK.
+in Ada 2022 and SPARK. Its development method treats formal methods as part of
+ordinary design work, not as a certification layer added after implementation.
 
 HRA-N is the Ada/SPARK long-term continuity hedge for **Loam**, the primary,
 actively developing effort to derive rich accounting and household capabilities
@@ -15,6 +16,9 @@ HRA contributes historical accounting, reporting, terminal, and test assets.
 
 The project is rebuilding its Ada/SPARK implementation around Loam's canonical
 household data rather than maintaining an independent HRA-N source of truth.
+HRA-N is intended to become a second semantic witness: it should preserve shared
+meaning through an independently structured Ada/SPARK design rather than copy
+Lean source structure.
 It is not currently a production release or a qualified replacement for Loam.
 No compatibility or verification percentage is claimed. Loam remains the
 day-to-day household authority.
@@ -56,11 +60,17 @@ reader/writer/path code should be removed rather than kept for backward
 compatibility.
 
 The first direct boundary now exists for normalized Loam Actual through
-`HRA_N.Storage.Loam_Actual_Reader` and the read-only
-`hra-n-loam-qualify` adapter. Other capability families remain transitional
-until their own direct canonical contracts are qualified.
+`HRA_N.Storage.Loam_Actual_Reader`, the read-only `hra-n-loam-qualify`
+structural adapter, and the ordinary read-only `hra-n actual FILE [DATE]`
+frontend. Other capability families remain transitional until their own direct
+canonical contracts are qualified.
 
-## Formal design
+## Development and formal design
+
+[`docs/DEVELOPMENT_METHOD.md`](docs/DEVELOPMENT_METHOD.md) is the development
+authority: it defines the formal-methods-first loop, the second-witness role,
+reference-semantics/correspondence discipline, capacity-boundary rules, and the
+Ada/SPARK design style used for new work.
 
 [`docs/FORMAL_METHODS_STRATEGY.md`](docs/FORMAL_METHODS_STRATEGY.md) defines the
 current design authority, claims policy, PTA capability boundary, and division
