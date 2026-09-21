@@ -29,6 +29,13 @@ package body Test_Scheduled_Facts is
          Assert (Result.Success, "Separate Scheduled terminal facts are admitted");
          Assert_Equal_Int (2, Long_Long_Integer (Result.Lifecycle.Sched_Count),
                            "Scheduled declarations remain retained");
+         Assert_Equal_Int
+           (0,
+            Total_Quanta (Result.Lifecycle.Sched_Items (1)),
+            "Scheduled occurrence closes through shared conservation arithmetic");
+         Assert
+           (Is_Conserved (Result.Lifecycle.Sched_Items (1)),
+            "Scheduled occurrence remains conserved at the semantic boundary");
          Assert (Is_Completed
                    (Result.Lifecycle, Result.Lifecycle.Sched_Items (1).Id),
                  "Completion fact closes its declaration");
