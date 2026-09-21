@@ -134,12 +134,12 @@ package body Test_HRA_Storage is
          end if;
          Effs.Count := 2;
          Effs.Values (1) :=
-           (Key     => (Token => Make_Token ("f1")),
+           (Key     => No_Effect_Key,
             Locus   => (Token => Make_Token ("smbc")),
             Measure => (Token => Make_Token ("jpy")),
             Amount  => (Quanta => -1000));
          Effs.Values (2) :=
-           (Key     => (Token => Make_Token ("f2")),
+           (Key     => No_Effect_Key,
             Locus   => (Token => Make_Token ("food")),
             Measure => (Token => Make_Token ("jpy")),
             Amount  => (Quanta => 1000));

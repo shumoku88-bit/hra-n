@@ -279,7 +279,6 @@ package body HRA_N.Storage.Journal_Reader is
                                     Measure : Token_Text;
                                     Amt     : Quanta_Type;
                                     Flow_Ok : Boolean;
-                                    Key_Str : constant String := "f" & Natural'Image (Effects.Count + 1);
                                  begin
                                     Parse_Flow (Tok_Str, Locus, Measure, Amt, Flow_Ok);
                                     if not Flow_Ok then
@@ -290,7 +289,7 @@ package body HRA_N.Storage.Journal_Reader is
 
                                     Effects.Count := Effects.Count + 1;
                                     Effects.Values (Effects.Count) :=
-                                      (Key     => (Token => Make_Token (Key_Str)),
+                                      (Key     => No_Effect_Key,
                                        Locus   => (Token => Locus),
                                        Measure => (Token => Measure),
                                        Amount  => (Quanta => Amt));

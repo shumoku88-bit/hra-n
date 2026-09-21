@@ -158,12 +158,12 @@ package body HRA_N.Application.Movement_Command is
          Purpose, Has_Purpose);
       Effects.Count := 2;
       Effects.Values (1) :=
-        (Key     => (Token => Make_Token ("0")),
+        (Key     => No_Effect_Key,
          Locus   => Intent.From_Locus,
          Measure => Intent.Measure,
          Amount  => (Quanta => -Intent.Amount));
       Effects.Values (2) :=
-        (Key     => (Token => Make_Token ("1")),
+        (Key     => No_Effect_Key,
          Locus   => Intent.To_Locus,
          Measure => Intent.Measure,
          Amount  => (Quanta => Intent.Amount));
@@ -491,16 +491,11 @@ package body HRA_N.Application.Movement_Command is
       begin
          Effects.Count := Intent.Count;
          for I in 1 .. Intent.Count loop
-            declare
-               Key_Img : constant String :=
-                 Trim (I'Image, Ada.Strings.Both);
-            begin
-               Effects.Values (I) :=
-                 (Key     => (Token => Make_Token (Key_Img)),
-                  Locus   => Intent.Changes (I).Locus,
-                  Measure => Intent.Changes (I).Measure,
-                  Amount  => (Quanta => Intent.Changes (I).Amount));
-            end;
+            Effects.Values (I) :=
+              (Key     => No_Effect_Key,
+               Locus   => Intent.Changes (I).Locus,
+               Measure => Intent.Changes (I).Measure,
+               Amount  => (Quanta => Intent.Changes (I).Amount));
          end loop;
          --  No purpose is attached: with several destinations no single
          --  route owns the movement, so none is guessed.

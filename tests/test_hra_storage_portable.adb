@@ -51,12 +51,12 @@ package body Test_HRA_Storage_Portable is
       begin
          Effects.Count := 2;
          Effects.Values (1) :=
-           (Key     => (Token => Make_Token ("f1")),
+           (Key     => No_Effect_Key,
             Locus   => (Token => Make_Token ("cash")),
             Measure => (Token => Make_Token ("jpy")),
             Amount  => (Quanta => -100));
          Effects.Values (2) :=
-           (Key     => (Token => Make_Token ("f2")),
+           (Key     => No_Effect_Key,
             Locus   => (Token => Make_Token ("food")),
             Measure => (Token => Make_Token ("jpy")),
             Amount  => (Quanta => 100));

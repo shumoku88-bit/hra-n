@@ -85,4 +85,20 @@ is
       Token : Token_Text;
    end record;
 
+   --  Sparse retained identity for an Effect. Ordinary physical Effects do not
+   --  allocate durable identity; a present key is reserved for evidence that
+   --  must independently refer back to that exact Effect.
+   type Optional_Effect_Key is record
+      Present : Boolean := False;
+      Value   : Effect_Key :=
+        (Token => (Length => 0, Value => [others => ' ']));
+   end record;
+
+   No_Effect_Key : constant Optional_Effect_Key :=
+     (Present => False,
+      Value   => (Token => (Length => 0, Value => [others => ' '])));
+
+   function Retained_Effect_Key (Key : Effect_Key) return Optional_Effect_Key is
+     ((Present => True, Value => Key));
+
 end HRA_N.Core.Types;

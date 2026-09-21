@@ -3,11 +3,9 @@
 --  Package: HRA_N.Core.Event
 --
 --  Event identity and immutable effect collection.
---  An event binds an EventId to a collection of runtime effects whose current
---  keys are unique. The legacy HRA-N journal does not persist those keys; its
---  reader reconstructs them from flow position. Coordinates (Locus, Measure)
---  are projections, not identity. Durable sparse Effect identity is therefore
---  a separate compatibility boundary, not a property of this representation.
+--  An event binds an EventId to a collection of Effects. Ordinary physical
+--  Effects may remain anonymous; only independently referenced Effects retain
+--  a stable key. Coordinates (Locus, Measure) are projections, not identity.
 -------------------------------------------------------------------------------
 
 with HRA_N.Core.Types;    use HRA_N.Core.Types;
@@ -26,14 +24,16 @@ is
 
    --  Atomic signed quantity change at one locus and measure coordinate.
    type Effect is record
-      Key     : Effect_Key;
+      Key     : Optional_Effect_Key;
       Locus   : Locus_Id;
       Measure : Measure_Id;
       Amount  : Quantity_Type;
    end record;
 
    Empty_Effect : constant Effect :=
-     (Key     => (Token => (Length => 0, Value => [others => ' '])),
+     (Key     =>
+        (Present => False,
+         Value   => (Token => (Length => 0, Value => [others => ' ']))),
       Locus   => (Token => (Length => 0, Value => [others => ' '])),
       Measure => (Token => (Length => 0, Value => [others => ' '])),
       Amount  => (Quanta => Zero_Quanta));
@@ -46,18 +46,22 @@ is
       Values : Effect_Array      := [others => Empty_Effect];
    end record;
 
-   --  Runtime invariant: no duplicate currently represented Effect_Key.
-   --  This does not establish durable identity across encode/decode.
+   --  Retained Effect keys are unique within one Event. Anonymous Effects do
+   --  not consume identity slots and may coexist at the same coordinate.
    function Keys_Are_Unique (Effects : Effect_List) return Boolean is
      (for all I in 1 .. Effects.Count =>
         (for all J in I + 1 .. Effects.Count =>
-           not Equal_Token (Effects.Values (I).Key.Token, Effects.Values (J).Key.Token)));
+           not (Effects.Values (I).Key.Present
+                and then Effects.Values (J).Key.Present
+                and then Equal_Token
+                  (Effects.Values (I).Key.Value.Token,
+                   Effects.Values (J).Key.Value.Token))));
 
    ----------------------------------------------------------------------------
    --  Encapsulated Event Type
    ----------------------------------------------------------------------------
 
-   --  The Event type guarantees uniqueness of represented runtime keys.
+   --  The Event type guarantees uniqueness of retained Effect keys.
    --  Can only be constructed through Make_Event.
    type Event is private;
 

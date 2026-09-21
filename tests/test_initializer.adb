@@ -73,12 +73,12 @@ package body Test_Initializer is
       begin
          Effs.Count := 2;
          Effs.Values (1) :=
-           (Key     => (Token => Make_Token ("0")),
+           (Key     => No_Effect_Key,
             Locus   => (Token => Make_Token ("cash")),
             Measure => JPY,
             Amount  => (Quanta => -800));
          Effs.Values (2) :=
-           (Key     => (Token => Make_Token ("1")),
+           (Key     => No_Effect_Key,
             Locus   => (Token => Make_Token ("food")),
             Measure => JPY,
             Amount  => (Quanta => 800));
