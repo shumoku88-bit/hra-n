@@ -3,8 +3,11 @@
 --  Package: HRA_N.Core.Event
 --
 --  Event identity and immutable effect collection.
---  An event binds an EventId to a collection of effects where EffectKey is
---  strictly unique. Coordinates (Locus, Measure) are projections, not identity.
+--  An event binds an EventId to a collection of runtime effects whose current
+--  keys are unique. The legacy HRA-N journal does not persist those keys; its
+--  reader reconstructs them from flow position. Coordinates (Locus, Measure)
+--  are projections, not identity. Durable sparse Effect identity is therefore
+--  a separate compatibility boundary, not a property of this representation.
 -------------------------------------------------------------------------------
 
 with HRA_N.Core.Types;    use HRA_N.Core.Types;
@@ -43,7 +46,8 @@ is
       Values : Effect_Array      := [others => Empty_Effect];
    end record;
 
-   --  Specification invariant: no duplicate Effect_Key in the list.
+   --  Runtime invariant: no duplicate currently represented Effect_Key.
+   --  This does not establish durable identity across encode/decode.
    function Keys_Are_Unique (Effects : Effect_List) return Boolean is
      (for all I in 1 .. Effects.Count =>
         (for all J in I + 1 .. Effects.Count =>
@@ -53,7 +57,7 @@ is
    --  Encapsulated Event Type
    ----------------------------------------------------------------------------
 
-   --  The Event type guarantees that its effects have unique keys.
+   --  The Event type guarantees uniqueness of represented runtime keys.
    --  Can only be constructed through Make_Event.
    type Event is private;
 
