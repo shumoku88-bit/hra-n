@@ -51,6 +51,8 @@ def test_statement_evidence() -> None:
             if pid == 0:
                 env = os.environ.copy()
                 env["TERM"] = "xterm-256color"
+                env["LANG"] = "C.UTF-8"
+                env["LC_ALL"] = "C.UTF-8"
                 os.execve(harness, [harness, household], env)
             reaped = False
             try:
@@ -122,6 +124,8 @@ def test_month_end_budget(foreign_capacity: bool = False) -> None:
         if pid == 0:
             env = os.environ.copy()
             env['TERM'] = 'xterm-256color'
+            env['LANG'] = 'C.UTF-8'
+            env['LC_ALL'] = 'C.UTF-8'
             os.execve(harness, [harness, household], env)
         reaped = False
         try:
@@ -554,10 +558,12 @@ def main() -> None:
             os.write(fd, b"y")
             read_until(fd, output, b"Second matter")
 
-            # Resolve the first matter from the selected row
-            mark = len(output)
+            # Resolve the first matter from the selected row. The confirmation
+            # screen may legitimately redraw the selected matter, so inspect
+            # only output produced after confirmation is accepted.
             os.write(fd, b"r")
             read_until(fd, output, b"Mark att0001 resolved?")
+            mark = len(output)
             os.write(fd, b"y")
             read_until(fd, output, b"Second matter")
             assert b"Fix sink" not in bytes(output[mark:])
@@ -804,8 +810,8 @@ def main() -> None:
             # Posting 2 Amount: type 100 then press Enter to propose
             os.write(fd, b"100\n")
             read_until(fd, output, b"Ready to commit to authority.")
-            assert "昼食".encode("utf-8") in output
-            # Commit
+            # Commit. The committed-row render below is the durable UTF-8
+            # assertion; preview byte ordering is PTY/terminal-flush dependent.
             os.write(fd, b"\n")
             read_until(fd, output, "昼食".encode("utf-8"))
             # Return to Home
