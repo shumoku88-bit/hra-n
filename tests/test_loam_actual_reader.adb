@@ -1,5 +1,7 @@
 with Ada.Text_IO;
 with Ada.Directories;
+with Ada.Streams;
+with Ada.Streams.Stream_IO;
 with HRA_N.Core.Types;                use HRA_N.Core.Types;
 with HRA_N.Core.Event;                use HRA_N.Core.Event;
 with HRA_N.Core.Validity;             use HRA_N.Core.Validity;
@@ -24,6 +26,27 @@ package body Test_Loam_Actual_Reader is
       Ada.Text_IO.Put (File, Content);
       Ada.Text_IO.Close (File);
    end Write_File;
+
+   procedure Write_Exact_File
+     (Content : String)
+   is
+      package SIO renames Ada.Streams.Stream_IO;
+      File : SIO.File_Type;
+      Data : Ada.Streams.Stream_Element_Array
+        (1 .. Ada.Streams.Stream_Element_Offset (Content'Length));
+   begin
+      if Ada.Directories.Exists (Path) then
+         Ada.Directories.Delete_File (Path);
+      end if;
+      for I in Content'Range loop
+         Data
+           (Ada.Streams.Stream_Element_Offset (I - Content'First + 1)) :=
+             Ada.Streams.Stream_Element (Character'Pos (Content (I)));
+      end loop;
+      SIO.Create (File, SIO.Out_File, Path);
+      SIO.Write (File, Data);
+      SIO.Close (File);
+   end Write_Exact_File;
 
    function NL return String is (1 => ASCII.LF);
    function HT return String is (1 => ASCII.HT);
@@ -154,7 +177,7 @@ package body Test_Loam_Actual_Reader is
          "non-inverse reversal fails closed");
 
       --  5. Canonical normalized Actual must end with a final newline.
-      Write_File
+      Write_Exact_File
         ("LOAM-NORMALIZED-ACTUAL" & HT & "1" & NL
          & "TX" & HT & "ev-no-newline" & HT & "2026-09-01" & HT & "NODESC" & NL
          & "ENDTX");
