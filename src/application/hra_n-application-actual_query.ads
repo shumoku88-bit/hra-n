@@ -8,6 +8,7 @@ with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;
 with HRA_N.Storage.Journal_Reader;
+with HRA_N.Storage.Loam_Actual_Reader;
 
 package HRA_N.Application.Actual_Query is
 
@@ -64,5 +65,11 @@ package HRA_N.Application.Actual_Query is
    function Execute
      (Paths         : HRA_N.Application.Path_Resolver.Path_Config;
       Request       : Query) return Actual_View;
+
+   --  Direct read-only entrance for Loam canonical normalized Actual.
+   --  This bypasses the transitional HRA-N journal/path authority entirely.
+   function Execute_Loam_Actual
+     (Path    : String;
+      Request : Query) return Actual_View;
 
 end HRA_N.Application.Actual_Query;
