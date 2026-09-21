@@ -143,6 +143,24 @@ a small incomplete frontend is not a reduction result. Fixed cross-language line
 reduction percentages are not acceptance gates. Preserve independent evidence
 where two similarly shaped facts have different meanings.
 
+## Test/tooling language boundary
+
+HRA-N production and semantic authority remain Ada/SPARK. Python may be used in
+`tests/` and `experiments/` only as an **external observer** where the test
+must launch a finished executable, drive a PTY, inspect process exit status,
+exercise POSIX behavior, or compare filesystem bytes.
+
+Do not put accounting semantics, canonical admission, query arithmetic,
+canonical readers/writers, recovery decisions, or qualification-result
+computation behind Python. A semantic law exercised by an external Python E2E
+must also live in Ada/SPARK code with direct Ada tests where practical; Python
+owns only the outside-the-process contract.
+
+Do not rewrite a useful PTY/process E2E in Ada merely to remove Python if doing
+so would require adding process-control or terminal-test infrastructure to the
+production implementation. The independence goal is an Ada/SPARK runtime and
+authority path, not a repository with zero Python files.
+
 ## Repository commands
 
 ```sh
