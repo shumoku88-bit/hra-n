@@ -118,10 +118,11 @@ HRA-N側で独立に同じobservableを説明した時、より少ないsemantic
 見つかった場合は、LOAM_ALIGNMENTのreverse-feedback手順で返す。
 
 **現在のcheckpoint:** Conservation lawはMovement / Capacity / Scheduledで共有できる形へ
-段階的に接続した。次のidentity sliceでは、旧HRA-N persistenceを拡張するのではなく、
-LOAM canonical data bridgeのobservable contractとしてsparse Effect identity preservationを
-先に固定する。Core型のoptional化や旧format変更は、そのbridge contractと合成fixtureが
-identity lossを区別できるまで保留する。
+段階的に接続した。Effect identityはsparse retained identityへ整理し、
+`LOAM-NORMALIZED-ACTUAL 1` を独立に読むAda readerとread-only qualifierを追加した。
+今後は旧HRA-N persistenceの互換性を保たず、Loam canonical dataを唯一の運用authority target
+としてvertical sliceごとに直接reader/writer/queryへ置き換える。置換済みの旧三stream pathは
+Git historyへ退役し、parallel authorityとして残さない。
 
 
 ## 3. 相互検証の単位は意味の契約
@@ -136,7 +137,7 @@ HRA-Nの正データ候補・Ada/SPARK実装・検証
 CLI/TUI、保存、移行・復元
 ```
 
-Loamのcommit、package名、ファイル数、型の配置をそのまま翻訳しない。**HRA-Nの正データ形式は探索対象**であり、Loamの形にも現行の三stream/generationにも固定しない。守るのは必要な家計事実と説明可能な法則。形式を変える際は独立したqualified transitionとして扱う。
+Loamのcommit、package名、ファイル数、型の配置をそのまま翻訳しない。ただし**運用上の正データauthorityはLoam canonical dataに一本化する**。HRA-N独自のproduction canonical formatは作らない。守るのは必要な家計事実と説明可能な法則であり、Ada/SPARK側の表現は独立でよい。別のdata shapeを試す場合はsyntheticな研究対象に限定し、Loam側で採用されない限りproduction authority候補にしない。
 
 契約は比較中の基準点であって、疑ってはいけない最終解ではない。反例で契約の不足が見つかったら、旧期待値への無理な一致より、欠けた前提・保持根拠・修正案を明示して両側で見直す。双方の採用判断が済むまでは差異を公開し、parityと呼ばない。
 
@@ -166,10 +167,10 @@ Loam出力を唯一のoracleにしない。期待値は仕様・手計算・法�
 1. **具体的な圧力を一つ選ぶ。** 人間に読めない、同じ事実を二重保持、履歴容量、跨stream参照、import loss、proofしづらさ、復旧の複雑さなど。名称変更だけを探索成果にしない。
 2. 現行形と、圧力に応える最小の代替形を比較する。独立事実の分け方、identity/reference、時系列、encoding、ファイル分割、publication単位、index/cacheを区別する。全部を一度に変えない。
 3. 同じ合成履歴から同じobservableを再構成できるか試す。保持すべき意味と捨ててよい派生物を明示し、訂正・unknown・measure・provenanceを省略して簡単にしない。
-4. 読みやすさ、編集/取込の安全性、行数・重複、disk/load/commit、proof/admission、crash/recovery、migrationの負担を比較する。Ada固有の利点とLoamにも通じる利点を分ける。
-5. 候補を採用／棄却／保留にする。候補は合成fixtureや隔離された実験で評価し、実データやCURRENTは触らない。本番cutoverは別途承認とqualificationを得る。
+4. 読みやすさ、編集/取込の安全性、行数・重複、disk/load/commit、proof/admission、crash/recoveryの負担を比較する。Ada固有の利点とLoamにも通じる利点を分ける。
+5. 候補を採用／棄却／保留にする。候補は合成fixtureや隔離された実験で評価し、private household dataを新しいHRA-N authorityへ移さない。
 
-現行writer guardは現行authorityに対して引き続き有効。新形式の探索許可を、選択generationの直接変更や二つの運用authorityを維持する許可に読み替えない。旧snapshotの意味を保つ読み方／移行手順とrollback可能性を先に示す。
+旧HRA-N三stream dataは互換対象ではない。旧snapshotを読めること、旧formatへ戻せること、旧formatからmigrationできることをacceptance gateにしない。機能ごとにLoam canonical reader/writer/admission/queryをqualifiedしたら、その機能の旧三stream pathを退役する。rollback/recoveryはLoam canonical authorityを基準に設計し、二つの運用authorityを残さない。
 
 ### HRA-NからLoamへ発見を返す
 

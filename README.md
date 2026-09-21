@@ -13,10 +13,11 @@ counterexamples, simpler representations, and reusable laws should feed back
 into Loam. Avoid unexplained semantic divergence, not evidence-backed exploration.
 HRA contributes historical accounting, reporting, terminal, and test assets.
 
-The project is rebuilding its canonical ledger around a small admitted-fact
-model. It is not currently a production release, a qualified replacement for
-Loam, or a completed migration/backup solution. No compatibility or verification
-percentage is claimed. Loam remains the day-to-day household authority.
+The project is rebuilding its Ada/SPARK implementation around Loam's canonical
+household data rather than maintaining an independent HRA-N source of truth.
+It is not currently a production release or a qualified replacement for Loam.
+No compatibility or verification percentage is claimed. Loam remains the
+day-to-day household authority.
 
 [`docs/LOAM_ALIGNMENT.md`](docs/LOAM_ALIGNMENT.md) defines the small-core objective,
 observable-level comparison contracts, canonical-data exploration, periodic
@@ -29,8 +30,8 @@ prediction that Lean 4 will become unusable.
   accounting in Application and UI or hiding complexity outside the Core;
 - pinned, language-neutral semantic comparisons with evolving Loam, rather than
   command-count parity or literal source translation;
-- independent Ada builds, understandable data, explicit migration and recovery,
-  and practical multi-decade capacity;
+- independent Ada builds, direct understanding of Loam canonical data,
+  explicit recovery, and practical multi-decade capacity;
 - exact quantities identified by measure;
 - conservation checked independently for every measure;
 - immutable facts with explicit correction and terminal evidence;
@@ -42,29 +43,22 @@ prediction that Lean 4 will become unusable.
 - a keyboard-first TUI, with CLI, GUI/Web, and AI/chat sharing one application
   query/intent boundary.
 
-The current logical household authority consists of three canonical data streams
-(the representation remains open to qualified design exploration):
+The target household authority is the same Loam canonical dataset used by Loam.
+HRA-N must read and eventually write that authority independently; it must not
+create a competing production source of truth.
 
-- `journal.hra`
-- `policy.hra`
-- `scheduled.hra`
+The existing `journal.hra` / `policy.hra` / `scheduled.hra` generation code
+is transitional implementation scaffolding for capabilities not yet moved to the
+Loam canonical boundary. It is **not** a compatibility contract or migration
+target. Old HRA-N household data may be discarded. Once a vertical slice has an
+equivalent qualified Loam-canonical path, its superseded three-stream
+reader/writer/path code should be removed rather than kept for backward
+compatibility.
 
-A newly initialized household stores those streams in an immutable generation:
-
-```text
-.hra/
-├── CURRENT
-└── generations/
-    └── g00000001/
-        ├── journal.hra
-        ├── policy.hra
-        └── scheduled.hra
-```
-
-`CURRENT` is the sole activation edge. Invalid selectors and incomplete selected
-generations fail closed without falling back to legacy root files. Legacy
-three-file roots remain readable as explicitly unversioned snapshots during the
-redesign.
+The first direct boundary now exists for normalized Loam Actual through
+`HRA_N.Storage.Loam_Actual_Reader` and the read-only
+`hra-n-loam-qualify` adapter. Other capability families remain transitional
+until their own direct canonical contracts are qualified.
 
 ## Formal design
 

@@ -35,7 +35,7 @@ not the target storage schema.
 
 Preserve qualified Loam observables through language-neutral laws and synthetic
 comparison specimens, with an independently buildable/runable Ada implementation,
-explicit migration/recovery, and a daily TUI at least as usable as HRA/Loam.
+direct Loam-canonical recovery, and a daily TUI at least as usable as HRA/Loam.
 Minimize semantic and implementation duplication across the whole system before
 optimizing line count. A small Core with arithmetic duplicated in UI is not a
 successful reduction. A kernel or CLI alone is not a usable continuity hedge.
@@ -79,22 +79,24 @@ Intent -> proposal(snapshot) -> lock -> authoritative re-read
        -> immutable generation -> atomic CURRENT activation -> durable receipt
 ```
 
-The three logical streams are `journal.hra`, `policy.hra`, and `scheduled.hra`.
-Versioned authorities store them under `.hra/generations/<id>/`; `.hra/CURRENT`
-is the sole activation edge. A selected generation is immutable. Legacy root
-files are read-only, explicitly unversioned compatibility input.
+Loam canonical household data is the sole production authority target. HRA-N
+must consume and, when qualified, publish that same authority through an
+independent Ada/SPARK implementation. Do not introduce a second operational
+source of truth.
 
-Versioned initialization, reads, and generation transactions exist. Named
-Application commands publish through the shared proposal/commit boundary.
-Direct writes to selected generations remain rejected; do not bypass this guard
-to make a frontend action appear functional.
+The existing `journal.hra`, `policy.hra`, `scheduled.hra`,
+`.hra/generations/<id>/`, and `.hra/CURRENT` paths are transitional
+implementation scaffolding only. They remain in the tree because many
+capabilities still depend on them, not because compatibility must be preserved.
+Old HRA-N household data is disposable and requires no migration reader,
+rollback format, or compatibility promise.
 
-This is the current storage contract, not a permanent design constraint on
-exploration. Compare alternative canonical representations on synthetic data;
-preserve household facts, provenance, and recovery through an explicitly
-qualified transition before any separately authorized production cutover.
-Exploration does not authorize editing a selected generation or auto-mutating
-Loam. Follow its repository policy before proposing changes there.
+Retire legacy storage vertically: first establish the equivalent Loam-canonical
+reader/writer/admission/query path and its observable tests, then delete the
+superseded three-stream path in the same or immediately following focused slice.
+Do not retain parallel old/new authorities after qualification. Alternative data
+shapes may still be explored on synthetic fixtures as research, but they are not
+candidate production authorities unless Loam itself adopts them.
 
 ## Vertical-slice rule
 
@@ -140,6 +142,24 @@ Compare size only at equal observables, failure behavior, TUI reach, and workloa
 a small incomplete frontend is not a reduction result. Fixed cross-language line
 reduction percentages are not acceptance gates. Preserve independent evidence
 where two similarly shaped facts have different meanings.
+
+## Test/tooling language boundary
+
+HRA-N production and semantic authority remain Ada/SPARK. Python may be used in
+`tests/` and `experiments/` only as an **external observer** where the test
+must launch a finished executable, drive a PTY, inspect process exit status,
+exercise POSIX behavior, or compare filesystem bytes.
+
+Do not put accounting semantics, canonical admission, query arithmetic,
+canonical readers/writers, recovery decisions, or qualification-result
+computation behind Python. A semantic law exercised by an external Python E2E
+must also live in Ada/SPARK code with direct Ada tests where practical; Python
+owns only the outside-the-process contract.
+
+Do not rewrite a useful PTY/process E2E in Ada merely to remove Python if doing
+so would require adding process-control or terminal-test infrastructure to the
+production implementation. The independence goal is an Ada/SPARK runtime and
+authority path, not a repository with zero Python files.
 
 ## Repository commands
 

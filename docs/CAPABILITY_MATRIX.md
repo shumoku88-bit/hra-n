@@ -1,11 +1,13 @@
 # HRA-N capability matrix
 
-Status: **active current-state authority**
+Status: **active transition inventory toward Loam canonical authority**
 
 This document tracks current implementation gaps, delivery order, and the latest
 Loam review checkpoint and reverse-feedback queue. HRA-N is the Ada/SPARK
-continuity hedge and independent design/canonical-data exploration partner for
-Loam's evolving small-core effort, not a feature race. Follow
+continuity hedge and independent semantic/design verification partner for
+Loam's evolving small-core effort, not a feature race. Loam canonical household
+data is the sole production authority target; HRA-N's old three-stream data is
+disposable transitional scaffolding. Follow
 [`LOAM_ALIGNMENT.md`](LOAM_ALIGNMENT.md) for observable contracts and the review
 cadence. Git history owns completed migrations and retired designs.
 
@@ -13,11 +15,14 @@ cadence. Git history owns completed migrations and retired designs.
 
 Statuses:
 
-- **V2**: implementation uses versioned-snapshot paths and has tests; this is
-  implementation inventory, not a claim of complete admission, all failure-path
-  coverage, Loam equivalence, or long-term readiness. Audit findings qualify the
-  status of each affected row until revalidated and fixed.
-- **Legacy**: executable code exists but does not satisfy canonical-ledger-v2.
+- **Canonical slice**: the capability reads or writes Loam canonical data
+  directly through an independently qualified HRA-N boundary.
+- **V2**: historical name for the current three-stream implementation inventory.
+  It may have strong tests and useful semantics, but its storage path is
+  transitional and carries no backward-compatibility promise. A qualified
+  Loam-canonical replacement should retire the corresponding three-stream path.
+- **Legacy**: executable code exists but is outside the target Loam-canonical
+  authority boundary.
 - **Blocked**: frontend or operation exists conceptually but safe authority is
   missing.
 - **Missing**: no current implementation.
@@ -25,13 +30,15 @@ Statuses:
 A Loam-parity capability requires all applicable columns, not merely a similarly
 named command. Also name the pinned Loam contract/revision, semantic fixtures and
 expected results, explicit differences, and independent HRA-N qualification.
-Whole-system Loam equivalence and a qualified data-transfer path have not yet
-been established.
+Whole-system Loam equivalence and qualified Loam-canonical write coverage have
+not yet been established. No transfer path from old HRA-N household data is
+required.
 
 | Capability | Domain/admission | Storage | Shared Application API | CLI | TUI | Evidence | Status |
 |---|---|---|---|---|---|---|---|
-| Versioned three-stream read | selected complete generation; invalid selection rejects | immutable generation + atomic `CURRENT` | snapshot reference propagated | Home/doctor consume resolver | snapshot shown | path, initializer, Home tests | **V2** |
-| Generation transaction write | journal and Scheduled facts are byte-prefix append-only; Policy bytes are immutable until effective-dated policy facts exist | process/task lock, authoritative re-read, stale rejection, post-lock allocation, fsync, atomic activation, post-verify; exact selected-candidate comparison recovers lost receipts | typed Movement Intent/opaque Proposal/durable Receipt connected | not connected | writes not yet connected | stale, all-stream rewrite, invalid-candidate, concurrent-writer, activation-boundary fault, idempotent retry, and Movement contract tests + TLA+/SPIN model | **V2 foundation** |
+| Loam normalized Actual read | normalized Actual v1; unsupported retained semantics reject | direct read of Loam `actual.loam`; stable-byte snapshot check | semantic Event / Validity / Description / Metadata image | `hra-n-loam-qualify` structural gate | n/a | synthetic reader + qualifier E2E, SPARK/core gate | **Canonical read slice** |
+| Versioned three-stream read | selected complete generation; invalid selection rejects | immutable generation + atomic `CURRENT`; transitional only | snapshot reference propagated | Home/doctor consume resolver | snapshot shown | path, initializer, Home tests | **V2 transitional** |
+| Generation transaction write | journal and Scheduled facts are byte-prefix append-only; Policy bytes are immutable until effective-dated policy facts exist | transitional three-stream publisher; retain only until Loam-canonical writers replace each vertical slice | typed Movement Intent/opaque Proposal/durable Receipt connected | not connected | writes not yet connected | stale, all-stream rewrite, invalid-candidate, concurrent-writer, activation-boundary fault, idempotent retry, and Movement contract tests + TLA+/SPIN model | **V2 transitional foundation** |
 | Actual list by day/all | occurrence date and stable source order | journal reader | `Actual_Query` | legacy review is separate | Home, Selected Day, Actual | unit + PTY | **V2 read slice** |
 | Actual detail | identity revalidated against current read | journal reader | `Actual_Detail_Query` | no structured detail command | selected-row detail | unit + PTY | **V2 read slice** |
 | Record movement | typed coordinates, positive exact amount, balanced per-measure effects, canonical encoding | admitted immutable generation transaction | `Movement_Command` Intent -> opaque snapshot-bound Proposal -> Receipt | `hra-n movement` / `record` (scripted & interactive) | Selected Day keyboard editor (n) with catalog selection, draft preview, and immediate reload | validation, stale-proposal, retry, receipt, E2E CLI, and PTY tests | **V2** |
@@ -54,6 +61,13 @@ been established.
 | Machine-readable adapter | same Query/Intent semantics | no direct storage access | schema not defined | optional JSON absent | n/a | none | **Missing** |
 | AI/chat tools | least authority, proposal-first, redaction | no direct storage access | adapter absent | n/a | n/a | none | **Missing** |
 | GUI/Web | shared adapter | no direct storage access | adapter absent | n/a | n/a | none | **Missing** |
+
+**Storage-status rule:** any row above that still names `journal.hra`,
+`policy.hra`, `scheduled.hra`, `.hra/CURRENT`, or generation transactions
+uses a transitional storage implementation even when its domain/Application/UI
+semantics are otherwise qualified. Do not add compatibility work for old HRA-N
+household data. Port the vertical slice to Loam canonical data, qualify the same
+observable and failure behavior, then delete the superseded storage path.
 
 ## 2. Delivery order
 
