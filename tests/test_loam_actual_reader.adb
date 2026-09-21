@@ -2,6 +2,8 @@ with Ada.Text_IO;
 with Ada.Directories;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
+with Ada.Strings;                      use Ada.Strings;
+with Ada.Strings.Fixed;                use Ada.Strings.Fixed;
 with HRA_N.Core.Types;                use HRA_N.Core.Types;
 with HRA_N.Core.Event;                use HRA_N.Core.Event;
 with HRA_N.Core.Validity;             use HRA_N.Core.Validity;
@@ -27,6 +29,123 @@ package body Test_Loam_Actual_Reader is
       Ada.Text_IO.Close (File);
    end Write_File;
 
+   procedure Write_Synthetic_Fixture
+     (Count     : Positive;
+      With_Desc : Boolean := True)
+   is
+      File   : Ada.Text_IO.File_Type;
+      Header : constant String := "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1";
+   begin
+      if Ada.Directories.Exists (Path) then
+         Ada.Directories.Delete_File (Path);
+      end if;
+      Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Path);
+      Ada.Text_IO.Put_Line (File, Header);
+      for I in 1 .. Count loop
+         declare
+            I_Str : constant String := Trim (Positive'Image (I), Both);
+         begin
+            if With_Desc then
+               Ada.Text_IO.Put_Line
+                 (File,
+                  "TX" & ASCII.HT & "ev" & I_Str & ASCII.HT &
+                  "2026-09-01" & ASCII.HT & "DESC" & ASCII.HT & "Memo" & I_Str);
+            else
+               Ada.Text_IO.Put_Line
+                 (File,
+                  "TX" & ASCII.HT & "ev" & I_Str & ASCII.HT &
+                  "2026-09-01" & ASCII.HT & "NODESC");
+            end if;
+            Ada.Text_IO.Put_Line
+              (File, "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" & ASCII.HT & "-" & I_Str);
+            Ada.Text_IO.Put_Line
+              (File, "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" & ASCII.HT & I_Str);
+            Ada.Text_IO.Put_Line (File, "ENDTX");
+         end;
+      end loop;
+      Ada.Text_IO.Close (File);
+   end Write_Synthetic_Fixture;
+
+   procedure Write_Effects_Fixture (Effect_Count : Positive) is
+      File   : Ada.Text_IO.File_Type;
+      Header : constant String := "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1";
+   begin
+      if Ada.Directories.Exists (Path) then
+         Ada.Directories.Delete_File (Path);
+      end if;
+      Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Path);
+      Ada.Text_IO.Put_Line (File, Header);
+      Ada.Text_IO.Put_Line
+        (File, "TX" & ASCII.HT & "ev-eff" & ASCII.HT & "2026-09-01" & ASCII.HT & "NODESC");
+      if Effect_Count mod 2 = 0 then
+         for I in 1 .. Effect_Count / 2 loop
+            Ada.Text_IO.Put_Line
+              (File, "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" & ASCII.HT & "10");
+            Ada.Text_IO.Put_Line
+              (File, "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" & ASCII.HT & "-10");
+         end loop;
+      else
+         for I in 1 .. (Effect_Count - 3) / 2 loop
+            Ada.Text_IO.Put_Line
+              (File, "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" & ASCII.HT & "10");
+            Ada.Text_IO.Put_Line
+              (File, "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" & ASCII.HT & "-10");
+         end loop;
+         Ada.Text_IO.Put_Line
+           (File, "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" & ASCII.HT & "10");
+         Ada.Text_IO.Put_Line
+           (File, "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" & ASCII.HT & "20");
+         Ada.Text_IO.Put_Line
+           (File, "EFFECT" & ASCII.HT & "bank" & ASCII.HT & "jpy" & ASCII.HT & "-30");
+      end if;
+      Ada.Text_IO.Put_Line (File, "ENDTX");
+      Ada.Text_IO.Close (File);
+   end Write_Effects_Fixture;
+
+   procedure Write_Desc_Fixture (Desc_Len : Positive) is
+      File   : Ada.Text_IO.File_Type;
+      Header : constant String := "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1";
+      Desc   : constant String (1 .. Desc_Len) := [others => 'A'];
+   begin
+      if Ada.Directories.Exists (Path) then
+         Ada.Directories.Delete_File (Path);
+      end if;
+      Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Path);
+      Ada.Text_IO.Put_Line (File, Header);
+      Ada.Text_IO.Put_Line
+        (File,
+         "TX" & ASCII.HT & "ev-desc" & ASCII.HT & "2026-09-01" &
+         ASCII.HT & "DESC" & ASCII.HT & Desc);
+      Ada.Text_IO.Put_Line
+        (File, "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" & ASCII.HT & "-100");
+      Ada.Text_IO.Put_Line
+        (File, "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" & ASCII.HT & "100");
+      Ada.Text_IO.Put_Line (File, "ENDTX");
+      Ada.Text_IO.Close (File);
+   end Write_Desc_Fixture;
+
+   procedure Write_Token_Fixture (Tok_Len : Positive) is
+      File   : Ada.Text_IO.File_Type;
+      Header : constant String := "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1";
+      Tok    : String (1 .. Tok_Len) := [others => 'x'];
+   begin
+      Tok (1) := 'e';
+      if Ada.Directories.Exists (Path) then
+         Ada.Directories.Delete_File (Path);
+      end if;
+      Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Path);
+      Ada.Text_IO.Put_Line (File, Header);
+      Ada.Text_IO.Put_Line
+        (File,
+         "TX" & ASCII.HT & Tok & ASCII.HT & "2026-09-01" & ASCII.HT & "NODESC");
+      Ada.Text_IO.Put_Line
+        (File, "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" & ASCII.HT & "-100");
+      Ada.Text_IO.Put_Line
+        (File, "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" & ASCII.HT & "100");
+      Ada.Text_IO.Put_Line (File, "ENDTX");
+      Ada.Text_IO.Close (File);
+   end Write_Token_Fixture;
+
    procedure Write_Exact_File
      (Content : String)
    is
@@ -48,8 +167,8 @@ package body Test_Loam_Actual_Reader is
       SIO.Close (File);
    end Write_Exact_File;
 
-   function NL return String is (1 => ASCII.LF);
-   function HT return String is (1 => ASCII.HT);
+   function NL return String is [1 => ASCII.LF];
+   function HT return String is [1 => ASCII.HT];
 
    procedure Run is
       Header : constant String := "LOAM-NORMALIZED-ACTUAL" & HT & "1" & NL;
@@ -188,6 +307,137 @@ package body Test_Loam_Actual_Reader is
       Assert
         (not Read_Loam_Actual_File (Path).Success,
          "missing final newline fails closed");
+
+      --  6. Event count capacity boundaries: Max-1 (1023), Max (1024), Max+1 (1025).
+      Write_Synthetic_Fixture (1023, With_Desc => True);
+      declare
+         R : constant Loam_Actual_Result := Read_Loam_Actual_File (Path);
+      begin
+         Assert (R.Success, "1023 events read successfully (Max - 1)");
+         Assert_Equal_Int
+           (1023, Long_Long_Integer (R.Events.Length), "1023 events retained");
+         Assert_Equal_Int
+           (1023, Long_Long_Integer (Entry_Count (R.Validities)),
+            "1023 validities retained");
+         Assert_Equal_Int
+           (1023, Long_Long_Integer (Entry_Count (R.Descriptions)),
+            "1023 descriptions retained");
+      end;
+
+      Write_Synthetic_Fixture (1024, With_Desc => True);
+      declare
+         R : constant Loam_Actual_Result := Read_Loam_Actual_File (Path);
+      begin
+         Assert (R.Success, "1024 events read successfully (Exact Max)");
+         Assert_Equal_Int
+           (1024, Long_Long_Integer (R.Events.Length), "1024 events retained");
+         Assert_Equal_Int
+           (1024, Long_Long_Integer (Entry_Count (R.Validities)),
+            "1024 validities retained");
+         Assert_Equal_Int
+           (1024, Long_Long_Integer (Entry_Count (R.Descriptions)),
+            "1024 descriptions retained");
+      end;
+
+      Write_Synthetic_Fixture (1025, With_Desc => True);
+      declare
+         R : constant Loam_Actual_Result := Read_Loam_Actual_File (Path);
+      begin
+         Assert (not R.Success, "1025 events fail closed (Max + 1)");
+         Assert
+           (R.Error_Len > 0
+            and then R.Error_Reason (1 .. R.Error_Len) =
+              "HRA-N Actual bridge capacity exceeded",
+            "1025 events carries capacity exceeded diagnostic");
+         Assert (R.Error_Line > 0, "1025 events reports error line");
+      end;
+
+      --  7. Effect count boundaries: Max-1 (31), Max (32), Max+1 (33).
+      Write_Effects_Fixture (31);
+      declare
+         R : constant Loam_Actual_Result := Read_Loam_Actual_File (Path);
+      begin
+         Assert (R.Success, "31 effects read successfully (Max - 1)");
+         Assert_Equal_Int
+           (31, Long_Long_Integer (Effect_Count (R.Events.Element (1))),
+            "31 effects retained");
+      end;
+
+      Write_Effects_Fixture (32);
+      declare
+         R : constant Loam_Actual_Result := Read_Loam_Actual_File (Path);
+      begin
+         Assert (R.Success, "32 effects read successfully (Exact Max)");
+         Assert_Equal_Int
+           (32, Long_Long_Integer (Effect_Count (R.Events.Element (1))),
+            "32 effects retained");
+      end;
+
+      Write_Effects_Fixture (33);
+      declare
+         R : constant Loam_Actual_Result := Read_Loam_Actual_File (Path);
+      begin
+         Assert (not R.Success, "33 effects fail closed (Max + 1)");
+         Assert
+           (R.Error_Len > 0
+            and then R.Error_Reason (1 .. R.Error_Len) =
+              "too many Effects in one Event",
+            "33 effects carries too many effects diagnostic");
+      end;
+
+      --  8. Description length boundaries: Max-1 (511), Max (512), Max+1 (513).
+      Write_Desc_Fixture (511);
+      declare
+         R : constant Loam_Actual_Result := Read_Loam_Actual_File (Path);
+      begin
+         Assert (R.Success, "511 chars description reads successfully (Max - 1)");
+      end;
+
+      Write_Desc_Fixture (512);
+      declare
+         R : constant Loam_Actual_Result := Read_Loam_Actual_File (Path);
+      begin
+         Assert (R.Success, "512 chars description reads successfully (Exact Max)");
+      end;
+
+      Write_Desc_Fixture (513);
+      declare
+         R : constant Loam_Actual_Result := Read_Loam_Actual_File (Path);
+      begin
+         Assert (not R.Success, "513 chars description fails closed (Max + 1)");
+         Assert
+           (R.Error_Len > 0
+            and then R.Error_Reason (1 .. R.Error_Len) =
+              "invalid Event description",
+            "513 chars carries invalid description diagnostic");
+      end;
+
+      --  9. Token length boundaries: Max-1 (95), Max (96), Max+1 (97).
+      Write_Token_Fixture (95);
+      declare
+         R : constant Loam_Actual_Result := Read_Loam_Actual_File (Path);
+      begin
+         Assert (R.Success, "95 chars token reads successfully (Max - 1)");
+      end;
+
+      Write_Token_Fixture (96);
+      declare
+         R : constant Loam_Actual_Result := Read_Loam_Actual_File (Path);
+      begin
+         Assert (R.Success, "96 chars token reads successfully (Exact Max)");
+      end;
+
+      Write_Token_Fixture (97);
+      declare
+         R : constant Loam_Actual_Result := Read_Loam_Actual_File (Path);
+      begin
+         Assert (not R.Success, "97 chars token fails closed (Max + 1)");
+         Assert
+           (R.Error_Len > 0
+            and then R.Error_Reason (1 .. R.Error_Len) =
+              "invalid Event identity",
+            "97 chars carries invalid identity diagnostic");
+      end;
 
       if Ada.Directories.Exists (Path) then
          Ada.Directories.Delete_File (Path);

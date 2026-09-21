@@ -18,6 +18,16 @@ with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 
 package HRA_N.Storage.Loam_Actual_Reader is
 
+   --  Admitted in-memory semantic image capacity for the single-pass bridge.
+   --  Bounded by the underlying Core evidence collections:
+   --    Max_Validity_Entries    (1024)
+   --    Max_Metadata_Entries    (1024)
+   --    Max_Description_Entries (1024)
+   --    Max_Effects_Per_Event   (32)
+   --  This bounds the in-memory admitted working set, NOT the durable lifetime
+   --  canonical authority of household history.
+   Max_Admitted_Actual_Events : constant := 1024;
+
    package Event_Vectors is new Ada.Containers.Vectors
      (Index_Type   => Positive,
       Element_Type => Event);

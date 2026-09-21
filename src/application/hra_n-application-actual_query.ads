@@ -8,7 +8,6 @@ with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;
 with HRA_N.Storage.Journal_Reader;
-with HRA_N.Storage.Loam_Actual_Reader;
 
 package HRA_N.Application.Actual_Query is
 
@@ -21,6 +20,11 @@ package HRA_N.Application.Actual_Query is
       Ordering     : Actual_Order := Order_Newest_First;
    end record;
 
+   --  Query result presentation capacity (maximum rows in one projection view).
+   --  This bounds the query/view result buffer, distinct from:
+   --    1. Lifetime canonical authority capacity (unbounded multi-decade history)
+   --    2. Admitted in-memory semantic image capacity (Max_Admitted_Actual_Events)
+   --    3. Screen/viewport paging capacity (terminal height / Page_Size)
    Max_Actual_Rows : constant := 1024;
    subtype Actual_Row_Count is Natural range 0 .. Max_Actual_Rows;
    subtype Actual_Row_Index is Positive range 1 .. Max_Actual_Rows;

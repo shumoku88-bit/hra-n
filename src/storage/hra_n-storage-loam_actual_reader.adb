@@ -7,11 +7,6 @@ with Ada.Text_IO;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with HRA_N.Storage.Exact_File;
 with HRA_N.Core.Types;                use HRA_N.Core.Types;
-with HRA_N.Core.Quantity;             use HRA_N.Core.Quantity;
-with HRA_N.Core.Event;                use HRA_N.Core.Event;
-with HRA_N.Core.Validity;             use HRA_N.Core.Validity;
-with HRA_N.Core.Description;          use HRA_N.Core.Description;
-with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 
 package body HRA_N.Storage.Loam_Actual_Reader is
 
@@ -357,7 +352,7 @@ package body HRA_N.Storage.Loam_Actual_Reader is
                      return Fail (Line_No, "invalid Event description");
                   elsif Mode /= "NODESC" and then Mode /= "DESC" then
                      return Fail (Line_No, "unknown TX description mode");
-                  elsif Validity_Entries.Count = Validity_Count_Type'Last
+                  elsif Validity_Entries.Count = Max_Admitted_Actual_Events
                     or else Metadata_Entries.Count = Metadata_Count'Last
                   then
                      return Fail (Line_No, "HRA-N Actual bridge capacity exceeded");

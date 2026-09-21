@@ -7,7 +7,6 @@
 -------------------------------------------------------------------------------
 
 with Ada.Command_Line;
-with Ada.Containers;
 with Ada.Strings;       use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Text_IO;       use Ada.Text_IO;

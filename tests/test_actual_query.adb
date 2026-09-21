@@ -1,4 +1,8 @@
 with Ada.Directories;
+with Ada.Text_IO;
+with Ada.Strings;       use Ada.Strings;
+with Ada.Strings.Fixed; use Ada.Strings.Fixed;
+with Ada.Unchecked_Deallocation;
 with Test_Support; use Test_Support;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
@@ -224,6 +228,129 @@ package body Test_Actual_Query is
       begin
          Assert (View.Status = Query_Rejected, "Actual query rejects missing journal");
          Assert (View.Diagnostic_Len > 0, "Rejected Actual query carries diagnostic");
+      end;
+
+      declare
+         procedure Write_Loam_Synthetic (Count : Positive) is
+            F : Ada.Text_IO.File_Type;
+         begin
+            if Ada.Directories.Exists (Loam_Path) then
+               Ada.Directories.Delete_File (Loam_Path);
+            end if;
+            Ada.Text_IO.Create (F, Ada.Text_IO.Out_File, Loam_Path);
+            Ada.Text_IO.Put_Line (F, "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1");
+            for I in 1 .. Count loop
+               declare
+                  I_Str : constant String := Trim (Positive'Image (I), Both);
+                  D_Str : constant String :=
+                    (if I <= 5 then "2026-09-12" else "2026-09-11");
+               begin
+                  Ada.Text_IO.Put_Line
+                    (F,
+                     "TX" & ASCII.HT & "e" & I_Str & ASCII.HT & D_Str &
+                     ASCII.HT & "DESC" & ASCII.HT & "Memo" & I_Str);
+                  Ada.Text_IO.Put_Line
+                    (F, "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" & ASCII.HT & "-" & I_Str);
+                  Ada.Text_IO.Put_Line
+                    (F, "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" & ASCII.HT & I_Str);
+                  Ada.Text_IO.Put_Line (F, "ENDTX");
+               end;
+            end loop;
+            Ada.Text_IO.Close (F);
+         end Write_Loam_Synthetic;
+
+         type Actual_View_Access is access Actual_View;
+         procedure Free is new Ada.Unchecked_Deallocation
+           (Actual_View, Actual_View_Access);
+
+         procedure Check_1023 is
+            V : Actual_View_Access :=
+              new Actual_View'
+                (Execute_Loam_Actual
+                   (Loam_Path,
+                    (Scope        => Scope_All,
+                     Selected_Day => Focus_Day,
+                     Ordering     => Order_Newest_First)));
+         begin
+            Assert
+              (V.Status = Query_Complete,
+               "Loam Actual query complete at 1023 events (Max - 1)");
+            Assert_Equal_Int
+              (1023, Long_Long_Integer (V.Row_Count),
+               "1023 query rows projected");
+            Free (V);
+         end Check_1023;
+
+         procedure Check_1024_All is
+            V : Actual_View_Access :=
+              new Actual_View'
+                (Execute_Loam_Actual
+                   (Loam_Path,
+                    (Scope        => Scope_All,
+                     Selected_Day => Focus_Day,
+                     Ordering     => Order_Newest_First)));
+         begin
+            Assert
+              (V.Status = Query_Complete,
+               "Loam Actual query complete at 1024 events (Exact Max)");
+            Assert_Equal_Int
+              (1024, Long_Long_Integer (V.Row_Count),
+               "1024 query rows projected");
+            Free (V);
+         end Check_1024_All;
+
+         procedure Check_1024_Day is
+            V : Actual_View_Access :=
+              new Actual_View'
+                (Execute_Loam_Actual
+                   (Loam_Path,
+                    (Scope        => Scope_Selected_Day,
+                     Selected_Day => (Year => 2026, Month => 9, Day => 12),
+                     Ordering     => Order_Newest_First)));
+         begin
+            Assert
+              (V.Status = Query_Complete,
+               "Selected-day query on 1024-event image is complete");
+            Assert_Equal_Int
+              (5, Long_Long_Integer (V.Row_Count),
+               "Selected-day query retains 5 filtered rows");
+            Free (V);
+         end Check_1024_Day;
+
+         procedure Check_1025 is
+            V : Actual_View_Access :=
+              new Actual_View'
+                (Execute_Loam_Actual
+                   (Loam_Path,
+                    (Scope        => Scope_All,
+                     Selected_Day => Focus_Day,
+                     Ordering     => Order_Newest_First)));
+         begin
+            Assert
+              (V.Status = Query_Rejected,
+               "Loam Actual query rejected at 1025 events (Max + 1)");
+            Assert_Equal_Int
+              (0, Long_Long_Integer (V.Row_Count),
+               "No partial rows returned on query rejection");
+            Assert
+              (V.Diagnostic_Len > 0,
+               "Rejected query carries diagnostic");
+            Free (V);
+         end Check_1025;
+
+      begin
+         --  1023 events: Max - 1
+         Write_Loam_Synthetic (1023);
+         Check_1023;
+
+         --  1024 events: Exact Max
+         Write_Loam_Synthetic (1024);
+         Check_1024_All;
+         Check_1024_Day;
+
+         --  1025 events: Max + 1 fails closed
+         Write_Loam_Synthetic (1025);
+         Check_1025;
       end;
 
       Ada.Directories.Delete_Tree (Test_Dir);

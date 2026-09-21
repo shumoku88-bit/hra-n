@@ -44,6 +44,7 @@ package body HRA_N.Application.Actual_Query is
    procedure Append_Item
      (Result       : in out Actual_View;
       Missing_Date : in out Boolean;
+      Overflow     : in out Boolean;
       Item         : Event;
       Source_Order : Positive;
       Validities   : Validity_Memory;
@@ -57,6 +58,10 @@ package body HRA_N.Application.Actual_Query is
       Has_Desc    : Boolean;
       Include_Row : Boolean;
    begin
+      if Overflow then
+         return;
+      end if;
+
       Find_Occurrence_Date
         (Validities, Item_Id, Item_Date, Has_Date);
       Find_Description
@@ -72,6 +77,11 @@ package body HRA_N.Application.Actual_Query is
           (Has_Date and then Equal_Date (Item_Date, Request.Selected_Day));
 
       if Include_Row then
+         if Result.Row_Count = Max_Actual_Rows then
+            Overflow := True;
+            return;
+         end if;
+
          Result.Row_Count := Result.Row_Count + 1;
          Result.Rows (Result.Row_Count) :=
            (Event_Id     => Item_Id.Token,
@@ -145,6 +155,7 @@ package body HRA_N.Application.Actual_Query is
    is
       Result       : Actual_View := Initial_View (Request, Snapshot);
       Missing_Date : Boolean := False;
+      Overflow     : Boolean := False;
    begin
       if not Journal.Success then
          Set_Diagnostic
@@ -152,7 +163,9 @@ package body HRA_N.Application.Actual_Query is
             "journal.hra: " &
             Journal.Error_Reason (1 .. Journal.Error_Len));
          return Result;
-      elsif Natural (Journal.Events.Length) > Max_Actual_Rows then
+      elsif Request.Scope = Scope_All
+        and then Natural (Journal.Events.Length) > Max_Actual_Rows
+      then
          Set_Diagnostic
            (Result, "journal exceeds bounded Actual query capacity");
          return Result;
@@ -162,11 +175,19 @@ package body HRA_N.Application.Actual_Query is
          Append_Item
            (Result,
             Missing_Date,
+            Overflow,
             Journal.Events.Element (Positive (Index)),
             Positive (Index),
             Journal.Validities,
             Journal.Descriptions,
             Request);
+         if Overflow then
+            Result.Status := Frontend_Types.Query_Rejected;
+            Result.Row_Count := 0;
+            Set_Diagnostic
+              (Result, "Actual query result exceeds bounded row capacity");
+            return Result;
+         end if;
       end loop;
 
       Finalize_View (Result, Missing_Date, Request);
@@ -218,6 +239,7 @@ package body HRA_N.Application.Actual_Query is
       Result       : Actual_View :=
         Initial_View (Request, (Kind => Snapshot_Unversioned));
       Missing_Date : Boolean := False;
+      Overflow     : Boolean := False;
    begin
       if not Image.Success then
          Set_Diagnostic
@@ -225,7 +247,9 @@ package body HRA_N.Application.Actual_Query is
             "actual.loam: " &
             Image.Error_Reason (1 .. Image.Error_Len));
          return Result;
-      elsif Natural (Image.Events.Length) > Max_Actual_Rows then
+      elsif Request.Scope = Scope_All
+        and then Natural (Image.Events.Length) > Max_Actual_Rows
+      then
          Set_Diagnostic
            (Result, "actual.loam exceeds bounded Actual query capacity");
          return Result;
@@ -235,11 +259,19 @@ package body HRA_N.Application.Actual_Query is
          Append_Item
            (Result,
             Missing_Date,
+            Overflow,
             Image.Events.Element (Positive (Index)),
             Positive (Index),
             Image.Validities,
             Image.Descriptions,
             Request);
+         if Overflow then
+            Result.Status := Query_Rejected;
+            Result.Row_Count := 0;
+            Set_Diagnostic
+              (Result, "Actual query result exceeds bounded row capacity");
+            return Result;
+         end if;
       end loop;
 
       Finalize_View (Result, Missing_Date, Request);

@@ -991,5 +991,51 @@ class TestHraNCli(unittest.TestCase):
         self.assertEqual(rejected.stdout, "")
         self.assertIn("canonical Actual rejected", rejected.stderr)
 
+    def test_canonical_actual_capacity_boundaries(self) -> None:
+        path = os.path.join(self.test_dir, "actual_cap.loam")
+
+        def make_fixture(n: int) -> bytes:
+            lines = ["LOAM-NORMALIZED-ACTUAL\t1"]
+            for i in range(1, n + 1):
+                lines.append(f"TX\tev{i:05d}\t2026-09-01\tDESC\tMemo{i:05d}")
+                lines.append(f"EFFECT\tcash\tjpy\t-{i}")
+                lines.append(f"EFFECT\tfood\tjpy\t{i}")
+                lines.append("ENDTX")
+            lines.append("")
+            return "\n".join(lines).encode("utf-8")
+
+        # 1. Max - 1: 1023 events
+        with open(path, "wb") as handle:
+            handle.write(make_fixture(1023))
+        res_1023 = self.run_cmd("actual", path)
+        self.assertEqual(res_1023.returncode, 0, res_1023.stdout + res_1023.stderr)
+        self.assertIn("Total: 1023 Actual records", res_1023.stdout)
+        self.assertIn("Status : COMPLETE", res_1023.stdout)
+
+        # 2. Exact Max: 1024 events
+        with open(path, "wb") as handle:
+            handle.write(make_fixture(1024))
+        with open(path, "rb") as handle:
+            before_1024 = handle.read()
+        res_1024 = self.run_cmd("actual", path)
+        self.assertEqual(res_1024.returncode, 0, res_1024.stdout + res_1024.stderr)
+        self.assertIn("Total: 1024 Actual records", res_1024.stdout)
+        self.assertIn("Status : COMPLETE", res_1024.stdout)
+        with open(path, "rb") as handle:
+            self.assertEqual(handle.read(), before_1024)
+
+        # 3. Max + 1: 1025 events fails closed with no partial stdout
+        with open(path, "wb") as handle:
+            handle.write(make_fixture(1025))
+        with open(path, "rb") as handle:
+            before_1025 = handle.read()
+        res_1025 = self.run_cmd("actual", path)
+        self.assertNotEqual(res_1025.returncode, 0)
+        self.assertEqual(res_1025.stdout, "", "Overflow must not emit partial output to stdout")
+        self.assertIn("canonical Actual rejected", res_1025.stderr)
+        self.assertIn("capacity exceeded", res_1025.stderr)
+        with open(path, "rb") as handle:
+            self.assertEqual(handle.read(), before_1025)
+
 if __name__ == "__main__":
     unittest.main()
