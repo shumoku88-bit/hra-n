@@ -13,6 +13,7 @@ package body Test_Actual_Query is
    procedure Run is
       Test_Dir : constant String := "/tmp/hra_n_test_actual_query";
       Paths     : constant Path_Config := Resolve_Paths (Test_Dir);
+      Loam_Path : constant String := Test_Dir & "/actual.loam";
       Focus_Day : constant Date_Type := (Year => 2026, Month => 9, Day => 11);
       Error     : String (1 .. 160) := [others => ' '];
       Error_Len : Natural := 0;
@@ -51,6 +52,60 @@ package body Test_Actual_Query is
          Assert (Id_At (View, 2) = "e0001", "Older source row on equal date is second");
          Assert (View.Rows (1).Description.Length = 5,
                  "Actual query retains description evidence");
+      end;
+
+      Assert
+        (Write_File_Atomically
+           (Loam_Path,
+            "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1" & ASCII.LF &
+            "TX" & ASCII.HT & "e0001" & ASCII.HT & "2026-09-11" &
+              ASCII.HT & "DESC" & ASCII.HT & "Breakfast" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" &
+              ASCII.HT & "-100" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" &
+              ASCII.HT & "100" & ASCII.LF &
+            "ENDTX" & ASCII.LF &
+            "TX" & ASCII.HT & "e0002" & ASCII.HT & "2026-09-12" &
+              ASCII.HT & "DESC" & ASCII.HT & "Dinner" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" &
+              ASCII.HT & "-200" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" &
+              ASCII.HT & "200" & ASCII.LF &
+            "ENDTX" & ASCII.LF &
+            "TX" & ASCII.HT & "e0003" & ASCII.HT & "2026-09-11" &
+              ASCII.HT & "DESC" & ASCII.HT & "Lunch" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" &
+              ASCII.HT & "-300" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" &
+              ASCII.HT & "300" & ASCII.LF &
+            "ENDTX" & ASCII.LF,
+            Error,
+            Error_Len),
+         "Loam Actual query fixture publishes");
+
+      declare
+         View : constant Actual_View :=
+           Execute_Loam_Actual
+             (Loam_Path,
+              (Scope        => Scope_Selected_Day,
+               Selected_Day => Focus_Day,
+               Ordering     => Order_Newest_First));
+      begin
+         Assert
+           (View.Status = Query_Complete,
+            "Loam canonical selected-day Actual query is complete");
+         Assert_Equal_Int
+           (2, Long_Long_Integer (View.Row_Count),
+            "Loam canonical query filters by occurrence date");
+         Assert
+           (Id_At (View, 1) = "e0003",
+            "Loam canonical query preserves newest equal-date source order");
+         Assert
+           (Id_At (View, 2) = "e0001",
+            "Loam canonical query preserves older equal-date source order");
+         Assert
+           (View.Rows (1).Description.Length = 5,
+            "Loam canonical query retains description evidence");
       end;
 
       declare
@@ -119,6 +174,35 @@ package body Test_Actual_Query is
          Assert (New_Detail.Has_Replaces
                  and then Equal_Token (New_Detail.Replaces, Make_Token ("e0001")),
                  "Replacement transaction reports replaced target identity");
+      end;
+
+      Assert
+        (Write_File_Atomically
+           (Loam_Path,
+            "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1" & ASCII.LF &
+            "TX" & ASCII.HT & "bad" & ASCII.HT & "2026-09-11" &
+              ASCII.HT & "NODESC" & ASCII.LF &
+            "DATE-REV" & ASCII.HT & "r1" & ASCII.HT & "2026-09-12" &
+              ASCII.HT & "REPLACES" & ASCII.HT & "ROOT" & ASCII.LF &
+            "ENDTX" & ASCII.LF,
+            Error,
+            Error_Len),
+         "Unsupported Loam Actual query fixture publishes");
+
+      declare
+         Rejected : constant Actual_View :=
+           Execute_Loam_Actual
+             (Loam_Path,
+              (Scope        => Scope_All,
+               Selected_Day => Focus_Day,
+               Ordering     => Order_Newest_First));
+      begin
+         Assert
+           (Rejected.Status = Query_Rejected,
+            "Loam canonical Actual query fails closed on unsupported provenance");
+         Assert
+           (Rejected.Diagnostic_Len > 0,
+            "Rejected Loam canonical query carries diagnostic");
       end;
 
       declare
