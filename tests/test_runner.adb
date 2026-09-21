@@ -12,6 +12,7 @@ with Test_Relation_Command;
 with Test_Movement;
 with Test_Event;
 with Test_Actual_Bounded_History;
+with Test_Actual_Replay_Refinement;
 with Test_Actual_Reader_Refinement;
 with Test_Loam_Actual_Reader;
 with Test_Validity;
@@ -97,6 +98,11 @@ begin
    if Selected ("Test_Actual_Bounded_History") then
       Announce ("Test_Actual_Bounded_History");
       Test_Actual_Bounded_History.Run;
+   end if;
+
+   if Selected ("Test_Actual_Replay_Refinement") then
+      Announce ("Test_Actual_Replay_Refinement");
+      Test_Actual_Replay_Refinement.Run;
    end if;
 
    if Selected ("Test_Actual_Reader_Refinement") then
