@@ -4,18 +4,17 @@
 
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
+with HRA_N.Storage.Loam_Actual_Reader; use HRA_N.Storage.Loam_Actual_Reader;
 
 package body HRA_N.Application.Actual_Query is
 
-   function Project
-     (Journal  : HRA_N.Storage.Journal_Reader.Journal_Result;
-      Request  : Query;
-      Snapshot : Frontend_Types.Snapshot_Reference :=
-        (Kind => Frontend_Types.Snapshot_Unversioned)) return Actual_View
+   function Initial_View
+     (Request  : Query;
+      Snapshot : Frontend_Types.Snapshot_Reference) return Actual_View
    is
       use HRA_N.Application.Frontend_Types;
-
-      Result : Actual_View :=
+   begin
+      return
         (Status         => Query_Rejected,
          Snapshot       => Snapshot,
          Scope          => Request.Scope,
@@ -25,23 +24,80 @@ package body HRA_N.Application.Actual_Query is
          Rows           => [others => Empty_Actual_Row],
          Diagnostic     => [others => ' '],
          Diagnostic_Len => 0);
+   end Initial_View;
 
-      Missing_Date : Boolean := False;
-
-      procedure Set_Diagnostic (Message : String) is
-         Len : constant Natural :=
-           Natural'Min (Message'Length, Result.Diagnostic'Length);
-      begin
-         Result.Diagnostic_Len := Len;
+   procedure Set_Diagnostic
+     (Result  : in out Actual_View;
+      Message : String)
+   is
+      Len : constant Natural :=
+        Natural'Min (Message'Length, Result.Diagnostic'Length);
+   begin
+      Result.Diagnostic := [others => ' '];
+      Result.Diagnostic_Len := Len;
+      if Len > 0 then
          Result.Diagnostic (1 .. Len) :=
            Message (Message'First .. Message'First + Len - 1);
-      end Set_Diagnostic;
+      end if;
+   end Set_Diagnostic;
+
+   procedure Append_Item
+     (Result       : in out Actual_View;
+      Missing_Date : in out Boolean;
+      Item         : Event;
+      Source_Order : Positive;
+      Validities   : Validity_Memory;
+      Descriptions : Description_Memory;
+      Request      : Query)
+   is
+      Item_Id     : constant Event_Id := Id (Item);
+      Item_Date   : Date_Type;
+      Has_Date    : Boolean;
+      Item_Desc   : Description_Text;
+      Has_Desc    : Boolean;
+      Include_Row : Boolean;
+   begin
+      Find_Occurrence_Date
+        (Validities, Item_Id, Item_Date, Has_Date);
+      Find_Description
+        (Descriptions, Item_Id, Item_Desc, Has_Desc);
+
+      if not Has_Date then
+         Missing_Date := True;
+      end if;
+
+      Include_Row :=
+        Request.Scope = Scope_All
+        or else
+          (Has_Date and then Equal_Date (Item_Date, Request.Selected_Day));
+
+      if Include_Row then
+         Result.Row_Count := Result.Row_Count + 1;
+         Result.Rows (Result.Row_Count) :=
+           (Event_Id     => Item_Id.Token,
+            Has_Date     => Has_Date,
+            Valid_On     => Item_Date,
+            Description  =>
+              (if Has_Desc then Item_Desc
+               else (Length => 0, Value => [others => ' '])),
+            Source_Order => Source_Order);
+      end if;
+   end Append_Item;
+
+   procedure Finalize_View
+     (Result       : in out Actual_View;
+      Missing_Date : Boolean;
+      Request      : Query)
+   is
+      use HRA_N.Application.Frontend_Types;
 
       function Comes_Before (Left, Right : Actual_Row) return Boolean is
       begin
          if Left.Has_Date /= Right.Has_Date then
             return Left.Has_Date;
-         elsif Left.Has_Date and then not Equal_Date (Left.Valid_On, Right.Valid_On) then
+         elsif Left.Has_Date
+           and then not Equal_Date (Left.Valid_On, Right.Valid_On)
+         then
             if Request.Ordering = Order_Oldest_First then
                return Date_Less (Left.Valid_On, Right.Valid_On);
             else
@@ -55,63 +111,15 @@ package body HRA_N.Application.Actual_Query is
       end Comes_Before;
 
    begin
-      if not Journal.Success then
-         Set_Diagnostic
-           ("journal.hra: " &
-            Journal.Error_Reason (1 .. Journal.Error_Len));
-         return Result;
-      end if;
-
-      if Natural (Journal.Events.Length) > Max_Actual_Rows then
-         Set_Diagnostic ("journal exceeds bounded Actual query capacity");
-         return Result;
-      end if;
-
-      for Index in 1 .. Natural (Journal.Events.Length) loop
-         declare
-            Item        : constant Event := Journal.Events.Element (Positive (Index));
-            Item_Id     : constant Event_Id := Id (Item);
-            Item_Date   : Date_Type;
-            Has_Date    : Boolean;
-            Item_Desc   : Description_Text;
-            Has_Desc    : Boolean;
-            Include_Row : Boolean;
-         begin
-            Find_Occurrence_Date
-              (Journal.Validities, Item_Id, Item_Date, Has_Date);
-            Find_Description
-              (Journal.Descriptions, Item_Id, Item_Desc, Has_Desc);
-
-            if not Has_Date then
-               Missing_Date := True;
-            end if;
-
-            Include_Row :=
-              Request.Scope = Scope_All
-              or else
-                (Has_Date and then Equal_Date (Item_Date, Request.Selected_Day));
-
-            if Include_Row then
-               Result.Row_Count := Result.Row_Count + 1;
-               Result.Rows (Result.Row_Count) :=
-                 (Event_Id     => Item_Id.Token,
-                  Has_Date     => Has_Date,
-                  Valid_On     => Item_Date,
-                  Description  =>
-                    (if Has_Desc then Item_Desc
-                     else (Length => 0, Value => [others => ' '])),
-                  Source_Order => Positive (Index));
-            end if;
-         end;
-      end loop;
-
       if Result.Row_Count > 1 then
          for Index in 2 .. Result.Row_Count loop
             declare
                Key : constant Actual_Row := Result.Rows (Index);
                Pos : Natural := Index - 1;
             begin
-               while Pos > 0 and then Comes_Before (Key, Result.Rows (Pos)) loop
+               while Pos > 0
+                 and then Comes_Before (Key, Result.Rows (Pos))
+               loop
                   Result.Rows (Pos + 1) := Result.Rows (Pos);
                   Pos := Pos - 1;
                end loop;
@@ -122,11 +130,46 @@ package body HRA_N.Application.Actual_Query is
 
       if Missing_Date then
          Result.Status := Query_Partial;
-         Set_Diagnostic ("one or more Actual records have no occurrence date");
+         Set_Diagnostic
+           (Result, "one or more Actual records have no occurrence date");
       else
          Result.Status := Query_Complete;
       end if;
+   end Finalize_View;
 
+   function Project
+     (Journal  : HRA_N.Storage.Journal_Reader.Journal_Result;
+      Request  : Query;
+      Snapshot : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned)) return Actual_View
+   is
+      Result       : Actual_View := Initial_View (Request, Snapshot);
+      Missing_Date : Boolean := False;
+   begin
+      if not Journal.Success then
+         Set_Diagnostic
+           (Result,
+            "journal.hra: " &
+            Journal.Error_Reason (1 .. Journal.Error_Len));
+         return Result;
+      elsif Natural (Journal.Events.Length) > Max_Actual_Rows then
+         Set_Diagnostic
+           (Result, "journal exceeds bounded Actual query capacity");
+         return Result;
+      end if;
+
+      for Index in 1 .. Natural (Journal.Events.Length) loop
+         Append_Item
+           (Result,
+            Missing_Date,
+            Journal.Events.Element (Positive (Index)),
+            Positive (Index),
+            Journal.Validities,
+            Journal.Descriptions,
+            Request);
+      end loop;
+
+      Finalize_View (Result, Missing_Date, Request);
       return Result;
    end Project;
 
@@ -163,5 +206,44 @@ package body HRA_N.Application.Actual_Query is
          return Project (Journal, Request, Snap);
       end;
    end Execute;
+
+   function Execute_Loam_Actual
+     (Path    : String;
+      Request : Query) return Actual_View
+   is
+      use HRA_N.Application.Frontend_Types;
+
+      Image        : constant Loam_Actual_Result :=
+        Read_Loam_Actual_File (Path);
+      Result       : Actual_View :=
+        Initial_View (Request, (Kind => Snapshot_Unversioned));
+      Missing_Date : Boolean := False;
+   begin
+      if not Image.Success then
+         Set_Diagnostic
+           (Result,
+            "actual.loam: " &
+            Image.Error_Reason (1 .. Image.Error_Len));
+         return Result;
+      elsif Natural (Image.Events.Length) > Max_Actual_Rows then
+         Set_Diagnostic
+           (Result, "actual.loam exceeds bounded Actual query capacity");
+         return Result;
+      end if;
+
+      for Index in 1 .. Natural (Image.Events.Length) loop
+         Append_Item
+           (Result,
+            Missing_Date,
+            Image.Events.Element (Positive (Index)),
+            Positive (Index),
+            Image.Validities,
+            Image.Descriptions,
+            Request);
+      end loop;
+
+      Finalize_View (Result, Missing_Date, Request);
+      return Result;
+   end Execute_Loam_Actual;
 
 end HRA_N.Application.Actual_Query;
