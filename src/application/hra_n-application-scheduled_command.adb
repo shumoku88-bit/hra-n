@@ -486,11 +486,10 @@ package body HRA_N.Application.Scheduled_Command is
                   Effects.Count := Lookup.Item.Changes.Count;
                   for C in 1 .. Lookup.Item.Changes.Count loop
                      declare
-                        Key_Str : constant String := Trim (Natural'Image (C - 1), Both);
                         Chg     : constant Scheduled_Change := Lookup.Item.Changes.Values (C);
                      begin
                         Effects.Values (C) :=
-                          (Key     => (Token => Make_Token (Key_Str)),
+                          (Key     => No_Effect_Key,
                            Locus   => Chg.Locus,
                            Measure => Lookup.Item.Measure,
                            Amount  => (Quanta => Chg.Amount));
