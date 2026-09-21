@@ -6,6 +6,7 @@
 #include <string.h>
 #include <wchar.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <curses.h>
 
 /* AdaCurses is linked against ncursesw. Use the curses declaration/macro
@@ -165,9 +166,19 @@ int hra_n_terminal_utf8_add_line(uintptr_t window_address,
         return -1;
     }
 
+    fprintf(stderr,
+            "[hra-n utf8] before wmove window=%p line=%d column=%d glyphs=%zu\n",
+            (void *)window, line, column, wide_length);
+    fflush(stderr);
     int result = wmove(window, line, column);
+    fprintf(stderr, "[hra-n utf8] after wmove result=%d\n", result);
+    fflush(stderr);
     if (result != ERR) {
+        fprintf(stderr, "[hra-n utf8] before waddnwstr\n");
+        fflush(stderr);
         result = waddnwstr(window, wide, (int)wide_length);
+        fprintf(stderr, "[hra-n utf8] after waddnwstr result=%d\n", result);
+        fflush(stderr);
     }
     free(clipped);
     free(wide);
