@@ -46,7 +46,7 @@ package body Test_Actual_Byte_Spans is
          begin
             for I in Text'Range loop
                Data (J) := Ada.Streams.Stream_Element (Character'Pos (Text (I)));
-               J := J + 1;
+               J := J + Ada.Streams.Stream_Element_Offset (1);
             end loop;
             SIO.Write (File, Data);
          end;
