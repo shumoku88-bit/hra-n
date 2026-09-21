@@ -1,7 +1,8 @@
 with Ada.Containers;
 with Ada.Directories;
+with Ada.Streams;
+with Ada.Streams.Stream_IO;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
-with Ada.Text_IO;
 with HRA_N.Core.Actual_Bounded_History;
 use HRA_N.Core.Actual_Bounded_History;
 with HRA_N.Core.Actual_Replay_Refinement;
@@ -29,14 +30,28 @@ package body Test_Actual_Byte_Spans is
    Header      : constant String := "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1";
 
    procedure Write_Text (Target : String; Text : String) is
-      File : Ada.Text_IO.File_Type;
+      package SIO renames Ada.Streams.Stream_IO;
+      File : SIO.File_Type;
    begin
       if Ada.Directories.Exists (Target) then
          Ada.Directories.Delete_File (Target);
       end if;
-      Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Target);
-      Ada.Text_IO.Put (File, Text);
-      Ada.Text_IO.Close (File);
+
+      SIO.Create (File, SIO.Out_File, Target);
+      if Text'Length > 0 then
+         declare
+            Data : Ada.Streams.Stream_Element_Array
+              (1 .. Ada.Streams.Stream_Element_Offset (Text'Length));
+            J : Ada.Streams.Stream_Element_Offset := Data'First;
+         begin
+            for I in Text'Range loop
+               Data (J) := Ada.Streams.Stream_Element (Character'Pos (Text (I)));
+               J := J + 1;
+            end loop;
+            SIO.Write (File, Data);
+         end;
+      end if;
+      SIO.Close (File);
    end Write_Text;
 
    procedure Cleanup is
@@ -87,6 +102,9 @@ package body Test_Actual_Byte_Spans is
 
       Exact := HRA_N.Storage.Exact_File.Read_All (Path);
       Assert (Exact.Success, "exact canonical bytes are readable");
+      Assert
+        (To_String (Exact.Content) = Document,
+         "fixture writer preserves exact canonical bytes");
 
       declare
          Bytes   : constant String := To_String (Exact.Content);
