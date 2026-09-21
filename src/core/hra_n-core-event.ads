@@ -31,7 +31,9 @@ is
    end record;
 
    Empty_Effect : constant Effect :=
-     (Key     => No_Effect_Key,
+     (Key     =>
+        (Present => False,
+         Value   => (Token => (Length => 0, Value => [others => ' ']))),
       Locus   => (Token => (Length => 0, Value => [others => ' '])),
       Measure => (Token => (Length => 0, Value => [others => ' '])),
       Amount  => (Quanta => Zero_Quanta));
