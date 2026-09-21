@@ -6,12 +6,20 @@ Status: **HRA-Nのproduct objectiveとLoam比較手順の現行authority**
 
 - **Loamが本命。** 小さな概念・保持事実・機能・部品から、一般的な会計／家計簿OSSが答えられる豊かな数字と日常操作を導く研究・実用系。現在も開発中であり、完成・凍結済みとは扱わない。
 - **HRA-NはAda＋SPARKによる長期利用の保険であり、独立した設計探索・相互検証の場でもある。** Loamで確かめた意味と操作を別基盤で維持しつつ、正データの形・最小の保持根拠・admission境界をHRA-Nでも模索する。Loamへの一方向の移植や凍結コピーに限定しない。無根拠な意味の分岐やfeature競争は避けるが、根拠付きの代替設計は歓迎する。
+- **HRA-Nは第二のsemantic witnessとして作る。** Leanの型やmodule構造をAdaへ写すことを目的にせず、共有するobservable lawを言語中立に取り出し、Adaの型・package・contract・SPARK proofで自然に再構成する。同じ意味へ独立した構造から到達すること自体を相互検証の価値とする。
 - **HRAは資産・比較元。** 会計の法則、レポート観測、端末部品、試験を活かす。旧source topologyやontologyを自動的に継承しない。
 - 現在の日常記帳authorityはLoam。保険開発は運用切替の指示ではなく、並行記帳・自動同期・実データの再生成を伴わない。
 
 Lean 4の将来のtoolchain/API保守負担への不安が、実装基盤を分散する動機である。Lean 4の衰退や不安定化を予言するものでも、Adaなら無条件に永続利用できると保証するものでもない。
 
 保険の成立条件は言語名ではなく、**読める仕様とデータ、同値性の証拠、独立したbuild/run、履歴を守る移行と復元、引き継げる日常TUI**である。HRA-Nのproduction runtime/buildにLeanを必須依存として持ち込まない。比較開発時にLoamを実行することとは分ける。
+
+
+Loam側のproofや最適化は、そのままHRA-Nへ移植する対象ではない。
+HRA-Nでrepresentation、index、streaming、cache、replay戦略を変更するときは、
+小さいreference semanticsとproduction implementationの対応をHRA-N自身の
+Alloy/SPARK/testsで確かめる。LoamのLean proofは「何を固定すべきか」の重要な
+証拠だが、HRA-NのAda/SPARK実装の正しさを自動的に証明するものではない。
 
 ## 2. 小さい核から豊かにするとは
 
