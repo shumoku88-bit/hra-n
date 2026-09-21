@@ -6,8 +6,8 @@
 #include <string.h>
 #include <wchar.h>
 
-/* Provided by the standard narrow ncurses library selected by AdaCurses. */
-extern int mvaddnstr(int line, int column, const char *text, int length);
+/* Provided by the wide ncurses library selected by AdaCurses. */
+extern int mvaddnwstr(int line, int column, const wchar_t *wstr, int length);
 
 int hra_n_terminal_utf8_initialize(void)
 {
@@ -19,7 +19,8 @@ static int next_terminal_glyph(const char *text,
                                size_t remaining,
                                mbstate_t *state,
                                size_t *consumed,
-                               int *width)
+                               int *width,
+                               wchar_t *out_wc)
 {
     wchar_t wc;
 
@@ -36,6 +37,9 @@ static int next_terminal_glyph(const char *text,
     }
 
     *width = wcwidth(wc);
+    if (out_wc != NULL) {
+        *out_wc = wc;
+    }
     return *width < 0 ? -1 : 1;
 }
 
@@ -58,7 +62,7 @@ int hra_n_terminal_utf8_display_width(const char *text)
         size_t consumed;
         int width;
         int status =
-            next_terminal_glyph(ptr, remaining, &state, &consumed, &width);
+            next_terminal_glyph(ptr, remaining, &state, &consumed, &width, NULL);
 
         if (status < 0) {
             return -1;
@@ -86,22 +90,35 @@ int hra_n_terminal_utf8_add_line(int line,
     mbstate_t state;
     const char *ptr;
     size_t remaining;
+    size_t text_len;
     int columns = 0;
-    int bytes_to_draw = 0;
+    int wchars_to_draw = 0;
+    wchar_t stack_wbuf[256];
+    wchar_t *wbuf = stack_wbuf;
+    int ret;
 
     if (text == NULL || text[0] == '\0' || max_columns <= 0) {
         return 0;
     }
 
+    text_len = strlen(text);
+    if (text_len + 1 > sizeof(stack_wbuf) / sizeof(stack_wbuf[0])) {
+        wbuf = (wchar_t *)malloc((text_len + 1) * sizeof(wchar_t));
+        if (wbuf == NULL) {
+            return -1;
+        }
+    }
+
     memset(&state, 0, sizeof(state));
     ptr = text;
-    remaining = strlen(text);
+    remaining = text_len;
 
     while (remaining > 0) {
         size_t consumed;
         int width;
+        wchar_t wc;
         int status =
-            next_terminal_glyph(ptr, remaining, &state, &consumed, &width);
+            next_terminal_glyph(ptr, remaining, &state, &consumed, &width, &wc);
 
         if (status < 0) {
             break;
@@ -109,8 +126,10 @@ int hra_n_terminal_utf8_add_line(int line,
         if (status == 0) {
             break;
         }
-        if (columns > INT_MAX - width ||
-            consumed > (size_t)(INT_MAX - bytes_to_draw)) {
+        if (columns > INT_MAX - width) {
+            if (wbuf != stack_wbuf) {
+                free(wbuf);
+            }
             return -1;
         }
         if (columns + width > max_columns) {
@@ -118,16 +137,25 @@ int hra_n_terminal_utf8_add_line(int line,
         }
 
         columns += width;
-        bytes_to_draw += (int)consumed;
+        wbuf[wchars_to_draw++] = wc;
         ptr += consumed;
         remaining -= consumed;
     }
 
-    if (bytes_to_draw == 0) {
+    if (wchars_to_draw == 0) {
+        if (wbuf != stack_wbuf) {
+            free(wbuf);
+        }
         return 0;
     }
 
-    return mvaddnstr(line, column, text, bytes_to_draw);
+    wbuf[wchars_to_draw] = L'\0';
+    ret = mvaddnwstr(line, column, wbuf, wchars_to_draw);
+
+    if (wbuf != stack_wbuf) {
+        free(wbuf);
+    }
+    return ret;
 }
 
 int hra_n_terminal_utf8_slice(const char *text,
@@ -164,7 +192,7 @@ int hra_n_terminal_utf8_slice(const char *text,
         size_t consumed;
         int width;
         int status =
-            next_terminal_glyph(ptr, remaining, &state, &consumed, &width);
+            next_terminal_glyph(ptr, remaining, &state, &consumed, &width, NULL);
 
         if (status < 0) {
             return -1;
