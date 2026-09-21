@@ -36,6 +36,86 @@ Lean 4の将来のtoolchain/API保守負担への不安が、実装基盤を分�
 
 一般的な会計／家計簿の数字は**質問の受入基準**であって、同じ数だけCore概念を作る指示ではない。残高、収支、期間比較、予算残、予定支払、資金裏付けなどは、必要な根拠と区間がある場合に導く。未知のopening、分類、価格、coverageを推測して「対応した」ことにしない。
 
+## 2A. Core境界監査: primitive / retained / interpretation / derived
+
+この分類はHRA-N `d4dbf4de459343df00e86d77ae32f3c71583563f` と、比較時点の
+Loam `c7df424d0f5c4b7f9d073e00948ad6cc69560b47` を対象にした
+**責務分類**である。ファイル配置の即時変更、Loam sourceの逐語移植、
+既存の意味の削除を承認するものではない。
+
+Coreを小さくする時は、ファイル数ではなく次の四層を区別する。
+
+| 層 | 意味 |
+|---|---|
+| **primitive** | 他の家計意味を前提にせず、identity・quantity・effect・保存則などを表す最小機構 |
+| **retained** | 他の保持事実から再構成できず、失うと二つの家計履歴を区別できなくなる証拠 |
+| **interpretation** | retained factsをあるsnapshot/effective coordinateでどう受理・分類・経路付けするかという権威 |
+| **derived** | retained / interpretation から再計算できる残高、open状態、summary等。canonical stateとして二重保持しない |
+
+一つのpackageが複数層を含み得る。分類単位はpackage名ではなく、型・事実・法則・queryの責務である。
+
+### 現行Coreの分類
+
+| package | 主分類 | 監査結果 / 次の問い |
+|---|---|---|
+| `Types` | primitive | `Locus_Id`, `Measure_Id`, `Event_Id`, identity tokenは小さい。bounded token長はAda実装制約であり家計意味ではない。 |
+| `Quantity` | primitive | exact signed quantityとoverflow-safe arithmetic。保持意味を増やさない。 |
+| `Movement` | primitive **候補** | 保存則はprimitiveに値するが、`Movement_Change.Coordinate : Locus_Id` と「2 participants以上」がLocus固有admissionを代数へ混ぜる。Loam同様、座標型から独立したbalance lawへできるか検証する。 |
+| `Event` | primitive / retained境界 | Event identityとEffectsは核。ただし全Effectに `Effect_Key` を要求する点は、identityを必要時だけ保持する現行Loamより重い。匿名Effectを許してobservableを失わないか検証する。 |
+| `Validity` | primitive + retained | calendar arithmeticと「Eventがいつ起きたか」の独立証拠、さらにcorrection historyが同居する。日付機構とoccurrence evidenceを分離できる。 |
+| `Description` | retained | narrativeはEffectから復元不能。独立保持する根拠がある。 |
+| `Assertion` | retained | observed balanceはmovement historyから自動推論できない独立証拠。 |
+| `Attention` | retained | financial occurrenceが存在しなくても残すべきmatterを表すため、他planeから導出不能。open/closed query自体はderived。 |
+| `Relation` | retained | debtor/creditor/face/source/discharge provenanceはphysical Effectsだけでは復元不能。`Remaining_For` 等はderived。 |
+| `Capacity` | retained + derived | allocation/transfer factsは独立意味を持つ一方、独自 `Capacity_Change` とconservation計算はgeneric balance lawとの重複候補。`Entitlement_At` はderived。 |
+| `Scheduled` | retained + derived | occurrenceとcompletion/retirement/replacementは保持証拠。`Is_Current_Open` はderived。独自 `Scheduled_Change` はgeneric balance law再利用候補。 |
+| `Transaction_Metadata` | retained evidence bundle | purpose / replaces / reverses / relation / dischargeという別authorityを一recordへ束ねる。便利なtransport shapeがsemantic authorityになっていないか監査し、独立fact familyへ分解またはadapterへ降ろせるか調べる。 |
+| `Admission` | interpretation | Locusの存在ではなく「新規writeで使用可能か」を決める現在policy。Locus primitiveとは分離を維持する。 |
+| `Actual_Routing` | retained interpretation | (locus, effective) のrouting assertion自体は保持証拠。as-of purposeはderived interpretation。 |
+| `Accounting_Role` | retained interpretation + derived | effective role assignmentは保持policy。`Financial_Summary`, net worth/savings, completeness等はprojectionなので同package内でもderived側として扱う。 |
+| `Coverage` | retained epistemic + derived | known-zero origin coverageは独立証拠。ただしneutral `Coordinate_Type = (Locus, Measure)` をCoverageが所有しているため、kernel側のEffect coordinateへ昇格できるか検証する。`Balance_Result` はderived query結果。 |
+| `Window_Policy` | interpretation / retained policy候補 | user-defined named intervalなら独立policy。単なる月次・cycle intervalなら日付から導出できるので保持しない。具体的に区別できなくなる履歴がある場合だけretainedに残す。 |
+
+### 今回の監査で見つかった優先整理候補
+
+1. **balance lawをLocusから切り離す。**  
+   `MovementChange Coordinate` 相当をAda/SPARKで表現できる最小設計を比較し、
+   Actual / Capacity / Scheduled が同じ保存則を共有できるか確認する。
+   「最低2点」などのdomain admissionはgeneric zero-sum lawの外へ置く候補とする。
+
+2. **Effect identityを必要な時だけ保持できるか調べる。**  
+   現行HRA-Nは全Effectにstable keyを要求する。Relation等が参照するEffectだけを
+   identifyして、普通のEffectに不要なidentity stateを持たせず同じobservableを保てるか
+   合成fixtureで比較する。
+
+3. **neutral coordinateのauthorityをCoverageから外す。**  
+   `(Locus, Measure)` はcoverage固有概念ではない。Event/Effect projection、
+   assertion、coverageが共有する最小coordinate型として置けるか確認する。
+
+4. **保持事実とprojectionをpackage内でも分けて数える。**  
+   AccountingRoleのFinancialSummary、Relationのremaining、
+   Scheduledのcurrent-open、Capacityのentitlement等を、新しいcanonical factとして
+   重複保持しない。
+
+5. **大きな混合packageを分解候補として監査する。**  
+   `Validity` はcalendar / occurrence / correction、
+   `Transaction_Metadata` はpurpose / replacement / reversal / relation / dischargeを
+   一緒に持つ。まずobservableを失う最小反例を探し、分離できる部分だけを分ける。
+
+6. **Windowは「設定だから保持」ではなく不可逆情報で判定する。**  
+   月初/月末など既知calendar lawから作れる窓はderived。
+   household固有のnamed intervalだけがretained policy候補になる。
+
+この監査の目標はLoamと同じfile topologyにすることではない。
+HRA-N側で独立に同じobservableを説明した時、より少ないsemantic authorityで済むなら
+その簡約を採用候補にする。逆に、Ada/SPARK側の明示性によってLoam側の隠れた前提が
+見つかった場合は、LOAM_ALIGNMENTのreverse-feedback手順で返す。
+
+**次の実装slice:** まず `Movement` のgeneric化可能性だけを扱う。
+他の候補を同時に移動しない。現行APIとfixtureから、保存則そのものと
+Locus固有admissionを分離できることを示してからproduction codeを変更する。
+
+
 ## 3. 相互検証の単位は意味の契約
 
 ```text
