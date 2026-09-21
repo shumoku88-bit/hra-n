@@ -5,16 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
+#include <curses.h>
 
-/* AdaCurses is built against the wide ncurses ABI in this repository.
- * Feed decoded wide characters to ncurses rather than raw UTF-8 octets:
- * narrow addstr-style calls treat high-bit bytes as individual characters and
- * may render them as M-x notation instead of one Unicode glyph.
+/* AdaCurses is linked against ncursesw. Use the curses declaration/macro
+ * rather than declaring mvaddnwstr as a standalone external symbol: on some
+ * ncurses builds mvaddnwstr is implemented through the curses macro layer.
  */
-extern int mvaddnwstr(int line,
-                      int column,
-                      const wchar_t *text,
-                      int length);
 
 int hra_n_terminal_utf8_initialize(void)
 {
