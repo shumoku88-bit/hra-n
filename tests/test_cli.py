@@ -943,5 +943,53 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("[ERROR] Unknown TUI workspace", res.stdout)
         self.assertIn("Available TUI Workspaces:", res.stdout)
 
+
+    def test_canonical_actual_read_only_cli(self) -> None:
+        path = os.path.join(self.test_dir, "actual.loam")
+        data = (
+            b"LOAM-NORMALIZED-ACTUAL\t1\n"
+            b"TX\tev1\t2026-09-01\tDESC\tBreakfast\n"
+            b"EFFECT\tcash\tjpy\t-100\n"
+            b"EFFECT\tfood\tjpy\t100\n"
+            b"ENDTX\n"
+            b"TX\tev2\t2026-09-02\tDESC\tDinner\n"
+            b"EFFECT\tcash\tjpy\t-200\n"
+            b"EFFECT\tfood\tjpy\t200\n"
+            b"ENDTX\n"
+        )
+        with open(path, "wb") as handle:
+            handle.write(data)
+
+        with open(path, "rb") as handle:
+            before = handle.read()
+
+        res = self.run_cmd("actual", path)
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn("HRA-N Actual (Loam canonical, read-only)", res.stdout)
+        self.assertIn("2026-09-02  ev2  Dinner", res.stdout)
+        self.assertIn("2026-09-01  ev1  Breakfast", res.stdout)
+        self.assertLess(res.stdout.index("ev2"), res.stdout.index("ev1"))
+
+        day = self.run_cmd("actual", path, "2026-09-01")
+        self.assertEqual(day.returncode, 0, day.stdout + day.stderr)
+        self.assertIn("2026-09-01  ev1  Breakfast", day.stdout)
+        self.assertNotIn("ev2", day.stdout)
+
+        with open(path, "rb") as handle:
+            self.assertEqual(handle.read(), before)
+
+        with open(path, "wb") as handle:
+            handle.write(
+                b"LOAM-NORMALIZED-ACTUAL\t1\n"
+                b"TX\tev1\t2026-09-01\tNODESC\n"
+                b"DATE-REV\tr1\t2026-09-02\tREPLACES\tROOT\n"
+                b"ENDTX\n"
+            )
+
+        rejected = self.run_cmd("actual", path)
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertEqual(rejected.stdout, "")
+        self.assertIn("canonical Actual rejected", rejected.stderr)
+
 if __name__ == "__main__":
     unittest.main()
