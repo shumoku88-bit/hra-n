@@ -28,7 +28,8 @@ package body HRA_N.UI.Terminal_UTF8 is
           External_Name => "hra_n_terminal_utf8_display_width";
 
    function C_Add_Line
-     (Line        : C.int;
+     (Win         : Curses.Window;
+      Line        : C.int;
       Column      : C.int;
       Text        : C_Strings.chars_ptr;
       Max_Columns : C.int) return C.int
@@ -64,7 +65,8 @@ package body HRA_N.UI.Terminal_UTF8 is
    begin
       Result :=
         C_Add_Line
-          (C.int (Line),
+          (Curses.Standard_Window,
+           C.int (Line),
            C.int (Column),
            Ptr,
            C.int (Max_Columns));
