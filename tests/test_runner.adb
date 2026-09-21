@@ -11,6 +11,7 @@ with Test_Quantity;
 with Test_Relation_Command;
 with Test_Movement;
 with Test_Event;
+with Test_Actual_Bounded_History;
 with Test_Loam_Actual_Reader;
 with Test_Validity;
 with Test_Review;
@@ -90,6 +91,11 @@ begin
    if Selected ("Test_Event") then
       Announce ("Test_Event");
       Test_Event.Run;
+   end if;
+
+   if Selected ("Test_Actual_Bounded_History") then
+      Announce ("Test_Actual_Bounded_History");
+      Test_Actual_Bounded_History.Run;
    end if;
 
    if Selected ("Test_Loam_Actual_Reader") then

@@ -17,7 +17,7 @@ from the canonical file.
 
 ## Reviewed HRA-N revision
 
-- HRA-N main: `7c8e2b5afcaaa0afe04e4292277615caf0fee27f`
+- HRA-N main: `66dff203a4ddc3cb9d3c2a4dff302967c737529f`
 
 The existing reader still materializes the complete file bytes with
 `Exact_File.Read_All` and also retains bounded semantic collections. This
@@ -137,7 +137,31 @@ reference-semantics-equivalent answer
 The derived index may be transient or persisted as a rebuildable accelerator.
 That choice remains open.
 
-## 5. What remains unproved
+## 5. Bounded SPARK correspondence checkpoint
+
+[`HRA_N.Core.Actual_Bounded_History`](../src/core/hra_n-core-actual_bounded_history.ads)
+is a pure, fixed-capacity model independent of the filesystem reader. It uses
+`HRA_N.Core.Event.Event`, scans at most eight Events for the reference result,
+and derives an in-memory `Event_Id -> Event_Position` representation.
+
+`Index_Is_Qualified` requires unique source identities, equal conceptual
+snapshot identifiers, complete active bindings, in-range identity-matching
+locators, and distinct keys/locators. Inactive bounded-array cells are not
+bindings. `Build_Index` explicitly reports `Duplicate_Event_Id`; a malformed or
+snapshot-mismatched index makes `Derived_Lookup` return `Invalid_Index`.
+
+GNATprove proves the `Derived_Lookup` postcondition for every bounded input: if
+the index is qualified, its complete `Lookup_Result` equals
+`Reference_Lookup`. This is stronger than a test comparison: equality includes
+found/not-found state and, when found, the source position and complete
+`Event` (identity and Effects payload). Unit tests separately exercise concrete
+empty, singleton, first/middle/last, absent, duplicate, and corrupted-index
+cases.
+
+This bounded proof does not select a production index representation and is not
+connected to `Loam_Actual_Reader`.
+
+## 6. What remains unproved
 
 This checkpoint does not establish:
 
@@ -150,6 +174,7 @@ This checkpoint does not establish:
 - a canonical writer;
 - removal of the current 1,024-Event working-set bound.
 
-Before production promotion, HRA-N still needs an Ada/SPARK reference lookup,
-an optimized lookup representation, and explicit correspondence evidence between
-them.
+Before production promotion, HRA-N still needs to connect a qualified locator
+to a production snapshot/parser boundary and show that the production lookup
+preserves this bounded reference meaning. Persisted indexes and byte offsets
+remain optional candidates, not established requirements.
