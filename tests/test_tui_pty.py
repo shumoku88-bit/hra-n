@@ -804,8 +804,9 @@ def main() -> None:
             # Posting 2 Amount: type 100 then press Enter to propose
             os.write(fd, b"100\n")
             read_until(fd, output, b"Ready to commit to authority.")
-            assert "昼食".encode("utf-8") in output
-            # Commit
+            # The preview and status redraws are emitted through curses and may
+            # reach the PTY in either order. The durable UTF-8 contract is the
+            # post-commit row below, so do not make preview timing a gate.
             os.write(fd, b"\n")
             read_until(fd, output, "昼食".encode("utf-8"))
             # Return to Home
