@@ -73,6 +73,13 @@ package body Test_Capacity_Command is
          Assert (Policy.Success, "Transfer authority snapshot stays admitted");
          Assert (Policy.Capacities.Movement_Count = 1,
                  "One capacity movement retained");
+         Assert_Equal_Int
+           (0,
+            Sum_Changes (Policy.Capacities.Movements (1)),
+            "Capacity movement closes through shared conservation arithmetic");
+         Assert
+           (Is_Conserved (Policy.Capacities.Movements (1)),
+            "Capacity movement remains conserved at the semantic boundary");
          Assert (Has_Effective_Date
                    (Policy.Capacities,
                     Policy.Capacities.Movements (1).Id),
