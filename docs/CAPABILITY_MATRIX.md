@@ -207,10 +207,18 @@ show two insufficient strategies for current correction/exact-reversal meaning:
   remain referenceable and earlier canonical bytes cannot be reread.
 
 These are representation counterexamples, not a proof that bounded-memory
-streaming is impossible. The next capacity slice must choose how
-identity-addressable target evidence remains accessible (for example replay,
-qualified index, or segmented storage) and state a reference/production
-correspondence relation before removing the current working-set limit.
+streaming is impossible.
+
+The next candidate checkpoint is
+[`ACTUAL_DERIVED_INDEX.md`](ACTUAL_DERIVED_INDEX.md): preserve `actual.loam`
+as the sole authority while qualifying a rebuildable EventId locator against one
+exact canonical snapshot. Its purpose is to test coverage, identity/payload
+correspondence, snapshot binding, and the OS boundary of an open-once snapshot.
+This is still design evidence, not a production architecture decision.
+
+Before removing the current working-set limit, HRA-N must choose how
+identity-addressable target evidence remains accessible and state a
+reference/production correspondence relation for that mechanism.
 
 ### P4 — qualification and maintainability
 
