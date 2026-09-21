@@ -6,8 +6,15 @@
 #include <string.h>
 #include <wchar.h>
 
-/* Provided by the standard narrow ncurses library selected by AdaCurses. */
-extern int mvaddnstr(int line, int column, const char *text, int length);
+/* AdaCurses is built against the wide ncurses ABI in this repository.
+ * Feed decoded wide characters to ncurses rather than raw UTF-8 octets:
+ * narrow addstr-style calls treat high-bit bytes as individual characters and
+ * may render them as M-x notation instead of one Unicode glyph.
+ */
+extern int mvaddnwstr(int line,
+                      int column,
+                      const wchar_t *text,
+                      int length);
 
 int hra_n_terminal_utf8_initialize(void)
 {
@@ -127,7 +134,41 @@ int hra_n_terminal_utf8_add_line(int line,
         return 0;
     }
 
-    return mvaddnstr(line, column, text, bytes_to_draw);
+    /*
+     * Convert exactly the already-clipped UTF-8 prefix. The prefix ends at a
+     * code-point boundary because the loop above advances only by complete
+     * mbrtowc results.
+     */
+    char *clipped = malloc((size_t)bytes_to_draw + 1);
+    wchar_t *wide = calloc((size_t)bytes_to_draw + 1, sizeof(wchar_t));
+    if (clipped == NULL || wide == NULL) {
+        free(clipped);
+        free(wide);
+        return -1;
+    }
+
+    memcpy(clipped, text, (size_t)bytes_to_draw);
+    clipped[bytes_to_draw] = '\0';
+
+    mbstate_t conversion_state;
+    memset(&conversion_state, 0, sizeof(conversion_state));
+    const char *source = clipped;
+    size_t wide_length =
+        mbsrtowcs(wide,
+                  &source,
+                  (size_t)bytes_to_draw + 1,
+                  &conversion_state);
+
+    if (wide_length == (size_t)-1 || wide_length > (size_t)INT_MAX) {
+        free(clipped);
+        free(wide);
+        return -1;
+    }
+
+    int result = mvaddnwstr(line, column, wide, (int)wide_length);
+    free(clipped);
+    free(wide);
+    return result;
 }
 
 int hra_n_terminal_utf8_slice(const char *text,
