@@ -3,23 +3,35 @@
 --  Package body: HRA_N.Core.Capacity
 -------------------------------------------------------------------------------
 
+with HRA_N.Core.Conservation;
+
 package body HRA_N.Core.Capacity with
   SPARK_Mode => On
 is
+
+   function Conservation_Count
+     (Mov : Capacity_Movement) return Natural is
+     (Natural (Mov.Change_Count));
+
+   function Conservation_Amount
+     (Mov   : Capacity_Movement;
+      Index : Positive) return Quanta_Type is
+     (if Index <= Mov.Change_Count then
+         Mov.Changes (Change_Index_Type (Index)).Amount
+      else
+         Zero_Quanta);
+
+   package Capacity_Conservation is new HRA_N.Core.Conservation
+     (Change_List_Type => Capacity_Movement,
+      Change_Count     => Conservation_Count,
+      Change_Amount    => Conservation_Amount);
 
    ----------------------------------------------------------------------------
    --  Sum_Changes
    ----------------------------------------------------------------------------
    function Sum_Changes (Mov : Capacity_Movement) return Long_Long_Integer is
-      Total : Long_Long_Integer := 0;
    begin
-      for I in 1 .. Mov.Change_Count loop
-         pragma Loop_Invariant
-           (Total >= Long_Long_Integer (I - 1) * Long_Long_Integer (Quanta_Type'First)
-            and then Total <= Long_Long_Integer (I - 1) * Long_Long_Integer (Quanta_Type'Last));
-         Total := Total + Long_Long_Integer (Mov.Changes (I).Amount);
-      end loop;
-      return Total;
+      return Capacity_Conservation.Total_Quanta (Mov);
    end Sum_Changes;
 
    ----------------------------------------------------------------------------
