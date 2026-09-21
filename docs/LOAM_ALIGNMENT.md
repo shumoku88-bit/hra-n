@@ -61,7 +61,7 @@ Coreを小さくする時は、ファイル数ではなく次の四層を区別�
 | `Types` | primitive | `Locus_Id`, `Measure_Id`, `Event_Id`, identity tokenは小さい。bounded token長はAda実装制約であり家計意味ではない。 |
 | `Quantity` | primitive | exact signed quantityとoverflow-safe arithmetic。保持意味を増やさない。 |
 | `Movement` | primitive **候補** | 保存則はprimitiveに値するが、`Movement_Change.Coordinate : Locus_Id` と「2 participants以上」がLocus固有admissionを代数へ混ぜる。Loam同様、座標型から独立したbalance lawへできるか検証する。 |
-| `Event` | primitive / retained境界 | Event identityとEffectsは核。ただし全Effectに `Effect_Key` を要求する点は、identityを必要時だけ保持する現行Loamより重い。匿名Effectを許してobservableを失わないか検証する。 |
+| `Event` | primitive / retained境界 | Event identityとEffectsは核。現行HRA-Nは全Effectに `Effect_Key` fieldを持つが、legacy journalはKeyを保存せずReaderがflow位置から合成するため、これはdurable identityではない。現行Loamのsparse identity（必要なEffectだけkeyを保持）を最低ラインとし、LOAM正データ接続時にidentity lossを拒否できる境界を作る。 |
 | `Validity` | primitive + retained | calendar arithmeticと「Eventがいつ起きたか」の独立証拠、さらにcorrection historyが同居する。日付機構とoccurrence evidenceを分離できる。 |
 | `Description` | retained | narrativeはEffectから復元不能。独立保持する根拠がある。 |
 | `Assertion` | retained | observed balanceはmovement historyから自動推論できない独立証拠。 |
@@ -83,10 +83,16 @@ Coreを小さくする時は、ファイル数ではなく次の四層を区別�
    Actual / Capacity / Scheduled が同じ保存則を共有できるか確認する。
    「最低2点」などのdomain admissionはgeneric zero-sum lawの外へ置く候補とする。
 
-2. **Effect identityを必要な時だけ保持できるか調べる。**  
-   現行HRA-Nは全Effectにstable keyを要求する。Relation等が参照するEffectだけを
-   identifyして、普通のEffectに不要なidentity stateを持たせず同じobservableを保てるか
-   合成fixtureで比較する。
+2. **Effect identityを「runtime key」と「durable retained identity」に分ける。**  
+   2026-09-21のfocused review（HRA-N `0b5ece44db8e6084cf0a8d93b38873ff314c3eae`,
+   Loam `7df3f42af2d303213731e236672aae02b60cb8f1`）で、HRA-Nの現行journal writerは
+   Effect Keyをencodingせず、readerがflow順から `f1`, `f2` ... を合成していることを確認した。
+   したがって現在の `Effect_Key` はcanonical retained factではない。
+   一方Loamはordinary Effectをanonymousにし、Relation source等で独立参照が必要なEffectだけ
+   sparse keyを保持する。HRA-Nは旧三stream形式へ新しいkey syntaxを先回りして足さず、
+   LOAM canonical data reader/writer契約で「anonymousはanonymousのまま」「earned keyは
+   round-tripで必ず保持」「保持不能ならfail closed」を満たすことを次のidentity実装gateとする。
+   それまではHRA-N内の合成Effect Keyをdurable provenanceとして使用しない。
 
 3. **neutral coordinateのauthorityをCoverageから外す。**  
    `(Locus, Measure)` はcoverage固有概念ではない。Event/Effect projection、
@@ -111,9 +117,11 @@ HRA-N側で独立に同じobservableを説明した時、より少ないsemantic
 その簡約を採用候補にする。逆に、Ada/SPARK側の明示性によってLoam側の隠れた前提が
 見つかった場合は、LOAM_ALIGNMENTのreverse-feedback手順で返す。
 
-**次の実装slice:** まず `Movement` のgeneric化可能性だけを扱う。
-他の候補を同時に移動しない。現行APIとfixtureから、保存則そのものと
-Locus固有admissionを分離できることを示してからproduction codeを変更する。
+**現在のcheckpoint:** Conservation lawはMovement / Capacity / Scheduledで共有できる形へ
+段階的に接続した。次のidentity sliceでは、旧HRA-N persistenceを拡張するのではなく、
+LOAM canonical data bridgeのobservable contractとしてsparse Effect identity preservationを
+先に固定する。Core型のoptional化や旧format変更は、そのbridge contractと合成fixtureが
+identity lossを区別できるまで保留する。
 
 
 ## 3. 相互検証の単位は意味の契約
