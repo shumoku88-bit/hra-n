@@ -577,6 +577,20 @@ package body HRA_N.Storage.Loam_Actual_Reader is
          end if;
       end loop;
 
+      --  The semantic image must come from one stable byte snapshot. The
+      --  parser currently uses Text_IO after the exact framing read, so verify
+      --  that an atomic authority replacement did not occur between them.
+      declare
+         After : constant HRA_N.Storage.Exact_File.Read_Result :=
+           HRA_N.Storage.Exact_File.Read_All (Path);
+      begin
+         if not After.Success
+           or else To_String (After.Content) /= To_String (Exact.Content)
+         then
+            return Fail (Line_No, "LOAM Actual changed while being read");
+         end if;
+      end;
+
       Result.Validities := Make_Validity_Memory (Validity_Entries);
       Result.Descriptions := Make_Description_Memory (Description_Entries);
       Result.Metadata := Make_Metadata_Memory (Metadata_Entries);
