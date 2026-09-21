@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
+#include <stdint.h>
 #include <curses.h>
 
 /* AdaCurses is linked against ncursesw. Use the curses declaration/macro
@@ -81,7 +82,8 @@ int hra_n_terminal_utf8_display_width(const char *text)
     return columns;
 }
 
-int hra_n_terminal_utf8_add_line(int line,
+int hra_n_terminal_utf8_add_line(uintptr_t window_address,
+                                 int line,
                                  int column,
                                  const char *text,
                                  int max_columns)
@@ -92,7 +94,9 @@ int hra_n_terminal_utf8_add_line(int line,
     int columns = 0;
     int bytes_to_draw = 0;
 
-    if (text == NULL || text[0] == '\0' || max_columns <= 0) {
+    WINDOW *window = (WINDOW *)(uintptr_t)window_address;
+
+    if (window == NULL || text == NULL || text[0] == '\0' || max_columns <= 0) {
         return 0;
     }
 
@@ -161,7 +165,10 @@ int hra_n_terminal_utf8_add_line(int line,
         return -1;
     }
 
-    int result = mvaddnwstr(line, column, wide, (int)wide_length);
+    int result = wmove(window, line, column);
+    if (result != ERR) {
+        result = waddnwstr(window, wide, (int)wide_length);
+    }
     free(clipped);
     free(wide);
     return result;
