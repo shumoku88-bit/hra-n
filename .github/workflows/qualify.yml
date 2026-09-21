@@ -47,6 +47,9 @@ jobs:
       - name: Test Actual Bounded History
         run: ./tests/bin/test_runner Test_Actual_Bounded_History
 
+      - name: Test Actual Reader Refinement
+        run: ./tests/bin/test_runner Test_Actual_Reader_Refinement
+
       - name: Test LOAM Actual Reader
         run: ./tests/bin/test_runner Test_Loam_Actual_Reader
 
