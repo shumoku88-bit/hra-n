@@ -76,7 +76,11 @@ is
       Token : Token_Text;
    end record;
 
-   --  Effect_Key: Stable identity of one effect within an event.
+   --  Effect_Key: Runtime identity token for one effect within an event.
+   --  The current legacy HRA-N journal does not persist this token: its reader
+   --  synthesizes positional keys while decoding TX flows. Therefore this type
+   --  must not be treated as durable household evidence until a persistence
+   --  contract explicitly retains sparse effect identity.
    type Effect_Key is record
       Token : Token_Text;
    end record;
