@@ -44,6 +44,9 @@ jobs:
       - name: Test Event
         run: ./tests/bin/test_runner Test_Event
 
+      - name: Test LOAM Actual Reader
+        run: ./tests/bin/test_runner Test_Loam_Actual_Reader
+
       - name: Test Validity
         run: ./tests/bin/test_runner Test_Validity
 
