@@ -3,19 +3,34 @@
 --  Package body: HRA_N.Core.Movement
 -------------------------------------------------------------------------------
 
+with HRA_N.Core.Conservation;
+
 package body HRA_N.Core.Movement with
   SPARK_Mode => On
 is
 
-   function Total_Quanta (Changes : Movement_Change_List) return Long_Long_Integer is
-      Sum : Long_Long_Integer := 0;
+   function Conservation_Count
+     (Changes : Movement_Change_List) return Natural is
+     (Natural (Changes.Count));
+
+   function Conservation_Amount
+     (Changes : Movement_Change_List;
+      Index   : Positive) return Quanta_Type is
+     (if Index <= Changes.Count then
+         Changes.Values (Change_Index_Type (Index)).Amount.Quanta
+      else
+         Zero_Quanta);
+
+   package Movement_Conservation is new HRA_N.Core.Conservation
+     (Change_List_Type => Movement_Change_List,
+      Change_Count     => Conservation_Count,
+      Change_Amount    => Conservation_Amount);
+
+   function Total_Quanta
+     (Changes : Movement_Change_List) return Long_Long_Integer
+   is
    begin
-      for I in 1 .. Changes.Count loop
-         Sum := Sum + Long_Long_Integer (Changes.Values (I).Amount.Quanta);
-         pragma Loop_Invariant
-           (Sum in -(Long_Long_Integer (I) * Max_Quanta_Value) .. Long_Long_Integer (I) * Max_Quanta_Value);
-      end loop;
-      return Sum;
+      return Movement_Conservation.Total_Quanta (Changes);
    end Total_Quanta;
 
    function Make_Balanced_Movement

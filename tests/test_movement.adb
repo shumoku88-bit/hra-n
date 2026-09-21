@@ -12,6 +12,7 @@ package body Test_Movement is
 
       Empty_List : Movement_Change_List;
       One_Item   : Movement_Change_List;
+      One_Zero   : Movement_Change_List;
       Unbalanced : Movement_Change_List;
       Balanced   : Movement_Change_List;
    begin
@@ -23,19 +24,30 @@ package body Test_Movement is
       One_Item.Values (1) := (Coordinate => Cash, Amount => Of_Quanta (100));
       Assert (not Is_Balanced (One_Item), "Single-item movement is not balanced");
 
-      -- Test 3: Multiple items with non-zero sum is not balanced
+      -- Test 3: conservation algebra and Movement admission are distinct.
+      -- A one-item zero change closes arithmetically, but Movement still
+      -- requires at least two represented participants.
+      One_Zero.Count := 1;
+      One_Zero.Values (1) := (Coordinate => Cash, Amount => Zero);
+      Assert_Equal_Int
+        (0, Total_Quanta (One_Zero), "Single zero change closes arithmetically");
+      Assert
+        (not Is_Balanced (One_Zero),
+         "Single zero change remains inadmissible as a Movement");
+
+      -- Test 4: Multiple items with non-zero sum is not balanced
       Unbalanced.Count := 2;
       Unbalanced.Values (1) := (Coordinate => Cash, Amount => Of_Quanta (-100));
       Unbalanced.Values (2) := (Coordinate => Food, Amount => Of_Quanta (90));
       Assert (not Is_Balanced (Unbalanced), "Unbalanced movement (-100 + 90 /= 0) rejected");
 
-      -- Test 4: Exactly balanced movement
+      -- Test 5: Exactly balanced movement
       Balanced.Count := 2;
       Balanced.Values (1) := (Coordinate => Cash, Amount => Of_Quanta (-500));
       Balanced.Values (2) := (Coordinate => Food, Amount => Of_Quanta (500));
       Assert (Is_Balanced (Balanced), "Balanced movement (-500 + 500 = 0) accepted");
 
-      -- Test 5: Construction and projection
+      -- Test 6: Construction and projection
       declare
          M : constant Balanced_Movement := Make_Balanced_Movement (JPY, Balanced);
       begin
