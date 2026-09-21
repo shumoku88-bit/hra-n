@@ -11,6 +11,7 @@ with Test_Quantity;
 with Test_Relation_Command;
 with Test_Movement;
 with Test_Event;
+with Test_Loam_Actual_Reader;
 with Test_Validity;
 with Test_Review;
 with Test_Initializer;
@@ -89,6 +90,11 @@ begin
    if Selected ("Test_Event") then
       Announce ("Test_Event");
       Test_Event.Run;
+   end if;
+
+   if Selected ("Test_Loam_Actual_Reader") then
+      Announce ("Test_Loam_Actual_Reader");
+      Test_Loam_Actual_Reader.Run;
    end if;
 
    if Selected ("Test_Validity") then
