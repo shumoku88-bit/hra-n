@@ -40,7 +40,9 @@ is
    --  Compute exact signed total quanta of the change list.
    function Total_Quanta (Changes : Movement_Change_List) return Long_Long_Integer;
 
-   --  Admission predicate: requires at least 2 participants and exact zero sum.
+   --  Domain admission predicate. Exact zero-sum arithmetic is supplied by the
+   --  coordinate-free Conservation kernel; Movement additionally requires at
+   --  least two represented participants.
    function Is_Balanced (Changes : Movement_Change_List) return Boolean is
      (Changes.Count >= 2 and then Total_Quanta (Changes) = 0);
 
