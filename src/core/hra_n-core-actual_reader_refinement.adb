@@ -154,4 +154,23 @@ is
       pragma Assert (Production_Result = Reference_Result);
    end Prove_Reference_Lookup_Refinement;
 
+   procedure Prove_Qualified_Derived_Lookup_Refinement
+     (Source : Production_Event_View;
+      Image  : Semantic_Image;
+      Index  : Derived_Index;
+      Key    : Event_Id)
+   is
+   begin
+      Prove_Reference_Lookup_Refinement (Source, Image, Key);
+      pragma Assert
+        (Derived_Lookup (Image, Index, Key) =
+           Reference_Lookup (Image, Key));
+      pragma Assert
+        (Production_Linear_Lookup (Source, Key) =
+           Reference_Lookup (Image, Key));
+      pragma Assert
+        (Production_Linear_Lookup (Source, Key) =
+           Derived_Lookup (Image, Index, Key));
+   end Prove_Qualified_Derived_Lookup_Refinement;
+
 end HRA_N.Core.Actual_Reader_Refinement;

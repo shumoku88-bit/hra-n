@@ -105,4 +105,19 @@ is
      Post => Production_Linear_Lookup (Source, Key) =
              Reference_Lookup (Image, Key);
 
+   --  Composition theorem for the next lookup boundary.  A caller may obtain
+   --  Index_Is_Qualified from Build_Index; once qualified, the derived lookup
+   --  has exactly the same complete result as the production linear scan.
+   procedure Prove_Qualified_Derived_Lookup_Refinement
+     (Source : Production_Event_View;
+      Image  : Semantic_Image;
+      Index  : Derived_Index;
+      Key    : Event_Id)
+   with
+     Ghost,
+     Pre  => Refines (Source, Image.Snapshot, Image)
+       and then Index_Is_Qualified (Image, Index),
+     Post => Production_Linear_Lookup (Source, Key) =
+             Derived_Lookup (Image, Index, Key);
+
 end HRA_N.Core.Actual_Reader_Refinement;
