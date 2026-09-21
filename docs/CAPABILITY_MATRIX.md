@@ -198,15 +198,19 @@ and generation representation is not the only permitted solution. Compare minima
 canonical-data alternatives on synthetic histories, preserving required meaning
 and qualifying migration separately from exploration.
 
-The first long-history semantics checkpoint is
-[`ACTUAL_LONG_HISTORY.md`](ACTUAL_LONG_HISTORY.md). Its bounded Alloy fragment
-shows that keeping only an aggregate physical total while forgetting
-identity-indexed target payload is insufficient for later correction and exact
-reversal admission. This is a rejection of that specific summary strategy, not a
-decision that bounded-memory streaming is impossible. The next capacity slice
-must identify the minimum retained correction/reversal state and a
-reference/production correspondence relation before removing the current
-working-set limit.
+The long-history semantics checkpoints are recorded in
+[`ACTUAL_LONG_HISTORY.md`](ACTUAL_LONG_HISTORY.md). Bounded Alloy fragments now
+show two insufficient strategies for current correction/exact-reversal meaning:
+
+- aggregate-only forgetting of Event target payload;
+- aggregate plus a bounded strict subset of Event payloads when forgotten Events
+  remain referenceable and earlier canonical bytes cannot be reread.
+
+These are representation counterexamples, not a proof that bounded-memory
+streaming is impossible. The next capacity slice must choose how
+identity-addressable target evidence remains accessible (for example replay,
+qualified index, or segmented storage) and state a reference/production
+correspondence relation before removing the current working-set limit.
 
 ### P4 — qualification and maintainability
 
