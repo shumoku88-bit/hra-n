@@ -60,9 +60,10 @@ reader/writer/path code should be removed rather than kept for backward
 compatibility.
 
 The first direct boundary now exists for normalized Loam Actual through
-`HRA_N.Storage.Loam_Actual_Reader` and the read-only
-`hra-n-loam-qualify` adapter. Other capability families remain transitional
-until their own direct canonical contracts are qualified.
+`HRA_N.Storage.Loam_Actual_Reader`, the read-only `hra-n-loam-qualify`
+structural adapter, and the ordinary read-only `hra-n actual FILE [DATE]`
+frontend. Other capability families remain transitional until their own direct
+canonical contracts are qualified.
 
 ## Development and formal design
 
