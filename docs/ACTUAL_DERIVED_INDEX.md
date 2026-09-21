@@ -17,7 +17,7 @@ from the canonical file.
 
 ## Reviewed HRA-N revision
 
-- HRA-N main: `66dff203a4ddc3cb9d3c2a4dff302967c737529f`
+- HRA-N main: `8a80ab03179d715856a7dc7a17421f7ad7f6fa8f`
 
 The existing reader still materializes the complete file bytes with
 `Exact_File.Read_All` and also retains bounded semantic collections. This
@@ -158,10 +158,35 @@ found/not-found state and, when found, the source position and complete
 empty, singleton, first/middle/last, absent, duplicate, and corrupted-index
 cases.
 
-This bounded proof does not select a production index representation and is not
-connected to `Loam_Actual_Reader`.
+This bounded proof does not select a production index representation.
 
-## 6. What remains unproved
+## 6. Production-reader refinement checkpoint
+
+[`HRA_N.Core.Actual_Reader_Refinement`](../src/core/hra_n-core-actual_reader_refinement.ads)
+defines the SPARK boundary for the production parser's accepted Event sequence.
+For any successful sequence of at most eight Events with unique identities,
+`Refine_Reader_Events` preserves the exact count, source position, complete
+`Event`, EventId, Effects, source order, and the caller-supplied `Snapshot_Id`.
+It reports reader failure, over-capacity input, and duplicate identity as
+separate statuses; an over-capacity input never succeeds with an eight-Event
+prefix.
+
+The ghost theorem `Prove_Reference_Lookup_Refinement` proves for every key that
+an independent linear scan of the parser Event view returns the complete same
+`Lookup_Result` as `Actual_Bounded_History.Reference_Lookup` over the refined
+image.
+
+[`HRA_N.Storage.Loam_Actual_Refinement`](../src/storage/hra_n-storage-loam_actual_refinement.ads)
+is the thin Ada adapter from the production reader's dynamic Event vector to
+that proved boundary. Its success contract exposes `Reader_Result_Refines`, and
+unit tests exercise real canonical files through `Read_Loam_Actual_File`. The
+filesystem parser and its vector container remain outside SPARK; the general
+bounded view-to-reference refinement is the GNATprove result.
+
+Neither package changes the production reader or routes production lookup
+through the bounded image.
+
+## 7. What remains unproved
 
 This checkpoint does not establish:
 
@@ -174,7 +199,7 @@ This checkpoint does not establish:
 - a canonical writer;
 - removal of the current 1,024-Event working-set bound.
 
-Before production promotion, HRA-N still needs to connect a qualified locator
-to a production snapshot/parser boundary and show that the production lookup
+Before production promotion, HRA-N still needs an explicit open-file snapshot
+token source and a qualified production locator/replay implementation that
 preserves this bounded reference meaning. Persisted indexes and byte offsets
 remain optional candidates, not established requirements.
