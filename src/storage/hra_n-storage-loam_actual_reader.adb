@@ -577,9 +577,12 @@ package body HRA_N.Storage.Loam_Actual_Reader is
          end if;
       end loop;
 
-      --  The semantic image must come from one stable byte snapshot. The
-      --  parser currently uses Text_IO after the exact framing read, so verify
-      --  that an atomic authority replacement did not occur between them.
+      --  The semantic image must come from one stable byte snapshot. Close
+      --  the Text_IO handle before reopening the same external file through
+      --  Exact_File; some Ada runtimes reject overlapping opens even when both
+      --  are read-only. Then verify that an atomic authority replacement did
+      --  not occur during parsing.
+      Ada.Text_IO.Close (File);
       declare
          After : constant HRA_N.Storage.Exact_File.Read_Result :=
            HRA_N.Storage.Exact_File.Read_All (Path);
@@ -595,7 +598,6 @@ package body HRA_N.Storage.Loam_Actual_Reader is
       Result.Descriptions := Make_Description_Memory (Description_Entries);
       Result.Metadata := Make_Metadata_Memory (Metadata_Entries);
       Result.Success := True;
-      Ada.Text_IO.Close (File);
       return Result;
 
    exception
