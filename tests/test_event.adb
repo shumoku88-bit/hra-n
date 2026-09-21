@@ -18,20 +18,31 @@ package body Test_Event is
       Unique_Effects    : Effect_List;
       Duplicate_Effects : Effect_List;
       Multi_Measure     : Effect_List;
+      Anonymous_Effects : Effect_List;
    begin
       -- Test 1: Unique effect keys
       Unique_Effects.Count := 2;
-      Unique_Effects.Values (1) := (Key => K1, Locus => Bank, Measure => JPY, Amount => Of_Quanta (-200));
-      Unique_Effects.Values (2) := (Key => K2, Locus => Food, Measure => JPY, Amount => Of_Quanta (200));
+      Unique_Effects.Values (1) := (Key => Retained_Effect_Key (K1), Locus => Bank, Measure => JPY, Amount => Of_Quanta (-200));
+      Unique_Effects.Values (2) := (Key => Retained_Effect_Key (K2), Locus => Food, Measure => JPY, Amount => Of_Quanta (200));
       Assert (Keys_Are_Unique (Unique_Effects), "Keys_Are_Unique accepts distinct keys");
 
       -- Test 2: Duplicate effect keys rejected
       Duplicate_Effects.Count := 2;
-      Duplicate_Effects.Values (1) := (Key => K1, Locus => Bank, Measure => JPY, Amount => Of_Quanta (-200));
-      Duplicate_Effects.Values (2) := (Key => K1, Locus => Food, Measure => JPY, Amount => Of_Quanta (200));
+      Duplicate_Effects.Values (1) := (Key => Retained_Effect_Key (K1), Locus => Bank, Measure => JPY, Amount => Of_Quanta (-200));
+      Duplicate_Effects.Values (2) := (Key => Retained_Effect_Key (K1), Locus => Food, Measure => JPY, Amount => Of_Quanta (200));
       Assert (not Keys_Are_Unique (Duplicate_Effects), "Keys_Are_Unique rejects duplicate keys");
 
-      -- Test 3: Event construction and projection
+      -- Test 3: Anonymous Effects do not consume retained identity slots.
+      Anonymous_Effects.Count := 2;
+      Anonymous_Effects.Values (1) :=
+        (Key => No_Effect_Key, Locus => Bank, Measure => JPY, Amount => Of_Quanta (-200));
+      Anonymous_Effects.Values (2) :=
+        (Key => No_Effect_Key, Locus => Bank, Measure => JPY, Amount => Of_Quanta (200));
+      Assert
+        (Keys_Are_Unique (Anonymous_Effects),
+         "Multiple anonymous Effects are admitted without invented identity");
+
+      -- Test 4: Event construction and projection
       declare
          Ev : constant Event := Make_Event (Ev_Id, Unique_Effects);
       begin
@@ -44,10 +55,10 @@ package body Test_Event is
          Assert (not Is_Balanced_Single_Measure (Ev, USD), "USD check fails when no USD effects");
       end;
 
-      -- Test 4: Multi-measure event is rejected by Is_Balanced_Single_Measure
+      -- Test 5: Multi-measure event is rejected by Is_Balanced_Single_Measure
       Multi_Measure.Count := 2;
-      Multi_Measure.Values (1) := (Key => K1, Locus => Bank, Measure => JPY, Amount => Of_Quanta (-200));
-      Multi_Measure.Values (2) := (Key => K2, Locus => Food, Measure => USD, Amount => Of_Quanta (200));
+      Multi_Measure.Values (1) := (Key => Retained_Effect_Key (K1), Locus => Bank, Measure => JPY, Amount => Of_Quanta (-200));
+      Multi_Measure.Values (2) := (Key => Retained_Effect_Key (K2), Locus => Food, Measure => USD, Amount => Of_Quanta (200));
       declare
          Ev_Multi : constant Event := Make_Event (Ev_Id, Multi_Measure);
       begin
