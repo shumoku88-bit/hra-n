@@ -47,6 +47,9 @@ jobs:
       - name: Test Actual Bounded History
         run: ./tests/bin/test_runner Test_Actual_Bounded_History
 
+      - name: Test Actual Byte Spans
+        run: ./tests/bin/test_runner Test_Actual_Byte_Spans
+
       - name: Test Actual Replay Refinement
         run: ./tests/bin/test_runner Test_Actual_Replay_Refinement
 
