@@ -51,6 +51,8 @@ def test_statement_evidence() -> None:
             if pid == 0:
                 env = os.environ.copy()
                 env["TERM"] = "xterm-256color"
+                env["LANG"] = "C.UTF-8"
+                env["LC_ALL"] = "C.UTF-8"
                 os.execve(harness, [harness, household], env)
             reaped = False
             try:
@@ -122,6 +124,8 @@ def test_month_end_budget(foreign_capacity: bool = False) -> None:
         if pid == 0:
             env = os.environ.copy()
             env['TERM'] = 'xterm-256color'
+            env['LANG'] = 'C.UTF-8'
+            env['LC_ALL'] = 'C.UTF-8'
             os.execve(harness, [harness, household], env)
         reaped = False
         try:
