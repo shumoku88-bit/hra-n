@@ -120,6 +120,9 @@ jobs:
       - name: Isolated transaction-log probes (not power-loss qualification)
         run: python3 -B ./experiments/test_disk_transaction_log.py
 
+      - name: Open-snapshot POSIX probe (not portable snapshot proof)
+        run: python3 -B ./experiments/test_open_snapshot.py
+
       - name: Run Household Observation E2E
         run: |
           python3 ./tests/test_observation.py
