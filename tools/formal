@@ -18,7 +18,8 @@ run_alloy() {
     cd "$out"
     for model in \
       "$root/spec/alloy/canonical_ledger_v2.als" \
-      "$root/spec/alloy/actual_streaming_sufficiency.als"
+      "$root/spec/alloy/actual_streaming_sufficiency.als" \
+      "$root/spec/alloy/actual_referenceable_history.als"
     do
       printf 'formal: Alloy %s\n' "${model#$root/}"
       alloy exec -f -s glucose -t none "$model"

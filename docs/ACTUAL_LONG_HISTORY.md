@@ -151,3 +151,49 @@ It does not establish:
 
 Those remain separate questions and should receive their own model or SPARK
 correspondence obligation when selected.
+
+
+## Second checkpoint: referenceable forgotten history
+
+The first checkpoint showed that aggregate-only forgetting is insufficient. The
+next question is stronger but still deliberately bounded:
+
+> Suppose a one-pass implementation keeps the aggregate total and a bounded
+> strict subset of Event-indexed payloads, cannot reread earlier canonical bytes,
+> and later facts may still name Events whose payloads were forgotten. Is that
+> summary sufficient?
+
+[`../spec/alloy/actual_referenceable_history.als`](../spec/alloy/actual_referenceable_history.als)
+models one remembered Event and two forgotten-but-still-referenceable Events.
+Two distinct prefixes can have:
+
+- the same aggregate total;
+- the same remembered Event payload;
+- different payload for the later target Event;
+- a compensating difference in the other forgotten Event.
+
+The same later correction or reversal can then require different correct
+results even though the bounded summary is identical.
+
+This does **not** prove an asymptotic memory lower bound. It establishes a
+representation obligation:
+
+> While a past Event remains legally referenceable by future retained facts, the
+> semantic information needed to answer that reference must remain accessible.
+
+"Accessible" is intentionally broader than "resident in one SPARK array". It
+could be provided by:
+
+- in-memory retained payload;
+- bounded replay from canonical bytes;
+- an independently qualified identity index;
+- segmented/chunked storage with a proven lookup relation;
+- another representation with equivalent access.
+
+This shifts the long-history design question from "how do we keep every Event in
+RAM?" to:
+
+> what is the simplest independently qualified mechanism that preserves
+> identity-addressable semantic evidence for as long as later facts may name it?
+
+The production architecture remains undecided.
