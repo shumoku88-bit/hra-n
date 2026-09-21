@@ -491,14 +491,11 @@ package body HRA_N.Application.Movement_Command is
       begin
          Effects.Count := Intent.Count;
          for I in 1 .. Intent.Count loop
-            declare
-            begin
-               Effects.Values (I) :=
-                 (Key     => No_Effect_Key,
-                  Locus   => Intent.Changes (I).Locus,
-                  Measure => Intent.Changes (I).Measure,
-                  Amount  => (Quanta => Intent.Changes (I).Amount));
-            end;
+            Effects.Values (I) :=
+              (Key     => No_Effect_Key,
+               Locus   => Intent.Changes (I).Locus,
+               Measure => Intent.Changes (I).Measure,
+               Amount  => (Quanta => Intent.Changes (I).Amount));
          end loop;
          --  No purpose is attached: with several destinations no single
          --  route owns the movement, so none is guessed.
