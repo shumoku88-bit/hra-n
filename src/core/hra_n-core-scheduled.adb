@@ -3,9 +3,28 @@
 --  Package body: HRA_N.Core.Scheduled
 -------------------------------------------------------------------------------
 
+with HRA_N.Core.Conservation;
+
 package body HRA_N.Core.Scheduled with
   SPARK_Mode => On
 is
+
+   function Conservation_Count
+     (Changes : Change_List) return Natural is
+     (Natural (Changes.Count));
+
+   function Conservation_Amount
+     (Changes : Change_List;
+      Index   : Positive) return Quanta_Type is
+     (if Index <= Changes.Count then
+         Changes.Values (Change_Index_Type (Index)).Amount
+      else
+         Zero_Quanta);
+
+   package Scheduled_Conservation is new HRA_N.Core.Conservation
+     (Change_List_Type => Change_List,
+      Change_Count     => Conservation_Count,
+      Change_Amount    => Conservation_Amount);
 
    function Scheduled_Ids_Are_Unique
      (Lifecycle : Scheduled_Lifecycle) return Boolean
@@ -109,6 +128,20 @@ is
 
       return (Found => False, Item => Lifecycle.Sched_Items (1));
    end Find_Occurrence;
+
+   function Total_Quanta
+     (Occ : Scheduled_Occurrence) return Long_Long_Integer
+   is
+   begin
+      return Scheduled_Conservation.Total_Quanta (Occ.Changes);
+   end Total_Quanta;
+
+   function Is_Conserved
+     (Occ : Scheduled_Occurrence) return Boolean
+   is
+   begin
+      return Scheduled_Conservation.Closes_At_Zero (Occ.Changes);
+   end Is_Conserved;
 
    function Quantity_At
      (Occ   : Scheduled_Occurrence;

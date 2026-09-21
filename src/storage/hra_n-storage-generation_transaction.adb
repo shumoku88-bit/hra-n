@@ -162,7 +162,6 @@ package body HRA_N.Storage.Generation_Transaction is
          for Index in 1 .. Life.Sched_Count loop
             declare
                Item : constant Scheduled_Occurrence := Life.Sched_Items (Index);
-               Sum  : Long_Long_Integer := 0;
             begin
                if Item.Changes.Count < 2 then
                   return "scheduled occurrence needs two changes";
@@ -171,10 +170,8 @@ package body HRA_N.Storage.Generation_Transaction is
                   if Item.Changes.Values (Change_Index).Amount = 0 then
                      return "scheduled change must be non-zero";
                   end if;
-                  Sum := Sum + Long_Long_Integer
-                    (Item.Changes.Values (Change_Index).Amount);
                end loop;
-               if Sum /= 0 then
+               if not Is_Conserved (Item) then
                   return "scheduled occurrence breaks conservation";
                end if;
                for Other in Index + 1 .. Life.Sched_Count loop

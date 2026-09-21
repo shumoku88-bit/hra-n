@@ -198,6 +198,13 @@ is
            not Equal_Token (Lifecycle.Repl_Items (I).Replaced_By.Token,
                             Lifecycle.Repl_Items (J).Replaced_By.Token)));
 
+   --  Coordinate-free conservation projection for one planned occurrence.
+   function Total_Quanta
+     (Occ : Scheduled_Occurrence) return Long_Long_Integer;
+
+   function Is_Conserved
+     (Occ : Scheduled_Occurrence) return Boolean;
+
    --  Sum of all changes at a specified locus in an occurrence
    function Quantity_At
      (Occ   : Scheduled_Occurrence;
