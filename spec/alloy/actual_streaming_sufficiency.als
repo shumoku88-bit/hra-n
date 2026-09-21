@@ -57,7 +57,7 @@ fun PrefixTotal[w : PrefixWorld] : Int {
  * Target stops contributing; the later replacement contributes instead.
  */
 fun TotalAfterCorrection[w : PrefixWorld] : Int {
-    AmountOf[w, Companion] + LaterCorrection.replacementAmount
+    add[AmountOf[w, Companion], LaterCorrection.replacementAmount]
 }
 
 /*
@@ -69,7 +69,7 @@ fun TotalAfterCorrection[w : PrefixWorld] : Int {
  * a replacement for full production admission.
  */
 pred ReversalAdmitted[w : PrefixWorld] {
-    LaterReversal.reversalAmount = 0 - AmountOf[w, Target]
+    LaterReversal.reversalAmount = sub[0, AmountOf[w, Target]]
 }
 
 pred SameAggregateDifferentTarget[left, right : PrefixWorld] {
