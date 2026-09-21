@@ -243,6 +243,13 @@ stream, cache, segmented replay, or other strategy:
 The reference semantics is a specification aid, not a second production
 authority.
 
+
+The first concrete application of this gate is
+[`ACTUAL_LONG_HISTORY.md`](ACTUAL_LONG_HISTORY.md). Its Alloy model refutes
+only the aggregate-only one-pass summary for the current correction/reversal
+fragment; it deliberately does not claim that all bounded-memory streaming is
+impossible.
+
 ## 8. Qualification gates
 
 A semantic change is not complete until:

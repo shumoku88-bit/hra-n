@@ -16,7 +16,13 @@ run_alloy() {
   trap 'rm -rf "$out"' RETURN
   (
     cd "$out"
-    alloy exec -f -s glucose -t none "$root/spec/alloy/canonical_ledger_v2.als"
+    for model in \
+      "$root/spec/alloy/canonical_ledger_v2.als" \
+      "$root/spec/alloy/actual_streaming_sufficiency.als"
+    do
+      printf 'formal: Alloy %s\n' "${model#$root/}"
+      alloy exec -f -s glucose -t none "$model"
+    done
   )
   rm -rf "$out"
   trap - RETURN
