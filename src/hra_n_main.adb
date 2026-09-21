@@ -16,6 +16,7 @@ with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Review;        use HRA_N.Application.Review;
 with HRA_N.UI.Output;                 use HRA_N.UI.Output;
 with HRA_N.UI.Home_CLI;
+with HRA_N.UI.Actual_CLI;
 with HRA_N.UI.Status_CLI;
 with HRA_N.UI.Statement_Cli;
 with HRA_N.UI.Budget_CLI;
@@ -66,6 +67,7 @@ procedure HRA_N_Main is
       New_Line;
       Put_Line ("CLI Commands (Batch & Scripting):");
       Put_Line ("  home                   Print read-only Home overview (1-shot)");
+      Put_Line ("  actual FILE [DATE]     Read Loam canonical actual.loam directly (read-only)");
       Put_Line ("  status                 Print household authority status & canonical balances");
       Put_Line ("  record, movement       Record transaction: <FROM> <TO> <AMOUNT> [DATE] [DESC]");
       Put_Line ("                         (without arguments: opens TUI form, or --cli for prompt)");
@@ -453,6 +455,20 @@ begin
                end;
             end;
          end;
+         return;
+      end if;
+
+      --  Branch: Loam canonical Actual (read-only).
+      --  This intentionally bypasses transitional HRA-N journal/generation
+      --  authority and requires an explicit normalized Actual file path.
+      if Command = "actual" then
+         HRA_N.UI.Actual_CLI.Dispatch
+           (Command_Idx => Command_Idx,
+            Rem_Args    => Rem_Args,
+            Success     => Success);
+         if not Success then
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         end if;
          return;
       end if;
 
