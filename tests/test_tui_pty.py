@@ -25,7 +25,13 @@ def read_until(fd: int, output: bytearray, needle: bytes | tuple[bytes, ...], ti
     while not any(n in output[start:] for n in needles) and time.monotonic() < deadline:
         ready, _, _ = select.select([fd], [], [], 0.2)
         if ready:
-            output.extend(os.read(fd, 4096))
+            try:
+                chunk = os.read(fd, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            output.extend(chunk)
     if not any(n in output[start:] for n in needles):
         raise AssertionError(f"TUI did not render {needle!r}, got: {bytes(output[start:])!r}")
 
@@ -804,9 +810,8 @@ def main() -> None:
             # Posting 2 Amount: type 100 then press Enter to propose
             os.write(fd, b"100\n")
             read_until(fd, output, b"Ready to commit to authority.")
-            # The preview and status redraws are emitted through curses and may
-            # reach the PTY in either order. The durable UTF-8 contract is the
-            # post-commit row below, so do not make preview timing a gate.
+            assert "昼食".encode("utf-8") in output
+            # Commit
             os.write(fd, b"\n")
             read_until(fd, output, "昼食".encode("utf-8"))
             # Return to Home
