@@ -157,75 +157,171 @@ begin
               (if Command = "revert" then Command_Idx else Command_Idx + 1);
             Eff_Rem    : constant Natural :=
               (if Command = "revert" then Rem_Args else Rem_Args - 1);
+
+            function Looks_Like_Iso_Date (Text : String) return Boolean is
+            begin
+               return Text'Length = 10
+                 and then Text (Text'First + 4) = '-'
+                 and then Text (Text'First + 7) = '-';
+            end Looks_Like_Iso_Date;
          begin
-            if Eff_Rem < 1 then
+            if Eff_Rem < 1 or else Eff_Rem > 3 then
                Put_Line ("Usage: hra-n revert <EVENT_ID> [YYYY-MM-DD] [REASON]");
                Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
                return;
             end if;
 
             declare
-               Target_Id : constant String := Ada.Command_Line.Argument (Arg_Offset + 1);
-               Date_Val  : Date_Type       := Get_System_Date;
-               Desc_Val  : constant String :=
-                 (if Eff_Rem >= 3 then Ada.Command_Line.Argument (Arg_Offset + 3)
-                  elsif Eff_Rem = 2 and then Ada.Command_Line.Argument (Arg_Offset + 2)'Length > 0
-                    and then Ada.Command_Line.Argument (Arg_Offset + 2)(Ada.Command_Line.Argument (Arg_Offset + 2)'First) /= '2'
-                  then Ada.Command_Line.Argument (Arg_Offset + 2)
-                  else "");
+               Target_Id : constant String :=
+                 Ada.Command_Line.Argument (Arg_Offset + 1);
+               Date_Val  : Date_Type := Get_System_Date;
+               Date_Was_Explicit : Boolean := False;
+               Desc_Val  : String (1 .. 128) := [others => ' '];
+               Desc_Len  : Natural := 0;
             begin
                if Eff_Rem >= 2 then
                   declare
-                     Date_Arg : constant String := Ada.Command_Line.Argument (Arg_Offset + 2);
+                     Arg_2    : constant String :=
+                       Ada.Command_Line.Argument (Arg_Offset + 2);
                      Parsed_D : Date_Type;
                   begin
-                     if Parse_Iso_Date (Date_Arg, Parsed_D) then
+                     if Parse_Iso_Date (Arg_2, Parsed_D) then
                         Date_Val := Parsed_D;
+                        Date_Was_Explicit := True;
+
+                        if Eff_Rem = 3 then
+                           declare
+                              Arg_3 : constant String :=
+                                Ada.Command_Line.Argument (Arg_Offset + 3);
+                              L : constant Natural :=
+                                Natural'Min (Arg_3'Length, Desc_Val'Length);
+                           begin
+                              Desc_Len := L;
+                              if L > 0 then
+                                 Desc_Val (1 .. L) :=
+                                   Arg_3 (Arg_3'First .. Arg_3'First + L - 1);
+                              end if;
+                           end;
+                        end if;
+                     elsif Eff_Rem = 3 or else Looks_Like_Iso_Date (Arg_2) then
+                        Put_Line ("[ERROR] Invalid reversal date: " & Arg_2);
+                        Ada.Command_Line.Set_Exit_Status
+                          (Ada.Command_Line.Failure);
+                        return;
+                     else
+                        declare
+                           L : constant Natural :=
+                             Natural'Min (Arg_2'Length, Desc_Val'Length);
+                        begin
+                           Desc_Len := L;
+                           if L > 0 then
+                              Desc_Val (1 .. L) :=
+                                Arg_2 (Arg_2'First .. Arg_2'First + L - 1);
+                           end if;
+                        end;
                      end if;
                   end;
                end if;
 
                declare
-                  Desc_Len : constant Natural :=
-                    Natural'Min (Desc_Val'Length, 128);
                   Intent : constant Reversal_Intent :=
                     (Target_Id   => Make_Token (Target_Id),
                      Valid_On    => Date_Val,
                      Description => Make_Token
                        ((if Desc_Len > 0
-                         then Desc_Val (Desc_Val'First .. Desc_Val'First + Desc_Len - 1)
+                         then Desc_Val (1 .. Desc_Len)
                          else "")));
-                  Prop_Res : constant Proposal_Result :=
-                    Propose_Reversal (Paths, Intent);
                begin
-                  if not Prop_Res.Success then
-                     Put_Line ("[ERROR] Reversal rejected: " &
-                               Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                     return;
-                  end if;
-
-                  declare
-                     Receipt : constant Movement_Receipt := Commit (Prop_Res.Proposal);
-                  begin
-                     if Receipt.Success then
-                        Put_Line ("============================================================");
-                        Put_Line (" [OK] Committed Reversal: " &
-                                  Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                        Put_Line ("      REVERSED: " & Target_Id);
-                        Put_Line ("      SNAPSHOT: " &
-                                  Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-                        Put_Line ("      DATE:   " & Format_Iso_Date (Date_Val));
-                        if Desc_Val'Length > 0 then
-                           Put_Line ("      REASON: " & Desc_Val);
+                  if Canonical_Authority_Present (Data_Dir) then
+                     declare
+                        Canonical : constant Canonical_Record_Result :=
+                          Reverse_Loam_Actual (Data_Dir, Intent);
+                     begin
+                        if Canonical.State = Canonical_Not_Published then
+                           Put_Line
+                             ("[ERROR] Canonical reversal rejected: "
+                              & Canonical.Diagnostic
+                                (1 .. Canonical.Diagnostic_Len));
+                           Ada.Command_Line.Set_Exit_Status
+                             (Ada.Command_Line.Failure);
+                           return;
                         end if;
-                        Put_Line ("============================================================");
-                     else
-                        Put_Line ("[ERROR] Reversal commit rejected: " &
-                                  Receipt.Error (1 .. Receipt.Error_Len));
-                        Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                     end if;
-                  end;
+
+                        Put_Line
+                          ("============================================================");
+                        Put_Line
+                          (" [OK] Committed Canonical Reversal: "
+                           & Canonical.Event_Id.Value
+                             (1 .. Canonical.Event_Id.Length));
+                        Put_Line ("      REVERSED:  " & Target_Id);
+                        Put_Line ("      AUTHORITY: actual.loam");
+                        Put_Line
+                          ("      DATE:      " & Format_Iso_Date (Date_Val));
+
+                        if Canonical.State =
+                          Canonical_Published_Readback_Verified
+                        then
+                           Put_Line
+                             ("      READ-BACK: snapshot-bound verified");
+                        else
+                           Put_Line
+                             (" [WARN] Publication succeeded; snapshot-bound "
+                              & "read-back was not verified");
+                           if Canonical.Diagnostic_Len > 0 then
+                              Put_Line
+                                ("        "
+                                 & Canonical.Diagnostic
+                                   (1 .. Canonical.Diagnostic_Len));
+                           end if;
+                        end if;
+                        Put_Line
+                          ("============================================================");
+                     end;
+                  else
+                     declare
+                        Prop_Res : constant Proposal_Result :=
+                          Propose_Reversal (Paths, Intent);
+                     begin
+                        if not Prop_Res.Success then
+                           Put_Line ("[ERROR] Reversal rejected: " &
+                                     Prop_Res.Error (1 .. Prop_Res.Error_Len));
+                           Ada.Command_Line.Set_Exit_Status
+                             (Ada.Command_Line.Failure);
+                           return;
+                        end if;
+
+                        declare
+                           Receipt : constant Movement_Receipt :=
+                             Commit (Prop_Res.Proposal);
+                        begin
+                           if Receipt.Success then
+                              Put_Line
+                                ("============================================================");
+                              Put_Line (" [OK] Committed Reversal: " &
+                                        Receipt.Primary_Id
+                                          (1 .. Receipt.Primary_Len));
+                              Put_Line ("      REVERSED: " & Target_Id);
+                              Put_Line ("      SNAPSHOT: " &
+                                        Receipt.Snapshot_Id
+                                          (1 .. Receipt.Snapshot_Len));
+                              Put_Line
+                                ("      DATE:   " & Format_Iso_Date (Date_Val));
+                              if Desc_Len > 0 then
+                                 Put_Line
+                                   ("      REASON: " & Desc_Val (1 .. Desc_Len));
+                              end if;
+                              Put_Line
+                                ("============================================================");
+                           else
+                              Put_Line ("[ERROR] Reversal commit rejected: " &
+                                        Receipt.Error
+                                          (1 .. Receipt.Error_Len));
+                              Ada.Command_Line.Set_Exit_Status
+                                (Ada.Command_Line.Failure);
+                           end if;
+                        end;
+                     end;
+                  end if;
                end;
             end;
          end;
