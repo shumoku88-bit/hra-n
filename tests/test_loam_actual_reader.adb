@@ -16,19 +16,6 @@ package body Test_Loam_Actual_Reader is
 
    Path : constant String := "/tmp/hra_n_loam_actual_reader.loam";
 
-   procedure Write_File
-     (Content : String)
-   is
-      File : Ada.Text_IO.File_Type;
-   begin
-      if Ada.Directories.Exists (Path) then
-         Ada.Directories.Delete_File (Path);
-      end if;
-      Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Path);
-      Ada.Text_IO.Put (File, Content);
-      Ada.Text_IO.Close (File);
-   end Write_File;
-
    procedure Write_Synthetic_Fixture
      (Count     : Positive;
       With_Desc : Boolean := True)
@@ -175,7 +162,7 @@ package body Test_Loam_Actual_Reader is
    begin
       --  1. The supported normalized slice preserves anonymous/keyed Effects,
       --  base occurrence dates, descriptions, correction and exact reversal.
-      Write_File
+      Write_Exact_File
         (Header
          & "TX" & HT & "ev-root" & HT & "2026-09-01" & HT & "DESC" & HT & "Root" & NL
          & "EFFECT" & HT & "wallet" & HT & "jpy" & HT & "-100" & NL
@@ -293,7 +280,7 @@ package body Test_Loam_Actual_Reader is
          "exact-content admission still requires canonical final newline");
 
       --  2. Retained Effect identity may not collide within one Event.
-      Write_File
+      Write_Exact_File
         (Header
          & "TX" & HT & "ev-dup-key" & HT & "2026-09-01" & HT & "NODESC" & NL
          & "KEYED-EFFECT" & HT & "same" & HT & "wallet" & HT & "jpy" & HT & "-100" & NL
@@ -304,7 +291,7 @@ package body Test_Loam_Actual_Reader is
          "duplicate retained Effect key fails closed");
 
       --  3. Unsupported normalized semantics are never silently discarded.
-      Write_File
+      Write_Exact_File
         (Header
          & "TX" & HT & "ev-date-rev" & HT & "2026-09-01" & HT & "NODESC" & NL
          & "DATE-REV" & HT & "rev-1" & HT & "2026-09-02" & HT
@@ -317,7 +304,7 @@ package body Test_Loam_Actual_Reader is
          "unsupported DATE-REV fails closed rather than losing provenance");
 
       --  4. A reversal must be the exact physical inverse of its target.
-      Write_File
+      Write_Exact_File
         (Header
          & "TX" & HT & "ev-target" & HT & "2026-09-01" & HT & "NODESC" & NL
          & "EFFECT" & HT & "wallet" & HT & "jpy" & HT & "-100" & NL
