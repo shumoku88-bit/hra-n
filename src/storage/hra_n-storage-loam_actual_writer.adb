@@ -1036,8 +1036,7 @@ package body HRA_N.Storage.Loam_Actual_Writer is
         Scheduled_Path & ".loam-writer-lock";
       Actual_Lock_Path : constant String :=
         Actual_Path & ".loam-writer-lock";
-      Scheduled_Lock : HRA_N.Storage.File_Lock.Lock_Handle;
-      Actual_Lock    : HRA_N.Storage.File_Lock.Lock_Handle;
+      Ownership : HRA_N.Storage.File_Lock.Ordered_Lock_Pair;
 
       procedure Set_Error (Message : String) is
          Len : constant Natural :=
@@ -1060,16 +1059,10 @@ package body HRA_N.Storage.Loam_Actual_Writer is
 
       procedure Release_All is
       begin
-         HRA_N.Storage.File_Lock.Release (Actual_Lock);
-         HRA_N.Storage.File_Lock.Release (Scheduled_Lock);
+         HRA_N.Storage.File_Lock.Release (Ownership);
       exception
          when others =>
-            begin
-               HRA_N.Storage.File_Lock.Release (Scheduled_Lock);
-            exception
-               when others =>
-                  null;
-            end;
+            null;
       end Release_All;
 
       procedure Remove_Stage is
@@ -1101,17 +1094,10 @@ package body HRA_N.Storage.Loam_Actual_Writer is
       --  Match Loam shared ownership order exactly: Scheduled first, Actual
       --  second.  Both locks remain held through guard reads, candidate
       --  admission, staging, and the final Actual authority switch.
-      if not HRA_N.Storage.File_Lock.Acquire
-        (Scheduled_Lock_Path, Scheduled_Lock)
+      if not HRA_N.Storage.File_Lock.Acquire_Ordered_Pair
+        (Scheduled_Lock_Path, Actual_Lock_Path, Ownership)
       then
-         return Fail ("cannot acquire LOAM Scheduled writer ownership");
-      end if;
-
-      if not HRA_N.Storage.File_Lock.Acquire
-        (Actual_Lock_Path, Actual_Lock)
-      then
-         HRA_N.Storage.File_Lock.Release (Scheduled_Lock);
-         return Fail ("cannot acquire LOAM Actual writer ownership");
+         return Fail ("cannot acquire shared LOAM Scheduled/Actual ownership");
       end if;
 
       declare
