@@ -186,14 +186,49 @@ bounded view-to-reference refinement is the GNATprove result.
 Neither package changes the production reader or routes production lookup
 through the bounded image.
 
-## 7. What remains unproved
+## 7. Open-handle snapshot binding experiment
+
+The byte-range experiment now has a stronger I/O boundary in
+[`HRA_N.Storage.Exact_File`](../src/storage/hra_n-storage-exact_file.ads).
+
+`Snapshot_Handle` owns one already-open `Stream_IO.File_Type`. The same handle
+can be used first for `Read_All`, from which Event byte spans are located, and
+later for `Read_Range`. Range replay therefore no longer needs to reopen the
+pathname when the caller requires one open-file view.
+
+The qualification fixture in
+[`test_actual_byte_spans.adb`](../tests/test_actual_byte_spans.adb) makes the
+distinction observable using HRA-N's real atomic writer:
+
+1. open the original canonical Actual file once;
+2. read the complete bytes and derive Event spans from that handle;
+3. publish a replacement through `Write_File_Atomically`, which uses staging,
+   `fsync`, and POSIX `rename(2)`;
+4. confirm that a fresh path open sees the replacement;
+5. confirm that the already-open handle still reads the original bytes;
+6. replay each previously derived byte span through that same open handle;
+7. retain complete Event equality and the existing bounded replay/refinement
+   correspondence.
+
+This is the first production-language binding between byte offsets and one
+open filesystem object. It is stronger than reopening the same pathname, because
+pathname identity can change across atomic publication.
+
+The boundary remains intentionally narrow. An open descriptor is not treated as
+a universal immutable snapshot: arbitrary in-place mutation of the same file
+object can still change what the descriptor observes. The qualification therefore
+depends on HRA-N's atomic-replacement publication contract, and remains a POSIX
+host observation rather than a portable language theorem. Production Actual
+lookup routing is still unchanged.
+
+## 8. What remains unproved
 
 This checkpoint does not establish:
 
 - a production index representation;
 - that byte offsets are the best locator;
 - an asymptotic memory bound;
-- a portable immutable-snapshot guarantee;
+- a portable immutable-snapshot guarantee beyond the qualified atomic-replacement contract;
 - behavior under arbitrary in-place third-party mutation;
 - full date-revision / relation / discharge long-history semantics;
 - a canonical writer;
