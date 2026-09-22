@@ -22,6 +22,7 @@ with HRA_N.Storage.Loam_Actual_Reader;
 use HRA_N.Storage.Loam_Actual_Reader;
 with HRA_N.Storage.Loam_Actual_Refinement;
 use HRA_N.Storage.Loam_Actual_Refinement;
+with HRA_N.Storage.Loam_Actual_Replay_Refinement;
 with HRA_N.Storage.Loam_Actual_Replay_Snapshot;
 with Test_Support; use Test_Support;
 
@@ -29,11 +30,14 @@ package body Test_Actual_Byte_Spans is
 
    package Bound_Replay renames
      HRA_N.Storage.Loam_Actual_Replay_Snapshot;
+   package Replay_Proof renames
+     HRA_N.Storage.Loam_Actual_Replay_Refinement;
 
    use type Ada.Containers.Count_Type;
    use type HRA_N.Core.Event.Event;
    use type Bound_Replay.Snapshot_Open_Status;
    use type Bound_Replay.Replay_Status;
+   use type Replay_Proof.Qualification_Status;
 
    Path   : constant String := "/tmp/hra_n_actual_byte_spans.loam";
    Header : constant String := "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1";
@@ -104,6 +108,30 @@ package body Test_Actual_Byte_Spans is
          end if;
          return "";
    end Read_Path_Through_OS;
+
+   function Nine_Event_Document return String is
+      Result : Unbounded_String :=
+        To_Unbounded_String (Header & ASCII.LF);
+   begin
+      for I in 1 .. 9 loop
+         declare
+            Digit : constant Character :=
+              Character'Val (Character'Pos ('0') + I);
+            Key : constant String := "q" & Digit;
+         begin
+            Append
+              (Result,
+               "TX" & ASCII.HT & Key & ASCII.HT & "2026-09-25" &
+               ASCII.HT & "NODESC" & ASCII.LF &
+               "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" &
+               ASCII.HT & "-1" & ASCII.LF &
+               "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" &
+               ASCII.HT & "1" & ASCII.LF &
+               "ENDTX" & ASCII.LF);
+         end;
+      end loop;
+      return To_String (Result);
+   end Nine_Event_Document;
 
    procedure Run is
       Snapshot : constant Snapshot_Id := 77;
@@ -363,6 +391,60 @@ package body Test_Actual_Byte_Spans is
                "replacement generation publishes while replay snapshot is open");
          end;
 
+         --  Map the still-open original generation into the bounded pure SPARK
+         --  model only after each active Event has been replayed and compared
+         --  with the semantic Event admitted from the same exact byte image.
+         declare
+            Qualified : constant Replay_Proof.Qualification_Result :=
+              Replay_Proof.To_Bounded_Replay_Qualification
+                (Bound, Snapshot);
+            Replacement_Key : constant Event_Id :=
+              (Token => Make_Token ("e9"));
+         begin
+            Assert
+              (Qualified.Status = Replay_Proof.Replay_Qualified,
+               "snapshot-bound production replay qualifies against bounded model");
+            Assert
+              (Qualified.Source.Count = 3
+               and then Qualified.Replay.Count = 3
+               and then Qualified.Index.Count = 3,
+               "bounded replay qualification preserves complete active count");
+            Assert
+              (Qualified.Source.Snapshot = Snapshot
+               and then Qualified.Replay.Snapshot = Snapshot
+               and then Qualified.Index.Snapshot = Snapshot,
+               "bounded replay qualification preserves caller proof snapshot");
+            Assert
+              (Replay_Index_Is_Qualified
+                 (Qualified.Source, Qualified.Replay, Qualified.Index),
+               "production replay bridge satisfies SPARK qualification relation");
+
+            for I in Event_Position range 1 .. 3 loop
+               declare
+                  Key : constant Event_Id :=
+                    HRA_N.Core.Event.Id (Qualified.Source.Events (I));
+               begin
+                  Assert
+                    (Replay_Lookup
+                       (Qualified.Source,
+                        Qualified.Replay,
+                        Qualified.Index,
+                        Key)
+                     = Reference_Lookup (Qualified.Source, Key),
+                     "qualified production replay has reference lookup meaning");
+               end;
+            end loop;
+
+            Assert
+              (Replay_Lookup
+                 (Qualified.Source,
+                  Qualified.Replay,
+                  Qualified.Index,
+                  Replacement_Key)
+               = Reference_Lookup (Qualified.Source, Replacement_Key),
+               "replacement-only identity remains absent in old qualified snapshot");
+         end;
+
          for I in Event_Position range 1 .. 3 loop
             declare
                Key : constant Event_Id :=
@@ -400,6 +482,22 @@ package body Test_Actual_Byte_Spans is
          Assert
            (Bound_Replay.Event_Count (Bound) = 0,
             "closing bound replay drops active locator count");
+
+         declare
+            Closed_Qualification : constant Replay_Proof.Qualification_Result :=
+              Replay_Proof.To_Bounded_Replay_Qualification
+                (Bound, Snapshot);
+         begin
+            Assert
+              (Closed_Qualification.Status =
+                 Replay_Proof.Replay_Snapshot_Closed,
+               "closed production snapshot cannot enter bounded replay proof");
+            Assert
+              (Closed_Qualification.Source.Count = 0
+               and then Closed_Qualification.Replay.Count = 0
+               and then Closed_Qualification.Index.Count = 0,
+               "failed replay qualification exposes no accepted prefix");
+         end;
 
          --  Explicit close/reopen is the generation transition boundary.
          Bound_Replay.Open (Bound, Path, Open_Status);
@@ -456,6 +554,35 @@ package body Test_Actual_Byte_Spans is
               (Bound_Replay.Event_Count (Bound) = 0,
                "failed semantic admission exposes no replay locators");
          end;
+
+         --  The production capability may admit more Events than the bounded
+         --  proof carrier.  The bridge must reject the whole image rather than
+         --  silently presenting the first eight Events as qualified.
+         Write_Text (Path, Nine_Event_Document);
+         Bound_Replay.Open (Bound, Path, Open_Status);
+         Assert
+           (Open_Status = Bound_Replay.Snapshot_Opened,
+            "production replay snapshot admits nine valid Events");
+         Assert
+           (Bound_Replay.Event_Count (Bound) = 9,
+            "production replay keeps all nine Events before proof adaptation");
+
+         declare
+            Too_Large : constant Replay_Proof.Qualification_Result :=
+              Replay_Proof.To_Bounded_Replay_Qualification
+                (Bound, Snapshot);
+         begin
+            Assert
+              (Too_Large.Status =
+                 Replay_Proof.Replay_Over_Bounded_Capacity,
+               "bounded replay bridge rejects nine Events without truncation");
+            Assert
+              (Too_Large.Source.Count = 0
+               and then Too_Large.Replay.Count = 0
+               and then Too_Large.Index.Count = 0,
+               "over-capacity replay qualification exposes no accepted prefix");
+         end;
+         Bound_Replay.Close (Bound);
       end;
 
       Cleanup;
