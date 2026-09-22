@@ -109,7 +109,7 @@ is
       and then Occurrence_Prefix_Preserved (Source, Target)
       and then Target.Sched_Items (Target.Sched_Count) = Added
       and then Terminal_Evidence_Preserved (Source, Target)
-      and then Occurrence_Image_Admitted (Target));
+      and then Occurrence_Ids_Are_Unique (Target));
 
    procedure Append_Fresh_Creation
      (Source : Scheduled_Lifecycle;
