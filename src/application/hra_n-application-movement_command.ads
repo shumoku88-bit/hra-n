@@ -116,6 +116,14 @@ package HRA_N.Application.Movement_Command is
       Requested_Date_Present : Boolean := False)
       return Canonical_Correction_Result;
 
+   --  Publish one explicit reversal directly to canonical actual.loam.
+   --  Canonical Loam reversal evidence carries target identity and occurrence
+   --  date only.  A non-empty Description is rejected rather than silently
+   --  discarded because it has no canonical persistence field.
+   function Reverse_Loam_Actual
+     (Root_Path : String;
+      Intent    : Reversal_Intent) return Canonical_Record_Result;
+
    function Propose
      (Paths  : Path_Config;
       Intent : Movement_Intent) return Proposal_Result;
