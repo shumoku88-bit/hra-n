@@ -16,9 +16,11 @@ with Test_Actual_Byte_Spans;
 with Test_Actual_Replay_Refinement;
 with Test_Actual_Reader_Refinement;
 with Test_Actual_Writer_Transition;
+with Test_Actual_Correction_Transition;
 with Test_Loam_Actual_Reader;
 with Test_Loam_Actual_Writer;
 with Test_Loam_Actual_Correction_Writer;
+with Test_Loam_Actual_Correction_Refinement;
 with Test_Loam_Actual_Writer_Refinement;
 with Test_Validity;
 with Test_Review;
@@ -126,6 +128,11 @@ begin
       Test_Actual_Writer_Transition.Run;
    end if;
 
+   if Selected ("Test_Actual_Correction_Transition") then
+      Announce ("Test_Actual_Correction_Transition");
+      Test_Actual_Correction_Transition.Run;
+   end if;
+
    if Selected ("Test_Loam_Actual_Reader") then
       Announce ("Test_Loam_Actual_Reader");
       Test_Loam_Actual_Reader.Run;
@@ -139,6 +146,11 @@ begin
    if Selected ("Test_Loam_Actual_Correction_Writer") then
       Announce ("Test_Loam_Actual_Correction_Writer");
       Test_Loam_Actual_Correction_Writer.Run;
+   end if;
+
+   if Selected ("Test_Loam_Actual_Correction_Refinement") then
+      Announce ("Test_Loam_Actual_Correction_Refinement");
+      Test_Loam_Actual_Correction_Refinement.Run;
    end if;
 
    if Selected ("Test_Loam_Actual_Writer_Refinement") then
