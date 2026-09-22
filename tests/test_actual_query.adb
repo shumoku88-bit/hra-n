@@ -157,6 +157,76 @@ package body Test_Actual_Query is
             "Loam replay detail absent identity carries diagnostic");
       end;
 
+      Assert
+        (Write_File_Atomically
+           (Loam_Path,
+            "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1" & ASCII.LF &
+            "TX" & ASCII.HT & "e-base" & ASCII.HT & "2026-09-10" &
+              ASCII.HT & "DESC" & ASCII.HT & "Base" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" &
+              ASCII.HT & "-100" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" &
+              ASCII.HT & "100" & ASCII.LF &
+            "ENDTX" & ASCII.LF &
+            "TX" & ASCII.HT & "e-replacement" & ASCII.HT & "2026-09-11" &
+              ASCII.HT & "DESC" & ASCII.HT & "Replacement" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" &
+              ASCII.HT & "-120" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" &
+              ASCII.HT & "120" & ASCII.LF &
+            "REPLACES" & ASCII.HT & "e-base" & ASCII.LF &
+            "ENDTX" & ASCII.LF &
+            "TX" & ASCII.HT & "e-reversal" & ASCII.HT & "2026-09-12" &
+              ASCII.HT & "NODESC" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" &
+              ASCII.HT & "120" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" &
+              ASCII.HT & "-120" & ASCII.LF &
+            "REVERSAL-OF" & ASCII.HT & "e-replacement" & ASCII.LF &
+            "ENDTX" & ASCII.LF,
+            Error,
+            Error_Len),
+         "Loam detail metadata fixture publishes");
+
+      declare
+         Base_Detail : constant
+           HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+             HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual
+               (Loam_Path, Make_Token ("e-base"));
+         Replacement_Detail : constant
+           HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+             HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual
+               (Loam_Path, Make_Token ("e-replacement"));
+         Reversal_Detail : constant
+           HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+             HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual
+               (Loam_Path, Make_Token ("e-reversal"));
+      begin
+         Assert
+           (Base_Detail.Status = Query_Complete
+            and then Base_Detail.Is_Superseded
+            and then Equal_Token
+              (Base_Detail.Superseded_By, Make_Token ("e-replacement")),
+            "Loam replay detail derives replacement successor from bound admission");
+         Assert
+           (Replacement_Detail.Status = Query_Complete
+            and then Replacement_Detail.Has_Replaces
+            and then Equal_Token
+              (Replacement_Detail.Replaces, Make_Token ("e-base")),
+            "Loam replay detail retains REPLACES metadata from bound admission");
+         Assert
+           (Replacement_Detail.Is_Reversed
+            and then Equal_Token
+              (Replacement_Detail.Reversed_By, Make_Token ("e-reversal")),
+            "Loam replay detail derives reverser from bound admission");
+         Assert
+           (Reversal_Detail.Status = Query_Complete
+            and then Reversal_Detail.Has_Reverses
+            and then Equal_Token
+              (Reversal_Detail.Reverses, Make_Token ("e-replacement")),
+            "Loam replay detail retains REVERSAL-OF metadata from bound admission");
+      end;
+
       declare
          View : constant Actual_View :=
            Execute
