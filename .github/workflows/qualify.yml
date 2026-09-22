@@ -110,6 +110,9 @@ jobs:
       - name: Test Canonical Movement Command
         run: ./tests/bin/test_runner Test_Canonical_Movement_Command
 
+      - name: Test Canonical Correction Command
+        run: ./tests/bin/test_runner Test_Canonical_Correction_Command
+
       - name: Test Transaction Metadata
         run: ./tests/bin/test_runner Test_Transaction_Metadata
 
