@@ -62,6 +62,9 @@ jobs:
       - name: Test Actual Correction Transition
         run: ./tests/bin/test_runner Test_Actual_Correction_Transition
 
+      - name: Test Actual Reversal Transition
+        run: ./tests/bin/test_runner Test_Actual_Reversal_Transition
+
       - name: Test LOAM Actual Reader
         run: ./tests/bin/test_runner Test_Loam_Actual_Reader
 
