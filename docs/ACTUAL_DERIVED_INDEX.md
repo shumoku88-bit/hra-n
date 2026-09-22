@@ -216,12 +216,48 @@ pathname identity can change across atomic publication.
 
 The boundary remains intentionally narrow. An open descriptor is not treated as
 a universal immutable snapshot: arbitrary in-place mutation of the same file
-object can still change what the descriptor observes. The qualification therefore
-depends on HRA-N's atomic-replacement publication contract, and remains a POSIX
-host observation rather than a portable language theorem. Production Actual
-lookup routing is still unchanged.
+object can still change what the descriptor observes.
 
-## 8. What remains unproved
+The fixture uses HRA-N's atomic writer because it gives a direct Ada-side
+replacement observation, including its stronger fsync/directory-sync behavior.
+The operational Loam Actual authority checked at
+`1794e2f193deba2037cebf1aea7e20eeae0e7771` uses the same identity-relevant
+publication shape: write the sibling `.loam-stage`, validate it, then rename it
+over `actual.loam`. Loam does not currently make the same fsync durability claim.
+That distinction is deliberate: **snapshot identity here depends on replacement
+rather than in-place mutation; power-loss durability is a separate property.**
+
+Production Actual lookup routing is still unchanged.
+
+## 8. Snapshot-bound replay capability
+
+`HRA_N.Storage.Loam_Actual_Replay_Snapshot` closes the next representation gap.
+Its limited/private `Replay_Snapshot` owns both:
+
+- one already-open `Exact_File.Snapshot_Handle`; and
+- the Event byte spans derived from bytes read through that handle.
+
+Callers do not receive a raw byte span for later replay. They call
+`Replay_Event (Snapshot, Event_Id)`, and the package selects an internal locator,
+reads that range through the same handle, decodes the Event block, and checks the
+decoded Event identity before reporting success.
+
+This construction makes one important class of cross-generation error
+unrepresentable at the public API boundary: a caller cannot accidentally combine
+a locator from generation A with a handle for generation B. While the object is
+open, another `Open` call is refused; close/reopen is the explicit transition to
+a newly published pathname generation.
+
+The qualification fixture observes both sides of that boundary. After pathname
+replacement, the open capability continues to replay the old Events and cannot
+see the replacement-only Event. After explicit close/reopen, it sees the new
+generation and no longer exposes the old Event.
+
+This is a production-language capability boundary, not yet a claim that arbitrary
+filesystem mutation produces immutable snapshots and not yet a switch of
+production Actual queries onto byte-range replay.
+
+## 9. What remains unproved
 
 This checkpoint does not establish:
 
@@ -234,7 +270,8 @@ This checkpoint does not establish:
 - a canonical writer;
 - removal of the current 1,024-Event working-set bound.
 
-Before production promotion, HRA-N still needs an explicit open-file snapshot
-token source and a qualified production locator/replay implementation that
-preserves this bounded reference meaning. Persisted indexes and byte offsets
-remain optional candidates, not established requirements.
+Before production promotion, HRA-N still needs the snapshot-bound I/O capability
+to be connected to the proved replay/refinement relation and then deliberately
+promoted into production lookup routing. Persisted indexes remain optional, and
+byte offsets remain a qualified candidate representation rather than an
+established architectural requirement.

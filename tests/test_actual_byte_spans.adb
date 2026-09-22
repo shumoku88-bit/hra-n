@@ -22,12 +22,18 @@ with HRA_N.Storage.Loam_Actual_Reader;
 use HRA_N.Storage.Loam_Actual_Reader;
 with HRA_N.Storage.Loam_Actual_Refinement;
 use HRA_N.Storage.Loam_Actual_Refinement;
+with HRA_N.Storage.Loam_Actual_Replay_Snapshot;
 with Test_Support; use Test_Support;
 
 package body Test_Actual_Byte_Spans is
 
+   package Bound_Replay renames
+     HRA_N.Storage.Loam_Actual_Replay_Snapshot;
+
    use type Ada.Containers.Count_Type;
    use type HRA_N.Core.Event.Event;
+   use type Bound_Replay.Snapshot_Open_Status;
+   use type Bound_Replay.Replay_Status;
 
    Path   : constant String := "/tmp/hra_n_actual_byte_spans.loam";
    Header : constant String := "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1";
@@ -318,6 +324,112 @@ package body Test_Actual_Byte_Spans is
       Assert
         (not HRA_N.Storage.Exact_File.Snapshot_Is_Open (Handle),
          "snapshot handle closes explicitly");
+
+      --  Bind the open object and all locators into one limited capability.
+      --  Callers ask by Event identity and never receive a raw span that could
+      --  later be paired with a handle from a different generation.
+      Write_Text (Path, Document);
+      declare
+         Bound         : Bound_Replay.Replay_Snapshot;
+         Open_Status   : Bound_Replay.Snapshot_Open_Status;
+         Reopen_Status : Bound_Replay.Snapshot_Open_Status;
+      begin
+         Bound_Replay.Open (Bound, Path, Open_Status);
+         Assert
+           (Open_Status = Bound_Replay.Snapshot_Opened,
+            "snapshot-bound replay opens original generation");
+         Assert
+           (Bound_Replay.Is_Open (Bound),
+            "snapshot-bound replay owns one open filesystem object");
+         Assert
+           (Bound_Replay.Event_Count (Bound) = 3,
+            "snapshot-bound replay keeps all located Events");
+
+         Bound_Replay.Open (Bound, Path, Reopen_Status);
+         Assert
+           (Reopen_Status = Bound_Replay.Snapshot_Already_Open,
+            "open replay snapshot cannot silently rebind its pathname");
+
+         declare
+            Err      : String (1 .. 256) := [others => ' '];
+            Err_Len  : Natural := 0;
+            Replaced : Boolean;
+         begin
+            Replaced :=
+              Write_File_Atomically
+                (Path, Replacement_Document, Err, Err_Len);
+            Assert
+              (Replaced,
+               "replacement generation publishes while replay snapshot is open");
+         end;
+
+         for I in Event_Position range 1 .. 3 loop
+            declare
+               Key : constant Event_Id :=
+                 HRA_N.Core.Event.Id (Parsed.Events.Element (I));
+               Replayed : constant Bound_Replay.Replay_Result :=
+                 Bound_Replay.Replay_Event (Bound, Key);
+            begin
+               Assert
+                 (Replayed.Status = Bound_Replay.Replay_Succeeded,
+                  "bound replay finds Event from original generation");
+               Assert
+                 (Replayed.Decoded.Success,
+                  "bound replay decodes original Event block");
+               Assert
+                 (Replayed.Decoded.Value = Parsed.Events.Element (I),
+                  "bound replay preserves complete original Event");
+            end;
+         end loop;
+
+         declare
+            Replacement_Key : constant Event_Id :=
+              (Token => Make_Token ("e9"));
+            Replayed : constant Bound_Replay.Replay_Result :=
+              Bound_Replay.Replay_Event (Bound, Replacement_Key);
+         begin
+            Assert
+              (Replayed.Status = Bound_Replay.Replay_Event_Not_Found,
+               "open replay snapshot does not observe replacement-only Event");
+         end;
+
+         Bound_Replay.Close (Bound);
+         Assert
+           (not Bound_Replay.Is_Open (Bound),
+            "bound replay snapshot closes explicitly");
+         Assert
+           (Bound_Replay.Event_Count (Bound) = 0,
+            "closing bound replay drops active locator count");
+
+         --  Explicit close/reopen is the generation transition boundary.
+         Bound_Replay.Open (Bound, Path, Open_Status);
+         Assert
+           (Open_Status = Bound_Replay.Snapshot_Opened,
+            "closed replay snapshot may bind to replacement generation");
+         Assert
+           (Bound_Replay.Event_Count (Bound) = 1,
+            "reopened replay snapshot locates replacement generation");
+
+         declare
+            Replacement_Key : constant Event_Id :=
+              (Token => Make_Token ("e9"));
+            Old_Key : constant Event_Id :=
+              (Token => Make_Token ("e1"));
+            New_Replay : constant Bound_Replay.Replay_Result :=
+              Bound_Replay.Replay_Event (Bound, Replacement_Key);
+            Old_Replay : constant Bound_Replay.Replay_Result :=
+              Bound_Replay.Replay_Event (Bound, Old_Key);
+         begin
+            Assert
+              (New_Replay.Status = Bound_Replay.Replay_Succeeded,
+               "reopened snapshot replays replacement Event");
+            Assert
+              (Old_Replay.Status = Bound_Replay.Replay_Event_Not_Found,
+               "reopened snapshot no longer exposes prior generation Event");
+         end;
+
+         Bound_Replay.Close (Bound);
+      end;
 
       Cleanup;
    end Run;
