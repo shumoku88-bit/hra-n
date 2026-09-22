@@ -257,7 +257,47 @@ This is a production-language capability boundary, not yet a claim that arbitrar
 filesystem mutation produces immutable snapshots and not yet a switch of
 production Actual queries onto byte-range replay.
 
-## 9. What remains unproved
+## 9. Bounded replay proof bridge
+
+`HRA_N.Storage.Loam_Actual_Replay_Refinement` is the thin production-to-proof
+adapter for the snapshot-bound capability.
+
+For an open `Replay_Snapshot` containing at most eight Events, the adapter:
+
+1. obtains each complete semantic Event admitted from the exact byte image owned
+   by that snapshot;
+2. replays that Event through the snapshot's already-open file object;
+3. requires replay success and complete Event equality;
+4. maps admitted Events, replayed Events, and abstract replay slots into
+   `Semantic_Image`, `Replay_View`, and `Replay_Index`; and
+5. reports success only when the pure SPARK
+   `Replay_Index_Is_Qualified` relation holds.
+
+The proof carrier deliberately uses abstract bounded slot numbers rather than
+filesystem byte offsets. The production representation therefore remains
+replaceable without changing the theorem.
+
+The adapter does not truncate a larger production snapshot. More than
+`Actual_Bounded_History.Max_Events` Events produces an explicit
+`Replay_Over_Bounded_Capacity` result and zero active proof counts. Any other
+qualification failure likewise exposes no accepted prefix.
+
+On success, the existing GNATprove result for `Replay_Lookup` applies: lookup
+through the constructed replay view has exactly the same bounded
+`Lookup_Result` as `Reference_Lookup`, including found/not-found state,
+canonical source position, and the complete Event payload.
+
+The qualification fixture performs this bridge after the pathname has already
+been atomically rebound to a replacement generation. The still-open production
+snapshot continues to qualify the original generation. A separate fixture
+confirms that a valid nine-Event production snapshot is admitted by production
+storage but rejected as a whole by the eight-Event proof bridge.
+
+This connects the qualified production capability to the proved pure relation.
+It does **not** turn filesystem behavior into a SPARK theorem, and production
+Actual queries are still not routed through byte-range replay.
+
+## 10. What remains unproved
 
 This checkpoint does not establish:
 
@@ -270,8 +310,7 @@ This checkpoint does not establish:
 - a canonical writer;
 - removal of the current 1,024-Event working-set bound.
 
-Before production promotion, HRA-N still needs the snapshot-bound I/O capability
-to be connected to the proved replay/refinement relation and then deliberately
-promoted into production lookup routing. Persisted indexes remain optional, and
-byte offsets remain a qualified candidate representation rather than an
-established architectural requirement.
+Before production promotion, HRA-N still needs a deliberate decision about
+routing production Actual lookup through the qualified replay capability.
+Persisted indexes remain optional, and byte offsets remain a qualified candidate
+representation rather than an established architectural requirement.
