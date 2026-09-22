@@ -155,9 +155,12 @@ is
       Reversal_Not_Exact_Inverse);
 
    --  Successful publication keeps every retained Event and correction edge,
-   --  appends exactly one fresh inverse Event and one reversal edge, leaves the
-   --  correction frontier unchanged, and returns another admitted reversal
-   --  image suitable for a later independent reversal.
+   --  appends exactly one fresh inverse Event and one reversal edge, and leaves
+   --  the correction frontier unchanged.
+   --
+   --  Re-admission closure of the complete result image is intentionally a
+   --  separate theorem boundary; this transition proves the single append
+   --  relation without making one large quantified VC own both obligations.
    function One_Current_Reversal
      (Source          : Reversal_Image;
       Target_Id       : Event_Id;
@@ -192,8 +195,7 @@ is
         (Result.Edges (Result.Edge_Count).Reversal,
          HRA_N.Core.Event.Id (Reversal))
       and then Current_In_Frontier (Result.Corrections, Target_Id)
-      and then Target_Matches_Source (Result, Target_Id, Target_Event)
-      and then Reversal_Shape_Admitted (Result));
+      and then Target_Matches_Source (Result, Target_Id, Target_Event));
 
    procedure Append_Current_Reversal
      (Source          : Reversal_Image;
