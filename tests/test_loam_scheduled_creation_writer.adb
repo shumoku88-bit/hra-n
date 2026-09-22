@@ -295,8 +295,9 @@ package body Test_Loam_Scheduled_Creation_Writer is
             "terminal conflict leaves Scheduled authority untouched");
       end;
 
-      --  A completion source may decode structurally while its Actual endpoint
-      --  is absent.  Creation follows Loam application admission and refuses it.
+      --  A missing Actual completion endpoint is intentionally inert in
+      --  Loam: the Scheduled source remains open so interrupted completion
+      --  publication can be retried. Creation must preserve and extend it.
       Write_Atomically
         (Scheduled,
          "LOAM-SCHEDULED-LIFECYCLE" & HT & "1" & NL
@@ -318,16 +319,19 @@ package body Test_Loam_Scheduled_Creation_Writer is
          & "END" & HT & "Replacement" & NL);
 
       declare
-         Before : constant String := Read_Exact (Scheduled);
-         Rejected : constant Publish_Result :=
+         Published : constant Publish_Result :=
            Publish_Creation (Root, Draft);
+         Image : Read_Result;
       begin
          Assert
-           (not Rejected.Success,
-            "unknown completion Actual endpoint fails application admission");
+           (Published.Success,
+            "missing completion Actual remains inert during Scheduled creation");
+         Image := Read_File (Scheduled);
          Assert
-           (Read_Exact (Scheduled) = Before,
-            "unknown completion endpoint leaves Scheduled authority untouched");
+           (Image.Success
+            and then Completion_Mentions_Actual
+              (Image, (Token => Make_Token ("record-missing"))),
+            "inert completion evidence is preserved after creation");
       end;
 
       if Ada.Directories.Exists (Root) then
