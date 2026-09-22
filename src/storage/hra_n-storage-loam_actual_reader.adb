@@ -6,132 +6,39 @@
 with Ada.Text_IO;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with HRA_N.Storage.Exact_File;
-with HRA_N.Core.Types;                use HRA_N.Core.Types;
+with HRA_N.Storage.Loam_Actual_Event_Block;
+use HRA_N.Storage.Loam_Actual_Event_Block;
+with HRA_N.Core.Types; use HRA_N.Core.Types;
 
 package body HRA_N.Storage.Loam_Actual_Reader is
 
    Header : constant String := "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1";
 
-   function Field_Count (Line : String) return Natural is
-      Count : Natural := 1;
-   begin
-      if Line'Length = 0 then
-         return 1;
-      end if;
-      for C of Line loop
-         if C = ASCII.HT then
-            Count := Count + 1;
-         end if;
-      end loop;
-      return Count;
-   end Field_Count;
-
-   function Field (Line : String; Number : Positive) return String is
-      Start   : Natural := Line'First;
-      Current : Positive := 1;
-   begin
-      if Line'Length = 0 then
-         return "";
-      end if;
-
-      for I in Line'Range loop
-         if Line (I) = ASCII.HT then
-            if Current = Number then
-               if I = Start then
-                  return "";
-               else
-                  return Line (Start .. I - 1);
-               end if;
-            end if;
-            Current := Current + 1;
-            Start := I + 1;
-         end if;
-      end loop;
-
-      if Current = Number then
-         if Start > Line'Last then
-            return "";
-         else
-            return Line (Start .. Line'Last);
-         end if;
-      end if;
-      return "";
-   end Field;
-
-   function Remainder_After
-     (Line       : String;
-      Delimiters : Positive) return String
+   function Is_Row
+     (Line : String;
+      Kind : String) return Boolean
    is
-      Seen : Natural := 0;
    begin
-      for I in Line'Range loop
-         if Line (I) = ASCII.HT then
-            Seen := Seen + 1;
-            if Seen = Delimiters then
-               if I = Line'Last then
-                  return "";
-               else
-                  return Line (I + 1 .. Line'Last);
-               end if;
-            end if;
-         end if;
-      end loop;
-      return "";
-   end Remainder_After;
-
-   function Valid_Token (S : String) return Boolean is
-   begin
-      if S'Length = 0 or else S'Length > Max_Token_Length then
+      if Line'Length < Kind'Length then
          return False;
-      end if;
-      for C of S loop
-         if C = ASCII.HT or else C = ASCII.LF or else C = ASCII.CR then
-            return False;
-         end if;
-      end loop;
-      return True;
-   end Valid_Token;
-
-   function Parse_Quanta
-     (Text  : String;
-      Value : out Quanta_Type) return Boolean
-   is
-      Start : Natural := Text'First;
-   begin
-      Value := 0;
-      if Text'Length = 0 then
+      elsif Line (Line'First .. Line'First + Kind'Length - 1) /= Kind then
          return False;
-      end if;
-
-      if Text (Start) = '-' then
-         if Text'Length = 1 then
-            return False;
-         end if;
-         Start := Start + 1;
-      end if;
-
-      for I in Start .. Text'Last loop
-         if Text (I) not in '0' .. '9' then
-            return False;
-         end if;
-      end loop;
-
-      declare
-         Parsed : constant Long_Long_Integer := Long_Long_Integer'Value (Text);
-      begin
-         if Parsed < Long_Long_Integer (Quanta_Type'First)
-           or else Parsed > Long_Long_Integer (Quanta_Type'Last)
-         then
-            return False;
-         end if;
-         Value := Quanta_Type (Parsed);
+      elsif Line'Length = Kind'Length then
          return True;
-      end;
-   exception
-      when others =>
-         Value := 0;
-         return False;
-   end Parse_Quanta;
+      else
+         return Line (Line'First + Kind'Length) = ASCII.HT;
+      end if;
+   end Is_Row;
+
+   function Starts_With
+     (Line   : String;
+      Prefix : String) return Boolean
+   is
+   begin
+      return Line'Length >= Prefix'Length
+        and then
+          Line (Line'First .. Line'First + Prefix'Length - 1) = Prefix;
+   end Starts_With;
 
    Empty_Effects : constant Effect_List :=
      (Count => 0, Values => [others => Empty_Effect]);
@@ -221,28 +128,14 @@ package body HRA_N.Storage.Loam_Actual_Reader is
       Validity_Entries    : Validity_Entry_List;
       Description_Entries : Description_Entry_List;
       Metadata_Entries    : Metadata_List;
-
-      In_Tx             : Boolean := False;
-      Current_Id        : Event_Id :=
-        (Token => (Length => 0, Value => [others => ' ']));
-      Current_Date      : Date_Type := (Year => 2026, Month => 1, Day => 1);
-      Current_Effects   : Effect_List;
-      Current_Replaces  : Optional_Event_Id :=
-        (Present => False,
-         Value => (Token => (Length => 0, Value => [others => ' '])));
-      Current_Reverses  : Optional_Event_Id :=
-        (Present => False,
-         Value => (Token => (Length => 0, Value => [others => ' '])));
-      Has_Description   : Boolean := False;
-      Current_Desc      : Description_Text :=
-        (Length => 0, Value => [others => ' ']);
-      Line_No           : Natural := 0;
+      Line_No             : Natural := 0;
 
       procedure Set_Error
         (At_Line : Natural;
          Message : String)
       is
-         N : constant Natural := Natural'Min (Message'Length, Result.Error_Reason'Length);
+         N : constant Natural :=
+           Natural'Min (Message'Length, Result.Error_Reason'Length);
       begin
          Result.Success := False;
          Result.Error_Line := At_Line;
@@ -265,22 +158,6 @@ package body HRA_N.Storage.Loam_Actual_Reader is
          end if;
          return Result;
       end Fail;
-
-      procedure Reset_Current is
-      begin
-         Current_Id :=
-           (Token => (Length => 0, Value => [others => ' ']));
-         Current_Date := (Year => 2026, Month => 1, Day => 1);
-         Current_Effects := Empty_Effects;
-         Current_Replaces :=
-           (Present => False,
-            Value => (Token => (Length => 0, Value => [others => ' '])));
-         Current_Reverses :=
-           (Present => False,
-            Value => (Token => (Length => 0, Value => [others => ' '])));
-         Has_Description := False;
-         Current_Desc := (Length => 0, Value => [others => ' ']);
-      end Reset_Current;
 
    begin
       if not Exact.Success then
@@ -313,224 +190,95 @@ package body HRA_N.Storage.Loam_Actual_Reader is
       end;
 
       while not Ada.Text_IO.End_Of_File (File) loop
-         Line_No := Line_No + 1;
+         if Validity_Entries.Count = Max_Admitted_Actual_Events
+           or else Metadata_Entries.Count = Metadata_Count'Last
+         then
+            return Fail
+              (Line_No + 1, "HRA-N Actual bridge capacity exceeded");
+         end if;
+
          declare
-            Line  : constant String := Ada.Text_IO.Get_Line (File);
-            Kind  : constant String := Field (Line, 1);
-            Count : constant Natural := Field_Count (Line);
+            Block_Start : constant Natural := Line_No + 1;
+            First_Line  : constant String := Ada.Text_IO.Get_Line (File);
+            Block       : Unbounded_String :=
+              To_Unbounded_String (First_Line & ASCII.LF);
+            Last_Line   : Unbounded_String :=
+              To_Unbounded_String (First_Line);
          begin
-            if not In_Tx then
-               if Kind /= "TX" then
-                  return Fail (Line_No, "expected TX row");
-               elsif Count < 4 then
-                  return Fail (Line_No, "malformed TX row");
-               end if;
+            Line_No := Line_No + 1;
 
-               declare
-                  Event_Text : constant String := Field (Line, 2);
-                  Date_Text  : constant String := Field (Line, 3);
-                  Mode       : constant String := Field (Line, 4);
-                  Parsed_Date : Date_Type;
-                  Desc       : constant String :=
-                    (if Mode = "DESC" then Remainder_After (Line, 4) else "");
-               begin
-                  if not Valid_Token (Event_Text) then
-                     return Fail (Line_No, "invalid Event identity");
-                  elsif Event_Exists
-                    (Result.Events, (Token => Make_Token (Event_Text)))
-                  then
-                     return Fail (Line_No, "duplicate Event identity");
-                  elsif not Parse_Iso_Date (Date_Text, Parsed_Date) then
-                     return Fail (Line_No, "invalid occurrence date");
-                  elsif Mode = "NODESC" and then Count /= 4 then
-                     return Fail (Line_No, "malformed NODESC TX row");
-                  elsif Mode = "DESC"
-                    and then (Count < 5
-                              or else Desc'Length = 0
-                              or else Desc'Length > Max_Description_Length)
-                  then
-                     return Fail (Line_No, "invalid Event description");
-                  elsif Mode /= "NODESC" and then Mode /= "DESC" then
-                     return Fail (Line_No, "unknown TX description mode");
-                  elsif Validity_Entries.Count = Max_Admitted_Actual_Events
-                    or else Metadata_Entries.Count = Metadata_Count'Last
-                  then
-                     return Fail (Line_No, "HRA-N Actual bridge capacity exceeded");
-                  end if;
-
-                  Reset_Current;
-                  Current_Id := (Token => Make_Token (Event_Text));
-                  Current_Date := Parsed_Date;
-                  if Mode = "DESC" then
-                     for C of Desc loop
-                        if C = ASCII.LF or else C = ASCII.CR then
-                           return Fail (Line_No, "invalid Event description");
-                        end if;
-                     end loop;
-                     Has_Description := True;
-                     Current_Desc := Make_Description (Desc);
-                  end if;
-                  In_Tx := True;
-               end;
-
-            elsif Kind = "EFFECT" then
-               if Count /= 4 then
-                  return Fail (Line_No, "malformed EFFECT row");
-               elsif Current_Effects.Count = Effect_Count_Type'Last then
-                  return Fail (Line_No, "too many Effects in one Event");
-               end if;
-               declare
-                  Locus_Text   : constant String := Field (Line, 2);
-                  Measure_Text : constant String := Field (Line, 3);
-                  Amount_Text  : constant String := Field (Line, 4);
-                  Amount       : Quanta_Type;
-               begin
-                  if not Valid_Token (Locus_Text)
-                    or else not Valid_Token (Measure_Text)
-                    or else not Parse_Quanta (Amount_Text, Amount)
-                  then
-                     return Fail (Line_No, "invalid EFFECT row");
-                  end if;
-                  Current_Effects.Count := Current_Effects.Count + 1;
-                  Current_Effects.Values (Current_Effects.Count) :=
-                    (Key     => No_Effect_Key,
-                     Locus   => (Token => Make_Token (Locus_Text)),
-                     Measure => (Token => Make_Token (Measure_Text)),
-                     Amount  => (Quanta => Amount));
-               end;
-
-            elsif Kind = "KEYED-EFFECT" then
-               if Count /= 5 then
-                  return Fail (Line_No, "malformed KEYED-EFFECT row");
-               elsif Current_Effects.Count = Effect_Count_Type'Last then
-                  return Fail (Line_No, "too many Effects in one Event");
-               end if;
-               declare
-                  Key_Text     : constant String := Field (Line, 2);
-                  Locus_Text   : constant String := Field (Line, 3);
-                  Measure_Text : constant String := Field (Line, 4);
-                  Amount_Text  : constant String := Field (Line, 5);
-                  Amount       : Quanta_Type;
-               begin
-                  if not Valid_Token (Key_Text)
-                    or else not Valid_Token (Locus_Text)
-                    or else not Valid_Token (Measure_Text)
-                    or else not Parse_Quanta (Amount_Text, Amount)
-                  then
-                     return Fail (Line_No, "invalid KEYED-EFFECT row");
-                  end if;
-                  Current_Effects.Count := Current_Effects.Count + 1;
-                  Current_Effects.Values (Current_Effects.Count) :=
-                    (Key     => Retained_Effect_Key
-                                  ((Token => Make_Token (Key_Text))),
-                     Locus   => (Token => Make_Token (Locus_Text)),
-                     Measure => (Token => Make_Token (Measure_Text)),
-                     Amount  => (Quanta => Amount));
-               end;
-
-            elsif Kind = "REPLACES" then
-               if Count /= 2 or else Current_Replaces.Present then
-                  return Fail (Line_No, "malformed or duplicate REPLACES row");
-               end if;
-               declare
-                  Target : constant String := Field (Line, 2);
-               begin
-                  if not Valid_Token (Target) then
-                     return Fail (Line_No, "invalid REPLACES target");
-                  end if;
-                  Current_Replaces :=
-                    (Present => True,
-                     Value   => (Token => Make_Token (Target)));
-               end;
-
-            elsif Kind = "REVERSAL-OF" then
-               if Count /= 2 or else Current_Reverses.Present then
-                  return Fail (Line_No, "malformed or duplicate REVERSAL-OF row");
-               end if;
-               declare
-                  Target : constant String := Field (Line, 2);
-               begin
-                  if not Valid_Token (Target) then
-                     return Fail (Line_No, "invalid REVERSAL-OF target");
-                  end if;
-                  Current_Reverses :=
-                    (Present => True,
-                     Value   => (Token => Make_Token (Target)));
-               end;
-
-            elsif Kind = "ENDTX" then
-               if Count /= 1 then
-                  return Fail (Line_No, "malformed ENDTX row");
-               elsif not Keys_Are_Unique (Current_Effects) then
-                  return Fail (Line_No, "duplicate retained Effect key");
-               end if;
-
-               declare
-                  Ev : constant Event :=
-                    Make_Event (Current_Id, Current_Effects);
-               begin
-                  if Current_Effects.Count > 0
-                    and then not Is_Balanced_Per_Measure (Ev)
-                  then
-                     return Fail (Line_No, "Event fails per-Measure conservation");
-                  end if;
-
-                  Result.Events.Append (Ev);
-
-                  Validity_Entries.Count := Validity_Entries.Count + 1;
-                  Validity_Entries.Values (Validity_Entries.Count) :=
-                    (Event_Id => Current_Id,
-                     Valid_On => Current_Date);
-
-                  if Has_Description then
-                     if Description_Entries.Count = Description_Count_Type'Last then
-                        return Fail
-                          (Line_No, "HRA-N description bridge capacity exceeded");
-                     end if;
-                     Description_Entries.Count := Description_Entries.Count + 1;
-                     Description_Entries.Values (Description_Entries.Count) :=
-                       (Event_Id => Current_Id,
-                        Text     => Current_Desc);
-                  end if;
-
-                  Metadata_Entries.Count := Metadata_Entries.Count + 1;
-                  Metadata_Entries.Values (Metadata_Entries.Count) :=
-                    (Event       => Current_Id,
-                     Purpose     =>
-                       (Present => False,
-                        Value => (Length => 0, Value => [others => ' '])),
-                     Replaces    => Current_Replaces,
-                     Reverses    => Current_Reverses,
-                     Relation    =>
-                       (Present => False,
-                        Value => (Length => 0, Value => [others => ' '])),
-                     Discharge   =>
-                       (Present => False,
-                        Value => (Length => 0, Value => [others => ' '])));
-               end;
-
-               In_Tx := False;
-               Reset_Current;
-
-            elsif Kind = "TX" then
-               return Fail (Line_No, "missing ENDTX before next TX");
-            else
-               return Fail
-                 (Line_No,
-                  "unsupported LOAM Actual row family: " & Kind);
+            if not Is_Row (First_Line, "TX") then
+               return Fail (Line_No, "expected TX row");
             end if;
+
+            while not Starts_With (To_String (Last_Line), "ENDTX") loop
+               if Ada.Text_IO.End_Of_File (File) then
+                  return Fail (Line_No, "missing final ENDTX");
+               end if;
+
+               declare
+                  Line : constant String := Ada.Text_IO.Get_Line (File);
+               begin
+                  Line_No := Line_No + 1;
+                  Append (Block, Line & ASCII.LF);
+                  Last_Line := To_Unbounded_String (Line);
+               end;
+            end loop;
+
+            declare
+               Decoded : constant Event_Block_Result :=
+                 Decode_Event_Block (To_String (Block));
+               Error_Line : constant Natural :=
+                 (if Decoded.Error_Line = 0 then
+                     Block_Start
+                  else
+                     Block_Start + Decoded.Error_Line - 1);
+            begin
+               if not Decoded.Success then
+                  if Decoded.Error_Len = 0 then
+                     return Fail (Error_Line, "invalid Event block");
+                  else
+                     return Fail
+                       (Error_Line,
+                        Decoded.Error_Reason (1 .. Decoded.Error_Len));
+                  end if;
+               elsif Event_Exists (Result.Events, Id (Decoded.Value)) then
+                  return Fail (Block_Start, "duplicate Event identity");
+               elsif Decoded.Has_Description
+                 and then
+                   Description_Entries.Count = Description_Count_Type'Last
+               then
+                  return Fail
+                    (Block_Start,
+                     "HRA-N description bridge capacity exceeded");
+               end if;
+
+               Result.Events.Append (Decoded.Value);
+
+               Validity_Entries.Count := Validity_Entries.Count + 1;
+               Validity_Entries.Values (Validity_Entries.Count) :=
+                 Decoded.Validity;
+
+               if Decoded.Has_Description then
+                  Description_Entries.Count :=
+                    Description_Entries.Count + 1;
+                  Description_Entries.Values
+                    (Description_Entries.Count) := Decoded.Description;
+               end if;
+
+               Metadata_Entries.Count := Metadata_Entries.Count + 1;
+               Metadata_Entries.Values (Metadata_Entries.Count) :=
+                 Decoded.Metadata;
+            end;
          end;
       end loop;
-
-      if In_Tx then
-         return Fail (Line_No, "missing final ENDTX");
-      end if;
 
       if not Event_Ids_Are_Unique (Validity_Entries)
         or else not Event_Ids_Are_Unique (Description_Entries)
         or else not Metadata_Event_Ids_Are_Unique (Metadata_Entries)
       then
-         return Fail (Line_No, "duplicate Event identity in decoded evidence");
+         return Fail
+           (Line_No, "duplicate Event identity in decoded evidence");
       elsif not Replacement_References_Are_Closed (Metadata_Entries)
         or else not Replacements_Are_One_To_One (Metadata_Entries)
         or else not Replacements_Are_Acyclic (Metadata_Entries)
@@ -562,21 +310,22 @@ package body HRA_N.Storage.Loam_Actual_Reader is
                   Target_Event,
                   Have_Target);
                if not Have_Reversal or else not Have_Target then
-                  return Fail (Line_No, "reversal endpoint is not readable");
+                  return Fail
+                    (Line_No, "reversal endpoint is not readable");
                elsif not Exact_Physical_Inverse
                  (Target_Event, Reversal_Event)
                then
-                  return Fail (Line_No, "reversal is not the exact physical inverse");
+                  return Fail
+                    (Line_No,
+                     "reversal is not the exact physical inverse");
                end if;
             end;
          end if;
       end loop;
 
-      --  The semantic image must come from one stable byte snapshot. Close
-      --  the Text_IO handle before reopening the same external file through
-      --  Exact_File; some Ada runtimes reject overlapping opens even when both
-      --  are read-only. Then verify that an atomic authority replacement did
-      --  not occur during parsing.
+      --  The semantic image must still correspond to the exact byte snapshot
+      --  observed before parsing. Re-read only after closing the Text_IO handle
+      --  so an atomic authority replacement cannot silently change admission.
       Ada.Text_IO.Close (File);
       declare
          After : constant HRA_N.Storage.Exact_File.Read_Result :=
@@ -585,7 +334,8 @@ package body HRA_N.Storage.Loam_Actual_Reader is
          if not After.Success
            or else To_String (After.Content) /= To_String (Exact.Content)
          then
-            return Fail (Line_No, "LOAM Actual changed while being read");
+            return Fail
+              (Line_No, "LOAM Actual changed while being read");
          end if;
       end;
 
@@ -598,8 +348,7 @@ package body HRA_N.Storage.Loam_Actual_Reader is
    exception
       when others =>
          return Fail
-           (Line_No,
-            "unexpected LOAM Actual reader failure");
+           (Line_No, "unexpected LOAM Actual reader failure");
    end Read_Loam_Actual_File;
 
 end HRA_N.Storage.Loam_Actual_Reader;
