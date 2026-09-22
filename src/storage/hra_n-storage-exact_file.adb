@@ -74,7 +74,7 @@ package body HRA_N.Storage.Exact_File is
             SIO.Set_Index (File, SIO.Count (First_Byte));
             SIO.Read (File, Data, Last);
 
-            if Last /= Data'Last then
+            if Natural (Last) /= Length then
                SIO.Close (File);
                return Result;
             end if;
