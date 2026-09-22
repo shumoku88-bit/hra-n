@@ -27,13 +27,24 @@ is
       Added_Not_Practical,
       Duplicate_Scheduled_Id);
 
+   --  Proof-facing identity law stated directly as a quantified expression.
+   --  Keeping it local avoids making this transition depend on the executable
+   --  loop implementation of Scheduled_Ids_Are_Unique.
+   function Occurrence_Ids_Are_Unique
+     (Image : Scheduled_Lifecycle) return Boolean is
+     (for all I in 1 .. Image.Sched_Count =>
+        (for all J in I + 1 .. Image.Sched_Count =>
+           not Equal_Token
+             (Image.Sched_Items (I).Id.Token,
+              Image.Sched_Items (J).Id.Token)));
+
    --  Semantic admission for the occurrence plane represented by this proof
    --  model.  Empty historical balanced movements remain admissible: Loam's
    --  codec permits them.  The stronger nonempty/nonzero rule applies only to
    --  a newly published practical creation.
    function Occurrence_Image_Admitted
      (Image : Scheduled_Lifecycle) return Boolean is
-     (Scheduled_Ids_Are_Unique (Image)
+     (Occurrence_Ids_Are_Unique (Image)
       and then
         (for all I in 1 .. Image.Sched_Count =>
            Is_Conserved (Image.Sched_Items (I))));
