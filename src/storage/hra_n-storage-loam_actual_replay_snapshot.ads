@@ -8,8 +8,11 @@
 --  different pathname generation.
 -------------------------------------------------------------------------------
 
+with HRA_N.Core.Description;
 with HRA_N.Core.Event;
+with HRA_N.Core.Transaction_Metadata;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
+with HRA_N.Core.Validity;
 with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.Loam_Actual_Byte_Spans;
 use HRA_N.Storage.Loam_Actual_Byte_Spans;
@@ -58,6 +61,31 @@ package HRA_N.Storage.Loam_Actual_Replay_Snapshot is
    function Admitted_Event_At
      (Snapshot : Replay_Snapshot;
       Position : Located_Event_Position) return Admitted_Event_Result;
+
+   --  Query-facing semantic context admitted from the same exact byte image
+   --  that owns this snapshot's replay locators.  No pathname is reopened.
+   type Admitted_Context_Result (Present : Boolean := False) is record
+      case Present is
+         when True =>
+            Has_Date        : Boolean;
+            Valid_On        : HRA_N.Core.Validity.Date_Type;
+            Has_Description : Boolean;
+            Description     : HRA_N.Core.Description.Description_Text;
+            Metadata_Found  : Boolean;
+            Metadata        :
+              HRA_N.Core.Transaction_Metadata.Transaction_Metadata_Entry;
+            Has_Successor    : Boolean;
+            Successor        : Event_Id;
+            Has_Reverser     : Boolean;
+            Reverser         : Event_Id;
+         when False =>
+            null;
+      end case;
+   end record;
+
+   function Admitted_Context_For
+     (Snapshot : Replay_Snapshot;
+      Key      : Event_Id) return Admitted_Context_Result;
 
    type Replay_Status is
      (Replay_Snapshot_Closed,
