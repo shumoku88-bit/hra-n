@@ -114,53 +114,25 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
       return True;
    end Same_Terminals;
 
-   function Actual_Id_Retained
-     (Image : Actual_Reader.Loam_Actual_Result;
-      Id    : Event_Id) return Boolean
-   is
-   begin
-      if not Image.Success then
-         return False;
-      end if;
-
-      for I in 1 .. Natural (Image.Events.Length) loop
-         if Equal_Token
-           (HRA_N.Core.Event.Id (Image.Events.Element (I)).Token, Id.Token)
-         then
-            return True;
-         end if;
-      end loop;
-      return False;
-   end Actual_Id_Retained;
-
    --  This is the current HRA-N observable form of Loam's
    --  Application.currentOpenScheduled admission boundary.  The raw codec may
    --  retain cross-kind terminal conflict; publication must refuse to extend
    --  such an unreadable authority.
    function Lifecycle_Readable
-     (Lifecycle : Scheduled_Lifecycle;
-      Actual     : Actual_Reader.Loam_Actual_Result) return Boolean
+     (Lifecycle : Scheduled_Lifecycle) return Boolean
    is
    begin
-      if not Scheduled_Ids_Are_Unique (Lifecycle)
-        or else not Completions_Reference_Known (Lifecycle)
-        or else not Retirements_Reference_Known (Lifecycle)
-        or else not Replacements_Reference_Known (Lifecycle)
-        or else not Replacement_History_Is_Acyclic (Lifecycle)
-        or else not Terminal_Targets_Are_Unique (Lifecycle)
-      then
-         return False;
-      end if;
-
-      for I in 1 .. Lifecycle.Comp_Count loop
-         if not Actual_Id_Retained
-           (Actual, Lifecycle.Comp_Items (I).Actual)
-         then
-            return False;
-         end if;
-      end loop;
-
-      return True;
+      --  Deliberately do not require a Completion Actual endpoint to exist.
+      --  Loam treats a retained Scheduled -> missing-Actual completion as inert:
+      --  the Scheduled source remains open so an interrupted completion can be
+      --  retried safely.  Readability rejects unknown Scheduled endpoints,
+      --  replacement cycles, and cross-kind terminal conflict instead.
+      return Scheduled_Ids_Are_Unique (Lifecycle)
+        and then Completions_Reference_Known (Lifecycle)
+        and then Retirements_Reference_Known (Lifecycle)
+        and then Replacements_Reference_Known (Lifecycle)
+        and then Replacement_History_Is_Acyclic (Lifecycle)
+        and then Terminal_Targets_Are_Unique (Lifecycle);
    end Lifecycle_Readable;
 
    function First_Unused_Id
@@ -232,15 +204,14 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
    function Candidate_Corresponds
      (Before : Scheduled_Lifecycle;
       After  : Scheduled_Reader.Read_Result;
-      Added  : Scheduled_Occurrence;
-      Actual : Actual_Reader.Loam_Actual_Result) return Boolean
+      Added  : Scheduled_Occurrence) return Boolean
    is
    begin
       if not After.Success
         or else Before.Sched_Count = Max_Scheduled_Entries
         or else After.Lifecycle.Sched_Count /= Before.Sched_Count + 1
         or else not Same_Terminals (Before, After.Lifecycle)
-        or else not Lifecycle_Readable (After.Lifecycle, Actual)
+        or else not Lifecycle_Readable (After.Lifecycle)
       then
          return False;
       end if;
@@ -399,7 +370,7 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
                Release_All;
                return Fail
                  ("HRA-N Scheduled writer working-set capacity exceeded");
-            elsif not Lifecycle_Readable (Current.Lifecycle, Actual) then
+            elsif not Lifecycle_Readable (Current.Lifecycle) then
                Release_All;
                return Fail
                  ("current Scheduled lifecycle is not application-readable");
@@ -442,7 +413,7 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
                   Error_Len : Natural := 0;
                begin
                   if not Candidate_Corresponds
-                    (Current.Lifecycle, Admitted, Added, Actual)
+                    (Current.Lifecycle, Admitted, Added)
                   then
                      Release_All;
                      return Fail
@@ -477,7 +448,7 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
                             (US.To_String (Staged.Content));
                      begin
                         if not Candidate_Corresponds
-                          (Current.Lifecycle, Staged_Image, Added, Actual)
+                          (Current.Lifecycle, Staged_Image, Added)
                         then
                            Remove_Stage;
                            Release_All;
