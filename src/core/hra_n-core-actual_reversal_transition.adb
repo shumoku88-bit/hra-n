@@ -18,51 +18,6 @@ is
       return (Token => Make_Token (Text));
    end Deterministic_Reversal_Id;
 
-   procedure Prove_Present_Not_Fresh
-     (Source : Semantic_Image;
-      Key    : Event_Id;
-      Added  : HRA_N.Core.Event.Event)
-   with
-     Ghost,
-     Pre =>
-       (for some I in 1 .. Source.Count =>
-          Same_Id (HRA_N.Core.Event.Id (Source.Events (I)), Key))
-       and then Fresh_For (Source, Added),
-     Post => not Same_Id (Key, HRA_N.Core.Event.Id (Added));
-
-   procedure Prove_Present_Not_Fresh
-     (Source : Semantic_Image;
-      Key    : Event_Id;
-      Added  : HRA_N.Core.Event.Event)
-   is
-   begin
-      for I in 1 .. Source.Count loop
-         if Same_Id (HRA_N.Core.Event.Id (Source.Events (I)), Key) then
-            pragma Assert
-              (not Same_Id
-                 (HRA_N.Core.Event.Id (Source.Events (I)),
-                  HRA_N.Core.Event.Id (Added)));
-            if Same_Id (Key, HRA_N.Core.Event.Id (Added)) then
-               pragma Assert
-                 (Equal_Token
-                    (HRA_N.Core.Event.Id (Source.Events (I)).Token,
-                     Key.Token));
-               pragma Assert
-                 (Equal_Token
-                    (Key.Token,
-                     HRA_N.Core.Event.Id (Added).Token));
-               pragma Assert
-                 (Equal_Token
-                    (HRA_N.Core.Event.Id (Source.Events (I)).Token,
-                     HRA_N.Core.Event.Id (Added).Token));
-               pragma Assert (False);
-            end if;
-            return;
-         end if;
-      end loop;
-      pragma Assert (False);
-   end Prove_Present_Not_Fresh;
-
    procedure Prove_Correction_Edge_Target_Substitution
      (Left, Right : Correction_Edge;
       Key         : Event_Id)
