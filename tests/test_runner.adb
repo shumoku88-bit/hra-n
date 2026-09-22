@@ -12,6 +12,7 @@ with Test_Relation_Command;
 with Test_Movement;
 with Test_Event;
 with Test_Actual_Bounded_History;
+with Test_Actual_Byte_Spans;
 with Test_Actual_Replay_Refinement;
 with Test_Actual_Reader_Refinement;
 with Test_Loam_Actual_Reader;
@@ -98,6 +99,11 @@ begin
    if Selected ("Test_Actual_Bounded_History") then
       Announce ("Test_Actual_Bounded_History");
       Test_Actual_Bounded_History.Run;
+   end if;
+
+   if Selected ("Test_Actual_Byte_Spans") then
+      Announce ("Test_Actual_Byte_Spans");
+      Test_Actual_Byte_Spans.Run;
    end if;
 
    if Selected ("Test_Actual_Replay_Refinement") then

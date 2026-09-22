@@ -7,6 +7,24 @@ package body HRA_N.Core.Actual_Replay_Refinement with
   SPARK_Mode => On
 is
 
+   procedure Prove_Event_Id_Substitution
+     (Left  : HRA_N.Core.Event.Event;
+      Right : HRA_N.Core.Event.Event;
+      Key   : Event_Id)
+   with
+     Ghost,
+     Pre  => Left = Right and then Same_Id (Id (Left), Key),
+     Post => Same_Id (Id (Right), Key);
+
+   procedure Prove_Event_Id_Substitution
+     (Left  : HRA_N.Core.Event.Event;
+      Right : HRA_N.Core.Event.Event;
+      Key   : Event_Id)
+   is
+   begin
+      null;
+   end Prove_Event_Id_Substitution;
+
    procedure Prove_Unique_Source_Position
      (Source : Semantic_Image;
       Key    : Event_Id;
@@ -69,6 +87,18 @@ is
                pragma Assert
                  (Same_Id (Id (Source.Events (I)), Key));
                pragma Assert (Reference.State = Found);
+               pragma Assert (Reference.Position <= Source.Count);
+               pragma Assert
+                 (Reference.Value = Source.Events (Reference.Position));
+               pragma Assert
+                 (Same_Id (Id (Reference.Value), Key));
+               Prove_Event_Id_Substitution
+                 (Reference.Value,
+                  Source.Events (Reference.Position),
+                  Key);
+               pragma Assert
+                 (Same_Id
+                    (Id (Source.Events (Reference.Position)), Key));
                Prove_Unique_Source_Position
                  (Source, Key, I, Reference.Position);
                pragma Assert (Reference.Position = I);
