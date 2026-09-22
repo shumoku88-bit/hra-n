@@ -1178,5 +1178,95 @@ class TestHraNCli(unittest.TestCase):
         with open(path, "rb") as handle:
             self.assertEqual(handle.read(), before_1025)
 
+    def test_canonical_revert_routes_to_loam_actual(self) -> None:
+        ht = "\t"
+        nl = "\n"
+        actual = (
+            f"LOAM-NORMALIZED-ACTUAL{ht}1{nl}"
+            f"TX{ht}record-1{ht}2026-09-20{ht}NODESC{nl}"
+            f"EFFECT{ht}cash{ht}jpy{ht}-25{nl}"
+            f"EFFECT{ht}food{ht}jpy{ht}25{nl}"
+            f"ENDTX{nl}"
+            f"TX{ht}record-2{ht}2026-09-20{ht}NODESC{nl}"
+            f"EFFECT{ht}cash{ht}jpy{ht}-10{nl}"
+            f"EFFECT{ht}food{ht}jpy{ht}10{nl}"
+            f"ENDTX{nl}"
+            f"TX{ht}record-3{ht}2026-09-20{ht}NODESC{nl}"
+            f"EFFECT{ht}cash{ht}jpy{ht}-5{nl}"
+            f"EFFECT{ht}food{ht}jpy{ht}5{nl}"
+            f"ENDTX{nl}"
+        )
+        policy = (
+            f"LOAM-LOCUS-ADMISSION-VOCABULARY{ht}1{nl}"
+            f"LOCUS{ht}cash{nl}"
+            f"LOCUS{ht}food{nl}"
+        )
+        scheduled = (
+            f"LOAM-SCHEDULED-LIFECYCLE{ht}1{nl}"
+            f"BEGIN{ht}Scheduled{nl}"
+            f"LOAM-SCHEDULED-MEMORY{ht}1{nl}"
+            f"END{ht}Scheduled{nl}"
+            f"BEGIN{ht}Completion{nl}"
+            f"LOAM-SCHEDULED-COMPLETION-MEMORY{ht}1{nl}"
+            f"END{ht}Completion{nl}"
+            f"BEGIN{ht}Retirement{nl}"
+            f"LOAM-SCHEDULED-RETIREMENT-MEMORY{ht}1{nl}"
+            f"END{ht}Retirement{nl}"
+            f"BEGIN{ht}Replacement{nl}"
+            f"LOAM-SCHEDULED-REPLACEMENT-MEMORY{ht}1{nl}"
+            f"END{ht}Replacement{nl}"
+        )
+        for name, text in {
+            "actual.loam": actual,
+            "locus-admission.loam": policy,
+            "scheduled.loam": scheduled,
+        }.items():
+            with open(os.path.join(self.test_dir, name), "w", encoding="utf-8") as f:
+                f.write(text)
+
+        res = self.run_cmd("revert", "record-1", "2026-09-22")
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn(
+            "[OK] Committed Canonical Reversal: actual-reversal:record-1",
+            res.stdout,
+        )
+        self.assertIn("AUTHORITY: actual.loam", res.stdout)
+        self.assertIn("READ-BACK: snapshot-bound verified", res.stdout)
+
+        with open(os.path.join(self.test_dir, "actual.loam"), "r", encoding="utf-8") as f:
+            after_first = f.read()
+        self.assertIn("REVERSAL-OF\trecord-1", after_first)
+        self.assertIn("EFFECT\tcash\tjpy\t25", after_first)
+        self.assertIn("EFFECT\tfood\tjpy\t-25", after_first)
+
+        res = self.run_cmd("movement", "revert", "record-2", "2026-09-22")
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn(
+            "[OK] Committed Canonical Reversal: actual-reversal:record-2",
+            res.stdout,
+        )
+
+        with open(os.path.join(self.test_dir, "actual.loam"), "r", encoding="utf-8") as f:
+            before_rejections = f.read()
+
+        res = self.run_cmd("revert", "record-1", "2026-09-22")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("participates in Reversal evidence", res.stdout)
+        with open(os.path.join(self.test_dir, "actual.loam"), "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), before_rejections)
+
+        res = self.run_cmd("revert", "record-3", "2026-09-22", "not persisted")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("no persisted reason/description field", res.stdout)
+        with open(os.path.join(self.test_dir, "actual.loam"), "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), before_rejections)
+
+        res = self.run_cmd("revert", "record-3", "2026-02-30")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("Invalid reversal date", res.stdout)
+        with open(os.path.join(self.test_dir, "actual.loam"), "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), before_rejections)
+
+
 if __name__ == "__main__":
     unittest.main()
