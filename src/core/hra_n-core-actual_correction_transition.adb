@@ -61,6 +61,36 @@ is
       pragma Assert (False);
    end Prove_Present_Not_Fresh;
 
+   procedure Prove_Edge_Target_Substitution
+     (Left, Right : Correction_Edge;
+      Key         : Event_Id)
+   with
+     Ghost,
+     Pre  => Left = Right and then not Same_Id (Left.Target, Key),
+     Post => not Same_Id (Right.Target, Key);
+
+   procedure Prove_Edge_Target_Substitution
+     (Left, Right : Correction_Edge;
+      Key         : Event_Id)
+   is
+   begin
+      null;
+   end Prove_Edge_Target_Substitution;
+
+   procedure Prove_Not_Same_Through_Same
+     (Left, Middle, Right : Event_Id)
+   with
+     Ghost,
+     Pre  => Same_Id (Left, Middle) and then not Same_Id (Middle, Right),
+     Post => not Same_Id (Left, Right);
+
+   procedure Prove_Not_Same_Through_Same
+     (Left, Middle, Right : Event_Id)
+   is
+   begin
+      null;
+   end Prove_Not_Same_Through_Same;
+
    procedure Prove_Frontier_Move
      (Source      : Correction_Image;
       Target_Id   : Event_Id;
@@ -154,10 +184,16 @@ is
          pragma Assert
            (not Same_Id (Source.Edges (I).Target, Replacement_Id));
          pragma Assert (Result.Edges (I) = Source.Edges (I));
+         Prove_Edge_Target_Substitution
+           (Source.Edges (I), Result.Edges (I), Replacement_Id);
          pragma Assert
            (not Same_Id (Result.Edges (I).Target, Replacement_Id));
       end loop;
 
+      Prove_Not_Same_Through_Same
+        (Result.Edges (Result.Edge_Count).Target,
+         Target_Id,
+         Replacement_Id);
       pragma Assert
         (not Same_Id
            (Result.Edges (Result.Edge_Count).Target, Replacement_Id));
