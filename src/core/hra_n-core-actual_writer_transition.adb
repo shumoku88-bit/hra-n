@@ -7,6 +7,24 @@ package body HRA_N.Core.Actual_Writer_Transition with
   SPARK_Mode => On
 is
 
+   procedure Prove_Event_Id_Substitution
+     (Left  : HRA_N.Core.Event.Event;
+      Right : HRA_N.Core.Event.Event;
+      Key   : Event_Id)
+   with
+     Ghost,
+     Pre  => Left = Right and then Same_Id (Id (Left), Key),
+     Post => Same_Id (Id (Right), Key);
+
+   procedure Prove_Event_Id_Substitution
+     (Left  : HRA_N.Core.Event.Event;
+      Right : HRA_N.Core.Event.Event;
+      Key   : Event_Id)
+   is
+   begin
+      null;
+   end Prove_Event_Id_Substitution;
+
    procedure Prove_Unique_Position
      (Image : Semantic_Image;
       Key   : Event_Id;
@@ -190,6 +208,10 @@ is
         (After.Value = Target.Events (After.Position));
       pragma Assert
         (Same_Id (Id (After.Value), Key));
+      Prove_Event_Id_Substitution
+        (After.Value,
+         Target.Events (After.Position),
+         Key);
       pragma Assert
         (Same_Id
            (Id (Target.Events (After.Position)), Key));
