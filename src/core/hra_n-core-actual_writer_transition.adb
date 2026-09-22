@@ -185,6 +185,14 @@ is
         (Same_Id
            (Id (Target.Events (Before.Position)), Key));
       pragma Assert (After.State = Found);
+      pragma Assert (After.Position <= Target.Count);
+      pragma Assert
+        (After.Value = Target.Events (After.Position));
+      pragma Assert
+        (Same_Id (Id (After.Value), Key));
+      pragma Assert
+        (Same_Id
+           (Id (Target.Events (After.Position)), Key));
 
       Prove_Unique_Position
         (Target,
