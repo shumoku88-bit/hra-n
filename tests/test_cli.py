@@ -1267,6 +1267,88 @@ class TestHraNCli(unittest.TestCase):
         with open(os.path.join(self.test_dir, "actual.loam"), "r", encoding="utf-8") as f:
             self.assertEqual(f.read(), before_rejections)
 
+    def test_canonical_scheduled_add_routes_to_loam_lifecycle(self) -> None:
+        ht = "\t"
+        nl = "\n"
+        actual = f"LOAM-NORMALIZED-ACTUAL{ht}1{nl}"
+        policy = (
+            f"LOAM-LOCUS-ADMISSION-VOCABULARY{ht}1{nl}"
+            f"LOCUS{ht}cash{nl}"
+            f"LOCUS{ht}food{nl}"
+        )
+        scheduled = (
+            f"LOAM-SCHEDULED-LIFECYCLE{ht}1{nl}"
+            f"BEGIN{ht}Scheduled{nl}"
+            f"LOAM-SCHEDULED-MEMORY{ht}1{nl}"
+            f"SCHEDULED{ht}scheduled-1{ht}2026-09-20{ht}jpy{nl}"
+            f"CHANGE{ht}cash{ht}-10{nl}"
+            f"CHANGE{ht}food{ht}10{nl}"
+            f"SCHEDULED{ht}scheduled-3{ht}2026-09-21{ht}jpy{nl}"
+            f"CHANGE{ht}cash{ht}-20{nl}"
+            f"CHANGE{ht}food{ht}20{nl}"
+            f"END{ht}Scheduled{nl}"
+            f"BEGIN{ht}Completion{nl}"
+            f"LOAM-SCHEDULED-COMPLETION-MEMORY{ht}1{nl}"
+            f"END{ht}Completion{nl}"
+            f"BEGIN{ht}Retirement{nl}"
+            f"LOAM-SCHEDULED-RETIREMENT-MEMORY{ht}1{nl}"
+            f"RETIREMENT{ht}scheduled-1{nl}"
+            f"END{ht}Retirement{nl}"
+            f"BEGIN{ht}Replacement{nl}"
+            f"LOAM-SCHEDULED-REPLACEMENT-MEMORY{ht}1{nl}"
+            f"END{ht}Replacement{nl}"
+        )
+        for name, text in {
+            "actual.loam": actual,
+            "locus-admission.loam": policy,
+            "scheduled.loam": scheduled,
+        }.items():
+            with open(os.path.join(self.test_dir, name), "w", encoding="utf-8") as f:
+                f.write(text)
+
+        res = self.run_cmd(
+            "scheduled", "add", "cash", "food", "75", "2026-09-22"
+        )
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn(
+            "[OK] Added canonical Scheduled obligation: scheduled-2",
+            res.stdout,
+        )
+        self.assertIn("AUTHORITY: scheduled.loam", res.stdout)
+        self.assertIn(
+            "READ-BACK: proved production refinement verified",
+            res.stdout,
+        )
+
+        path = os.path.join(self.test_dir, "scheduled.loam")
+        with open(path, "r", encoding="utf-8") as f:
+            after = f.read()
+        self.assertIn(
+            "SCHEDULED\tscheduled-2\t2026-09-22\tjpy\n"
+            "CHANGE\tcash\t-75\n"
+            "CHANGE\tfood\t75\n",
+            after,
+        )
+        self.assertIn("RETIREMENT\tscheduled-1\n", after)
+
+        before_rejection = after
+        res = self.run_cmd(
+            "scheduled", "add", "cash", "unapproved", "5", "2026-09-23"
+        )
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("not approved for new publication", res.stdout + res.stderr)
+        with open(path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), before_rejection)
+
+        res = self.run_cmd(
+            "scheduled", "add", "cash", "food", "5", "2026-02-30"
+        )
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("invalid date format", res.stdout + res.stderr)
+        with open(path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), before_rejection)
+
+
 
 if __name__ == "__main__":
     unittest.main()
