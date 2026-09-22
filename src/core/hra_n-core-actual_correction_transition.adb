@@ -22,6 +22,45 @@ is
       null;
    end Prove_Same_Id_Transitive;
 
+   procedure Prove_Present_Not_Fresh
+     (Source      : Semantic_Image;
+      Key         : Event_Id;
+      Replacement : HRA_N.Core.Event.Event)
+   with
+     Ghost,
+     Pre =>
+       (for some I in 1 .. Source.Count =>
+          Same_Id (HRA_N.Core.Event.Id (Source.Events (I)), Key))
+       and then Fresh_For (Source, Replacement),
+     Post =>
+       not Same_Id
+         (Key, HRA_N.Core.Event.Id (Replacement));
+
+   procedure Prove_Present_Not_Fresh
+     (Source      : Semantic_Image;
+      Key         : Event_Id;
+      Replacement : HRA_N.Core.Event.Event)
+   is
+   begin
+      for I in 1 .. Source.Count loop
+         if Same_Id (HRA_N.Core.Event.Id (Source.Events (I)), Key) then
+            if Same_Id (Key, HRA_N.Core.Event.Id (Replacement)) then
+               Prove_Same_Id_Transitive
+                 (HRA_N.Core.Event.Id (Source.Events (I)),
+                  Key,
+                  HRA_N.Core.Event.Id (Replacement));
+               pragma Assert
+                 (not Same_Id
+                    (HRA_N.Core.Event.Id (Source.Events (I)),
+                     HRA_N.Core.Event.Id (Replacement)));
+               pragma Assert (False);
+            end if;
+            return;
+         end if;
+      end loop;
+      pragma Assert (False);
+   end Prove_Present_Not_Fresh;
+
    procedure Prove_Frontier_Move
      (Source      : Correction_Image;
       Target_Id   : Event_Id;
@@ -94,63 +133,26 @@ is
       pragma Assert (Replacement_After.State = Found);
       pragma Assert (Event_Present (Result, Replacement_Id));
 
-      --  The fresh replacement cannot equal the retained current target.
-      if Same_Id (Target_Id, Replacement_Id) then
-         Prove_Same_Id_Transitive
-           (HRA_N.Core.Event.Id (Target_Before.Value),
-            Target_Id,
-            Replacement_Id);
-         pragma Assert
-           (Same_Id
-              (HRA_N.Core.Event.Id (Target_Before.Value),
-               Replacement_Id));
-         pragma Assert
-           (not Same_Id
-              (HRA_N.Core.Event.Id
-                 (Source.Events.Events (Target_Before.Position)),
-               Replacement_Id));
-         pragma Assert
-           (Target_Before.Value =
-              Source.Events.Events (Target_Before.Position));
-         pragma Assert (False);
-      end if;
+      --  Freshness is a semantic separation fact: a retained source EventId
+      --  cannot equal the fresh replacement identity.
+      Prove_Present_Not_Fresh
+        (Source.Events, Target_Id, Replacement);
       pragma Assert (not Same_Id (Target_Id, Replacement_Id));
 
-      --  No old edge can target the fresh replacement: every old edge target
-      --  is a retained source Event by closure, while Replacement is fresh.
+      --  No old edge can target the fresh replacement: endpoint closure
+      --  makes every old target a retained source Event, and freshness separates
+      --  every retained source identity from Replacement.
       for I in 1 .. Source.Edge_Count loop
          pragma Loop_Invariant
            (for all J in 1 .. I - 1 =>
               not Same_Id (Result.Edges (J).Target, Replacement_Id));
 
-         if Same_Id (Source.Edges (I).Target, Replacement_Id) then
-            declare
-               Old_Target : constant Event_Id := Source.Edges (I).Target;
-               Old_Lookup : constant Lookup_Result :=
-                 Reference_Lookup (Source.Events, Old_Target);
-            begin
-               pragma Assert (Event_Present (Source, Old_Target));
-               pragma Assert (Old_Lookup.State = Found);
-               Prove_Same_Id_Transitive
-                 (HRA_N.Core.Event.Id (Old_Lookup.Value),
-                  Old_Target,
-                  Replacement_Id);
-               pragma Assert
-                 (Same_Id
-                    (HRA_N.Core.Event.Id (Old_Lookup.Value),
-                     Replacement_Id));
-               pragma Assert
-                 (Old_Lookup.Value =
-                    Source.Events.Events (Old_Lookup.Position));
-               pragma Assert
-                 (not Same_Id
-                    (HRA_N.Core.Event.Id
-                       (Source.Events.Events (Old_Lookup.Position)),
-                     Replacement_Id));
-               pragma Assert (False);
-            end;
-         end if;
-
+         pragma Assert
+           (Event_Present (Source, Source.Edges (I).Target));
+         Prove_Present_Not_Fresh
+           (Source.Events, Source.Edges (I).Target, Replacement);
+         pragma Assert
+           (not Same_Id (Source.Edges (I).Target, Replacement_Id));
          pragma Assert (Result.Edges (I) = Source.Edges (I));
          pragma Assert
            (not Same_Id (Result.Edges (I).Target, Replacement_Id));
