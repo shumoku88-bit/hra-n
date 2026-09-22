@@ -4,6 +4,7 @@
 -------------------------------------------------------------------------------
 
 with HRA_N.Core.Event;
+with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Storage.Loam_Actual_Byte_Spans;
 with HRA_N.Storage.Loam_Actual_Replay_Snapshot;
 
@@ -67,7 +68,7 @@ package body HRA_N.Storage.Loam_Actual_Replay_Refinement is
             Result.Source.Events (Position) := Admitted.Value;
 
             declare
-               Key : constant HRA_N.Core.Types.Event_Id :=
+               Key : constant Event_Id :=
                  HRA_N.Core.Event.Id (Admitted.Value);
                Replayed : constant Production.Replay_Result :=
                  Production.Replay_Event (Snapshot, Key);
