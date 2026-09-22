@@ -65,6 +65,9 @@ jobs:
       - name: Test Actual Reversal Transition
         run: ./tests/bin/test_runner Test_Actual_Reversal_Transition
 
+      - name: Test Scheduled Creation Transition
+        run: ./tests/bin/test_runner Test_Scheduled_Creation_Transition
+
       - name: Test LOAM Actual Reader
         run: ./tests/bin/test_runner Test_Loam_Actual_Reader
 
