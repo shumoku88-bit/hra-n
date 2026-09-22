@@ -136,14 +136,25 @@ package body Test_Actual_Byte_Spans is
 
          for I in Event_Position range 1 .. 3 loop
             declare
-               Span    : constant Event_Byte_Span := Located.Spans (I);
-               Block   : constant String := Slice_Event_Block (Bytes, Span);
-               Decoded : constant Event_Block_Result :=
+               Span      : constant Event_Byte_Span := Located.Spans (I);
+               Range_Read : constant HRA_N.Storage.Exact_File.Read_Result :=
+                 HRA_N.Storage.Exact_File.Read_Range
+                   (Path,
+                    Positive (Span.First_Byte),
+                    Positive (Span.Last_Byte));
+               Block     : constant String := To_String (Range_Read.Content);
+               Decoded   : constant Event_Block_Result :=
                  Decode_Event_Block (Block);
             begin
                Assert
                  (Span_Is_Valid (Bytes, Span),
                   "located Event span is inside exact snapshot");
+               Assert
+                 (Range_Read.Success,
+                  "exact byte range is readable without materializing whole file");
+               Assert
+                 (Block = Slice_Event_Block (Bytes, Span),
+                  "seek-based byte range equals the locator slice");
                Assert
                  (Equal_Token
                     (Span.Key.Token,
