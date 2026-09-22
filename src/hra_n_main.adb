@@ -422,37 +422,91 @@ begin
                   Amount      => Amount_Val,
                   Valid_On    => Date_Val,
                   Description => Make_Token (Desc_Val (1 .. Desc_Len)));
-               Prop_Res : constant Proposal_Result := Propose (Paths, Intent);
             begin
-               if not Prop_Res.Success then
-                  Put_Line ("[ERROR] Proposal rejected: " &
-                            Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                  return;
-               end if;
+               if Canonical_Authority_Present (Data_Dir) then
+                  declare
+                     Canonical : constant Canonical_Record_Result :=
+                       Record_Loam_Actual (Data_Dir, Intent);
+                  begin
+                     if Canonical.State = Canonical_Not_Published then
+                        Put_Line
+                          ("[ERROR] Canonical movement rejected: "
+                           & Canonical.Diagnostic
+                             (1 .. Canonical.Diagnostic_Len));
+                        Ada.Command_Line.Set_Exit_Status
+                          (Ada.Command_Line.Failure);
+                        return;
+                     end if;
 
-               declare
-                  Receipt : constant Movement_Receipt := Commit (Prop_Res.Proposal);
-               begin
-                  if Receipt.Success then
                      Put_Line ("============================================================");
-                     Put_Line (" [OK] Committed Movement: " &
-                               Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                     Put_Line ("      SNAPSHOT: " &
-                               Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-                     Put_Line ("      FLOW:     " & From_Locus & " (-" & Amount_Str & " jpy) -> " &
-                               To_Locus & " (+" & Amount_Str & " jpy)");
-                     Put_Line ("      DATE:     " & Format_Iso_Date (Date_Val));
+                     Put_Line
+                       (" [OK] Committed Canonical Movement: "
+                        & Canonical.Event_Id.Value
+                          (1 .. Canonical.Event_Id.Length));
+                     Put_Line ("      AUTHORITY: actual.loam");
+                     Put_Line
+                       ("      FLOW:      " & From_Locus & " (-" & Amount_Str
+                        & " jpy) -> " & To_Locus & " (+" & Amount_Str & " jpy)");
+                     Put_Line ("      DATE:      " & Format_Iso_Date (Date_Val));
                      if Desc_Len > 0 then
-                        Put_Line ("      DESC:     " & Desc_Val (1 .. Desc_Len));
+                        Put_Line
+                          ("      DESC:      " & Desc_Val (1 .. Desc_Len));
+                     end if;
+
+                     if Canonical.State =
+                       Canonical_Published_Readback_Verified
+                     then
+                        Put_Line
+                          ("      READ-BACK: snapshot-bound verified");
+                     else
+                        Put_Line
+                          (" [WARN] Publication succeeded; snapshot-bound "
+                           & "read-back was not verified");
+                        if Canonical.Diagnostic_Len > 0 then
+                           Put_Line
+                             ("        "
+                              & Canonical.Diagnostic
+                                (1 .. Canonical.Diagnostic_Len));
+                        end if;
                      end if;
                      Put_Line ("============================================================");
-                  else
-                     Put_Line ("[ERROR] Movement commit rejected: " &
-                               Receipt.Error (1 .. Receipt.Error_Len));
-                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                  end if;
-               end;
+                  end;
+               else
+                  declare
+                     Prop_Res : constant Proposal_Result :=
+                       Propose (Paths, Intent);
+                  begin
+                     if not Prop_Res.Success then
+                        Put_Line ("[ERROR] Proposal rejected: " &
+                                  Prop_Res.Error (1 .. Prop_Res.Error_Len));
+                        Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                        return;
+                     end if;
+
+                     declare
+                        Receipt : constant Movement_Receipt := Commit (Prop_Res.Proposal);
+                     begin
+                        if Receipt.Success then
+                           Put_Line ("============================================================");
+                           Put_Line (" [OK] Committed Movement: " &
+                                     Receipt.Primary_Id (1 .. Receipt.Primary_Len));
+                           Put_Line ("      SNAPSHOT: " &
+                                     Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                           Put_Line ("      FLOW:     " & From_Locus & " (-" & Amount_Str & " jpy) -> " &
+                                     To_Locus & " (+" & Amount_Str & " jpy)");
+                           Put_Line ("      DATE:     " & Format_Iso_Date (Date_Val));
+                           if Desc_Len > 0 then
+                              Put_Line ("      DESC:     " & Desc_Val (1 .. Desc_Len));
+                           end if;
+                           Put_Line ("============================================================");
+                        else
+                           Put_Line ("[ERROR] Movement commit rejected: " &
+                                     Receipt.Error (1 .. Receipt.Error_Len));
+                           Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                        end if;
+                     end;
+                  end;
+               end if;
             end;
          end;
          return;

@@ -64,6 +64,35 @@ package HRA_N.Application.Movement_Command is
    subtype Proposal_Result is HRA_N.Application.Proposal.Proposal_Result;
    subtype Movement_Receipt is HRA_N.Application.Proposal.Receipt;
 
+   --  Canonical direct-publication state.  Publication and post-publication
+   --  read-back are deliberately distinct so a successful durable publication
+   --  is never reported as "failed" merely because later verification could
+   --  not be observed.
+   type Canonical_Record_State is
+     (Canonical_Not_Published,
+      Canonical_Published_Readback_Unverified,
+      Canonical_Published_Readback_Verified);
+
+   type Canonical_Record_Result is record
+      State          : Canonical_Record_State := Canonical_Not_Published;
+      Event_Id       : Token_Text;
+      Diagnostic     : String (1 .. 192) := [others => ' '];
+      Diagnostic_Len : Natural := 0;
+   end record;
+
+   --  True when any Loam canonical Actual authority marker exists in Root_Path.
+   --  Partial presence intentionally selects the canonical route so HRA-N will
+   --  fail closed rather than silently writing the transitional journal.
+   function Canonical_Authority_Present
+     (Root_Path : String) return Boolean;
+
+   --  Publish one ordinary Movement directly to Loam canonical actual.loam,
+   --  then resolve the new identity through the snapshot-bound Actual detail
+   --  reader.  A post-publication read-back problem does not erase publication.
+   function Record_Loam_Actual
+     (Root_Path : String;
+      Intent    : Movement_Intent) return Canonical_Record_Result;
+
    function Propose
      (Paths  : Path_Config;
       Intent : Movement_Intent) return Proposal_Result;
