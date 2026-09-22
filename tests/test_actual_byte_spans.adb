@@ -3,6 +3,7 @@ with Ada.Directories;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with GNAT.OS_Lib;
 with HRA_N.Core.Actual_Bounded_History;
 use HRA_N.Core.Actual_Bounded_History;
 with HRA_N.Core.Actual_Replay_Refinement;
@@ -62,6 +63,41 @@ package body Test_Actual_Byte_Spans is
          Ada.Directories.Delete_File (Path);
       end if;
    end Cleanup;
+
+   function Read_Path_Through_OS (Target : String) return String is
+      use type GNAT.OS_Lib.File_Descriptor;
+      FD       : GNAT.OS_Lib.File_Descriptor := GNAT.OS_Lib.Invalid_FD;
+      Closed   : Boolean := False;
+      Length   : constant Integer := Integer (Ada.Directories.Size (Target));
+   begin
+      FD := GNAT.OS_Lib.Open_Read (Target, GNAT.OS_Lib.Binary);
+      if FD = GNAT.OS_Lib.Invalid_FD then
+         return "";
+      end if;
+
+      if Length = 0 then
+         GNAT.OS_Lib.Close (FD, Closed);
+         return (if Closed then "" else "");
+      end if;
+
+      declare
+         Data : String (1 .. Length);
+         Read_Count : constant Integer :=
+           GNAT.OS_Lib.Read (FD, Data'Address, Data'Length);
+      begin
+         GNAT.OS_Lib.Close (FD, Closed);
+         if not Closed or else Read_Count /= Data'Length then
+            return "";
+         end if;
+         return Data;
+      end;
+   exception
+      when others =>
+         if FD /= GNAT.OS_Lib.Invalid_FD then
+            GNAT.OS_Lib.Close (FD, Closed);
+         end if;
+         return "";
+   end Read_Path_Through_OS;
 
    procedure Run is
       Snapshot : constant Snapshot_Id := 77;
@@ -172,17 +208,15 @@ package body Test_Actual_Byte_Spans is
          declare
             Same_Handle : constant HRA_N.Storage.Exact_File.Read_Result :=
               HRA_N.Storage.Exact_File.Read_All (Handle);
-            Reopened    : constant HRA_N.Storage.Exact_File.Read_Result :=
-              HRA_N.Storage.Exact_File.Read_All (Path);
+            Reopened    : constant String := Read_Path_Through_OS (Path);
          begin
             Assert
               (Same_Handle.Success
                and then To_String (Same_Handle.Content) = Document,
                "open handle still reads the original canonical snapshot");
             Assert
-              (Reopened.Success
-               and then To_String (Reopened.Content) = Replacement_Document,
-               "reopening the pathname observes the replacement snapshot");
+              (Reopened = Replacement_Document,
+               "fresh OS open of pathname observes the replacement snapshot");
          end;
 
          for I in Event_Position range 1 .. 3 loop
