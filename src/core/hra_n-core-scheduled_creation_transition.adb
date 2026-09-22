@@ -7,6 +7,42 @@ package body HRA_N.Core.Scheduled_Creation_Transition with
   SPARK_Mode => On
 is
 
+   procedure Prove_Conservation_Substitution
+     (Left, Right : Scheduled_Occurrence)
+   with
+     Ghost,
+     Pre  => Left = Right and then Is_Conserved (Left),
+     Post => Is_Conserved (Right);
+
+   procedure Prove_Conservation_Substitution
+     (Left, Right : Scheduled_Occurrence)
+   is
+   begin
+      null;
+   end Prove_Conservation_Substitution;
+
+   procedure Prove_Id_Pair_Substitution
+     (Source_Left, Source_Right : Scheduled_Occurrence;
+      Target_Left, Target_Right : Scheduled_Occurrence)
+   with
+     Ghost,
+     Pre =>
+       Source_Left = Target_Left
+       and then Source_Right = Target_Right
+       and then not Equal_Token
+         (Source_Left.Id.Token, Source_Right.Id.Token),
+     Post =>
+       not Equal_Token
+         (Target_Left.Id.Token, Target_Right.Id.Token);
+
+   procedure Prove_Id_Pair_Substitution
+     (Source_Left, Source_Right : Scheduled_Occurrence;
+      Target_Left, Target_Right : Scheduled_Occurrence)
+   is
+   begin
+      null;
+   end Prove_Id_Pair_Substitution;
+
    procedure Prove_Target_Occurrence_Admission
      (Source : Scheduled_Lifecycle;
       Added  : Scheduled_Occurrence;
@@ -36,12 +72,14 @@ is
             pragma Assert
               (Target.Sched_Items (I) = Source.Sched_Items (I));
             pragma Assert (Is_Conserved (Source.Sched_Items (I)));
-            pragma Assert (Is_Conserved (Target.Sched_Items (I)));
+            Prove_Conservation_Substitution
+              (Source.Sched_Items (I), Target.Sched_Items (I));
          else
             pragma Assert (I = Target.Sched_Count);
             pragma Assert (Target.Sched_Items (I) = Added);
             pragma Assert (Is_Conserved (Added));
-            pragma Assert (Is_Conserved (Target.Sched_Items (I)));
+            Prove_Conservation_Substitution
+              (Added, Target.Sched_Items (I));
          end if;
       end loop;
 
@@ -59,10 +97,11 @@ is
                  (not Equal_Token
                     (Source.Sched_Items (I).Id.Token,
                      Source.Sched_Items (J).Id.Token));
-               pragma Assert
-                 (not Equal_Token
-                    (Target.Sched_Items (I).Id.Token,
-                     Target.Sched_Items (J).Id.Token));
+               Prove_Id_Pair_Substitution
+                 (Source.Sched_Items (I),
+                  Source.Sched_Items (J),
+                  Target.Sched_Items (I),
+                  Target.Sched_Items (J));
             else
                pragma Assert (J = Target.Sched_Count);
                pragma Assert (I <= Source.Sched_Count);
@@ -73,10 +112,11 @@ is
                  (not Equal_Token
                     (Source.Sched_Items (I).Id.Token,
                      Added.Id.Token));
-               pragma Assert
-                 (not Equal_Token
-                    (Target.Sched_Items (I).Id.Token,
-                     Target.Sched_Items (J).Id.Token));
+               Prove_Id_Pair_Substitution
+                 (Source.Sched_Items (I),
+                  Added,
+                  Target.Sched_Items (I),
+                  Target.Sched_Items (J));
             end if;
          end loop;
       end loop;
