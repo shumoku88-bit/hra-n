@@ -1,4 +1,4 @@
-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 --  HRA-N: Verified Household Engine
 --  Package body: HRA_N.Storage.Atomic_Writer
 -------------------------------------------------------------------------------
@@ -80,24 +80,25 @@ package body HRA_N.Storage.Atomic_Writer is
       Len : constant Natural := Natural'Min (Msg'Length, Error_Msg'Length);
    begin
       Error_Len := Len;
-      Error_Msg (Error_Msg'First .. Error_Msg'First + Len - 1) :=
-        Msg (Msg'First .. Msg'First + Len - 1);
+      if Len > 0 then
+         Error_Msg (Error_Msg'First .. Error_Msg'First + Len - 1) :=
+           Msg (Msg'First .. Msg'First + Len - 1);
+      end if;
       return False;
    end Set_Error;
 
-   function Write_File_Atomically
-     (Target_Path : String;
-      Content     : String;
-      Error_Msg   : out String;
-      Error_Len   : out Natural) return Boolean
+   function Write_Staging_File_Durably
+     (Stage_Path : String;
+      Content    : String;
+      Error_Msg  : out String;
+      Error_Len  : out Natural) return Boolean
    is
-      Stage_Path : constant String := Target_Path & ".stage";
-      Parent_Dir : constant String := Ada.Directories.Containing_Directory (Target_Path);
-      FD         : GNAT.OS_Lib.File_Descriptor := GNAT.OS_Lib.Invalid_FD;
-      Written    : Integer;
-      Close_Ok   : Boolean := False;
+      Parent_Dir : constant String :=
+        Ada.Directories.Containing_Directory (Stage_Path);
+      FD       : GNAT.OS_Lib.File_Descriptor := GNAT.OS_Lib.Invalid_FD;
+      Written  : Integer;
+      Close_Ok : Boolean := False;
    begin
-      --  1. Ensure parent directory exists
       if not Ada.Directories.Exists (Parent_Dir) then
          begin
             Ada.Directories.Create_Path (Parent_Dir);
@@ -108,14 +109,12 @@ package body HRA_N.Storage.Atomic_Writer is
          end;
       end if;
 
-      --  2. Create/truncate staging file
       FD := GNAT.OS_Lib.Create_File (Stage_Path, GNAT.OS_Lib.Binary);
       if FD = GNAT.OS_Lib.Invalid_FD then
          return Set_Error
            ("Cannot create staging file: " & Stage_Path, Error_Msg, Error_Len);
       end if;
 
-      --  3. Write complete payload
       if Content'Length > 0 then
          Written := GNAT.OS_Lib.Write (FD, Content'Address, Content'Length);
          if Written /= Content'Length then
@@ -124,21 +123,21 @@ package body HRA_N.Storage.Atomic_Writer is
                Ada.Directories.Delete_File (Stage_Path);
             end if;
             return Set_Error
-              ("Incomplete write to staging file: " & Stage_Path, Error_Msg, Error_Len);
+              ("Incomplete write to staging file: " & Stage_Path,
+               Error_Msg, Error_Len);
          end if;
       end if;
 
-      --  4. Explicit POSIX fsync on open file
       if not Sync_File (FD) then
          GNAT.OS_Lib.Close (FD, Close_Ok);
          if Ada.Directories.Exists (Stage_Path) then
             Ada.Directories.Delete_File (Stage_Path);
          end if;
          return Set_Error
-           ("fsync failed on staging file: " & Stage_Path, Error_Msg, Error_Len);
+           ("fsync failed on staging file: " & Stage_Path,
+            Error_Msg, Error_Len);
       end if;
 
-      --  5. Close file
       GNAT.OS_Lib.Close (FD, Close_Ok);
       FD := GNAT.OS_Lib.Invalid_FD;
       if not Close_Ok then
@@ -146,33 +145,83 @@ package body HRA_N.Storage.Atomic_Writer is
             Ada.Directories.Delete_File (Stage_Path);
          end if;
          return Set_Error
-           ("close failed on staging file: " & Stage_Path, Error_Msg, Error_Len);
-      end if;
-
-      --  6. Atomic rename to target path via POSIX rename(2)
-      if not Atomic_Rename (Stage_Path, Target_Path) then
-         if Ada.Directories.Exists (Stage_Path) then
-            Ada.Directories.Delete_File (Stage_Path);
-         end if;
-         return Set_Error
-           ("Atomic rename failed from " & Stage_Path & " to " & Target_Path,
+           ("close failed on staging file: " & Stage_Path,
             Error_Msg, Error_Len);
-      end if;
-
-      --  7. Sync containing directory metadata
-      if not Sync_Containing_Directory (Target_Path) then
-         return Set_Error
-           ("fsync directory failed for: " & Target_Path, Error_Msg, Error_Len);
       end if;
 
       Error_Len := 0;
       return True;
-
    exception
       when others =>
          if FD /= GNAT.OS_Lib.Invalid_FD then
             GNAT.OS_Lib.Close (FD, Close_Ok);
          end if;
+         if Ada.Directories.Exists (Stage_Path) then
+            Ada.Directories.Delete_File (Stage_Path);
+         end if;
+         return Set_Error
+           ("Unexpected error during staged write", Error_Msg, Error_Len);
+   end Write_Staging_File_Durably;
+
+   function Publish_Staged_File_Atomically
+     (Stage_Path  : String;
+      Target_Path : String;
+      Error_Msg   : out String;
+      Error_Len   : out Natural) return Boolean
+   is
+   begin
+      if not Ada.Directories.Exists (Stage_Path) then
+         return Set_Error
+           ("Staging file does not exist: " & Stage_Path,
+            Error_Msg, Error_Len);
+      end if;
+
+      if not Atomic_Rename (Stage_Path, Target_Path) then
+         return Set_Error
+           ("Atomic rename failed from " & Stage_Path & " to " & Target_Path,
+            Error_Msg, Error_Len);
+      end if;
+
+      if not Sync_Containing_Directory (Target_Path) then
+         return Set_Error
+           ("fsync directory failed for: " & Target_Path,
+            Error_Msg, Error_Len);
+      end if;
+
+      Error_Len := 0;
+      return True;
+   exception
+      when others =>
+         return Set_Error
+           ("Unexpected error during staged publication", Error_Msg, Error_Len);
+   end Publish_Staged_File_Atomically;
+
+   function Write_File_Atomically
+     (Target_Path : String;
+      Content     : String;
+      Error_Msg   : out String;
+      Error_Len   : out Natural) return Boolean
+   is
+      Stage_Path : constant String := Target_Path & ".stage";
+   begin
+      if not Write_Staging_File_Durably
+        (Stage_Path, Content, Error_Msg, Error_Len)
+      then
+         return False;
+      end if;
+
+      if not Publish_Staged_File_Atomically
+        (Stage_Path, Target_Path, Error_Msg, Error_Len)
+      then
+         if Ada.Directories.Exists (Stage_Path) then
+            Ada.Directories.Delete_File (Stage_Path);
+         end if;
+         return False;
+      end if;
+
+      return True;
+   exception
+      when others =>
          if Ada.Directories.Exists (Stage_Path) then
             Ada.Directories.Delete_File (Stage_Path);
          end if;
