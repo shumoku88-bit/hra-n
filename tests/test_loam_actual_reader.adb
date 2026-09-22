@@ -259,6 +259,35 @@ package body Test_Loam_Actual_Reader is
          end if;
       end;
 
+      --  1b. The same semantic admission is available directly from an
+      --  already captured exact byte image, with no pathname reopen.
+      declare
+         Content : constant String :=
+           Header
+           & "TX" & HT & "ev-content" & HT & "2026-09-05" & HT & "NODESC" & NL
+           & "EFFECT" & HT & "cash" & HT & "jpy" & HT & "-7" & NL
+           & "EFFECT" & HT & "food" & HT & "jpy" & HT & "7" & NL
+           & "ENDTX" & NL;
+         R : constant Loam_Actual_Result :=
+           Read_Loam_Actual_Content (Content);
+      begin
+         Assert
+           (R.Success,
+            "exact-content admission succeeds without pathname reopen");
+         Assert_Equal_Int
+           (1, Long_Long_Integer (R.Events.Length),
+            "exact-content admission retains the Event");
+         Assert
+           (Equal_Token
+              (Id (R.Events.Element (1)).Token, Make_Token ("ev-content")),
+            "exact-content admission preserves Event identity");
+      end;
+
+      Assert
+        (not Read_Loam_Actual_Content
+          ("LOAM-NORMALIZED-ACTUAL" & HT & "1").Success,
+         "exact-content admission still requires canonical final newline");
+
       --  2. Retained Effect identity may not collide within one Event.
       Write_File
         (Header
