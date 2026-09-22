@@ -138,6 +138,23 @@ package body HRA_N.Storage.Loam_Actual_Replay_Snapshot is
      (Snapshot : Replay_Snapshot) return Located_Event_Count is
      (if Is_Open (Snapshot) then Snapshot.Count else 0);
 
+   function Admitted_Event_At
+     (Snapshot : Replay_Snapshot;
+      Position : Located_Event_Position) return Admitted_Event_Result
+   is
+   begin
+      if not Is_Open (Snapshot) or else Position > Snapshot.Count then
+         return (Present => False);
+      end if;
+
+      return
+        (Present => True,
+         Value   => Snapshot.Admitted.Events.Element (Positive (Position)));
+   exception
+      when others =>
+         return (Present => False);
+   end Admitted_Event_At;
+
    function Replay_Event
      (Snapshot : in out Replay_Snapshot;
       Key      : Event_Id) return Replay_Result

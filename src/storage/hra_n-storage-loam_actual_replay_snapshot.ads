@@ -8,6 +8,7 @@
 --  different pathname generation.
 -------------------------------------------------------------------------------
 
+with HRA_N.Core.Event;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.Loam_Actual_Byte_Spans;
@@ -41,6 +42,22 @@ package HRA_N.Storage.Loam_Actual_Replay_Snapshot is
 
    function Event_Count
      (Snapshot : Replay_Snapshot) return Located_Event_Count;
+
+   --  Qualification-only view of the semantic Event admitted from the exact
+   --  byte image that also produced this snapshot's replay locators.
+   --  This exposes no raw byte span and cannot rebind the pathname.
+   type Admitted_Event_Result (Present : Boolean := False) is record
+      case Present is
+         when True =>
+            Value : HRA_N.Core.Event.Event;
+         when False =>
+            null;
+      end case;
+   end record;
+
+   function Admitted_Event_At
+     (Snapshot : Replay_Snapshot;
+      Position : Located_Event_Position) return Admitted_Event_Result;
 
    type Replay_Status is
      (Replay_Snapshot_Closed,
