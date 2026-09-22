@@ -7,6 +7,7 @@ with Ada.Command_Line;
 with Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
+with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Review; use HRA_N.Application.Review;
 with HRA_N.Application.Scheduled_Query; use HRA_N.Application.Scheduled_Query;
 with HRA_N.Application.Scheduled_Detail_Query; use HRA_N.Application.Scheduled_Detail_Query;
@@ -337,30 +338,86 @@ package body HRA_N.UI.Scheduled_Cli is
             To_Locus     => (Token => Make_Token (To_Locus)),
             Measure      => (Token => Make_Token (Measure_Str)),
             Amount       => Amount);
-         Prop_Res : constant Proposal_Result := Propose_Create (Paths, Intent);
       begin
-         if not Prop_Res.Success then
-            Put_Error_Line ("hra-n: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
-            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-            return;
+         if Canonical_Authority_Present (Data_Dir_Str (Paths)) then
+            declare
+               Canonical : constant Canonical_Create_Result :=
+                 Create_Loam_Scheduled (Data_Dir_Str (Paths), Intent);
+            begin
+               if Canonical.State = Canonical_Not_Published then
+                  Put_Error_Line
+                    ("hra-n: canonical Scheduled creation rejected: "
+                     & Canonical.Diagnostic
+                       (1 .. Canonical.Diagnostic_Len));
+                  Ada.Command_Line.Set_Exit_Status
+                    (Ada.Command_Line.Failure);
+                  return;
+               end if;
+
+               Put_Line ("============================================================");
+               Put_Line
+                 (" [OK] Added canonical Scheduled obligation: "
+                  & Canonical.Scheduled_Id.Value
+                    (1 .. Canonical.Scheduled_Id.Length));
+               Put_Line ("      AUTHORITY: scheduled.loam");
+               Put_Line ("      DATE:      " & Format_Iso_Date (D_Val));
+               Put_Line
+                 ("      FLOW:      " & From_Locus & " (-" & Amount_Str
+                  & " " & Measure_Str & ") -> " & To_Locus & " (+"
+                  & Amount_Str & " " & Measure_Str & ")");
+
+               if Canonical.State = Canonical_Published_Readback_Verified then
+                  Put_Line
+                    ("      READ-BACK: proved production refinement verified");
+               else
+                  Put_Line
+                    (" [WARN] Publication succeeded; proved read-back "
+                     & "refinement was not verified");
+                  if Canonical.Diagnostic_Len > 0 then
+                     Put_Line
+                       ("        "
+                        & Canonical.Diagnostic
+                          (1 .. Canonical.Diagnostic_Len));
+                  end if;
+               end if;
+               Put_Line ("============================================================");
+            end;
+         else
+            declare
+               Prop_Res : constant Proposal_Result :=
+                 Propose_Create (Paths, Intent);
+            begin
+               if not Prop_Res.Success then
+                  Put_Error_Line
+                    ("hra-n: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
+                  Ada.Command_Line.Set_Exit_Status
+                    (Ada.Command_Line.Failure);
+                  return;
+               end if;
+
+               declare
+                  Receipt : constant Scheduled_Receipt :=
+                    Commit (Prop_Res.Proposal);
+               begin
+                  if not Receipt.Success then
+                     Put_Error_Line
+                       ("hra-n: " & Receipt.Error (1 .. Receipt.Error_Len));
+                     Ada.Command_Line.Set_Exit_Status
+                       (Ada.Command_Line.Failure);
+                     return;
+                  end if;
+
+                  Put_Line ("============================================================");
+                  Put_Line
+                    (" [OK] Added scheduled obligation: "
+                     & Receipt.Primary_Id (1 .. Receipt.Primary_Len));
+                  Put_Line
+                    ("      Activated snapshot: "
+                     & Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                  Put_Line ("============================================================");
+               end;
+            end;
          end if;
-
-         declare
-            Receipt : constant Scheduled_Receipt := Commit (Prop_Res.Proposal);
-         begin
-            if not Receipt.Success then
-               Put_Error_Line ("hra-n: " & Receipt.Error (1 .. Receipt.Error_Len));
-               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-               return;
-            end if;
-
-            Put_Line ("============================================================");
-            Put_Line (" [OK] Added scheduled obligation: " &
-                      Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-            Put_Line ("      Activated snapshot: " &
-                      Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-            Put_Line ("============================================================");
-         end;
       end;
    end Add_Scheduled;
 

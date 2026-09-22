@@ -1,3 +1,4 @@
+with Ada.Directories;
 with Ada.Exceptions;
 with Ada.Strings; use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
@@ -11,8 +12,189 @@ with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Journal_Writer; use HRA_N.Storage.Journal_Writer;
 with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 with HRA_N.Storage.Scheduled_Journal_Reader; use HRA_N.Storage.Scheduled_Journal_Reader;
+with HRA_N.Storage.Loam_Scheduled_Creation_Writer;
+with HRA_N.Storage.Loam_Scheduled_Creation_Refinement;
+with HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader;
 
 package body HRA_N.Application.Scheduled_Command is
+
+
+   package Canonical_Writer renames
+     HRA_N.Storage.Loam_Scheduled_Creation_Writer;
+   package Canonical_Refinement renames
+     HRA_N.Storage.Loam_Scheduled_Creation_Refinement;
+   use type Canonical_Refinement.Qualification_Status;
+   package Canonical_Reader renames
+     HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader;
+
+   function Canonical_Authority_Present
+     (Root_Path : String) return Boolean
+   is
+      Scheduled_Path : constant String :=
+        Ada.Directories.Compose (Root_Path, "scheduled.loam");
+      Actual_Path : constant String :=
+        Ada.Directories.Compose (Root_Path, "actual.loam");
+      Policy_Path : constant String :=
+        Ada.Directories.Compose (Root_Path, "locus-admission.loam");
+   begin
+      return Ada.Directories.Exists (Scheduled_Path)
+        or else Ada.Directories.Exists (Actual_Path)
+        or else Ada.Directories.Exists (Policy_Path);
+   exception
+      when others =>
+         return False;
+   end Canonical_Authority_Present;
+
+   function Create_Loam_Scheduled
+     (Root_Path : String;
+      Intent    : Create_Intent) return Canonical_Create_Result
+   is
+      Result : Canonical_Create_Result;
+
+      procedure Set_Diagnostic (Message : String) is
+         Len : constant Natural :=
+           Natural'Min (Message'Length, Result.Diagnostic'Length);
+      begin
+         Result.Diagnostic := [others => ' '];
+         Result.Diagnostic_Len := Len;
+         if Len > 0 then
+            Result.Diagnostic (1 .. Len) :=
+              Message (Message'First .. Message'First + Len - 1);
+         end if;
+      end Set_Diagnostic;
+
+   begin
+      if Root_Path'Length = 0 then
+         Set_Diagnostic ("canonical data root must not be empty");
+         return Result;
+      elsif Intent.Id.Length > 0 then
+         Set_Diagnostic
+           ("canonical Scheduled creation allocates scheduled-N identity; "
+            & "custom identity is not supported");
+         return Result;
+      elsif Intent.Amount <= 0 then
+         Set_Diagnostic ("scheduled amount must be positive");
+         return Result;
+      elsif Equal_Token
+        (Intent.From_Locus.Token, Intent.To_Locus.Token)
+      then
+         Set_Diagnostic ("scheduled loci must be distinct");
+         return Result;
+      elsif not Is_Valid_Date
+        (Intent.Expected_Day.Year,
+         Intent.Expected_Day.Month,
+         Intent.Expected_Day.Day)
+      then
+         Set_Diagnostic ("scheduled occurrence date is invalid");
+         return Result;
+      end if;
+
+      declare
+         Scheduled_Path : constant String :=
+           Ada.Directories.Compose (Root_Path, "scheduled.loam");
+         Before : constant Canonical_Reader.Read_Result :=
+           Canonical_Reader.Read_File (Scheduled_Path);
+         Changes : Change_List;
+      begin
+         if not Before.Success then
+            if Before.Error_Len > 0 then
+               Set_Diagnostic
+                 ("canonical Scheduled before-image unavailable: "
+                  & Before.Error_Reason (1 .. Before.Error_Len));
+            else
+               Set_Diagnostic
+                 ("canonical Scheduled before-image is not admitted");
+            end if;
+            return Result;
+         end if;
+
+         Changes.Count := 2;
+         Changes.Values (1) :=
+           (Locus  => Intent.From_Locus,
+            Amount => -Intent.Amount);
+         Changes.Values (2) :=
+           (Locus  => Intent.To_Locus,
+            Amount => Intent.Amount);
+
+         declare
+            Published : constant Canonical_Writer.Publish_Result :=
+              Canonical_Writer.Publish_Creation
+                (Root_Path,
+                 (Expected_Day => Intent.Expected_Day,
+                  Measure      => Intent.Measure,
+                  Changes      => Changes));
+         begin
+            if not Published.Success then
+               if Published.Error_Len > 0 then
+                  Set_Diagnostic
+                    (Published.Error_Reason (1 .. Published.Error_Len));
+               else
+                  Set_Diagnostic
+                    ("canonical Scheduled publication was rejected");
+               end if;
+               return Result;
+            end if;
+
+            Result.State := Canonical_Published_Readback_Unverified;
+            Result.Scheduled_Id := Published.Scheduled_Id.Token;
+
+            declare
+               After : constant Canonical_Reader.Read_Result :=
+                 Canonical_Reader.Read_File (Scheduled_Path);
+               Qualified : constant Canonical_Refinement.Qualification_Result :=
+                 Canonical_Refinement.Qualify_One_Fresh_Creation
+                   (Before, After);
+               Matches : constant Boolean :=
+                 Qualified.Status = Canonical_Refinement.Qualified
+                 and then Equal_Token
+                   (Qualified.Added.Id.Token, Published.Scheduled_Id.Token)
+                 and then Equal_Date
+                   (Qualified.Added.Expected_Day, Intent.Expected_Day)
+                 and then Equal_Token
+                   (Qualified.Added.Measure.Token, Intent.Measure.Token)
+                 and then Qualified.Added.Changes.Count = 2
+                 and then Equal_Token
+                   (Qualified.Added.Changes.Values (1).Locus.Token,
+                    Intent.From_Locus.Token)
+                 and then Qualified.Added.Changes.Values (1).Amount =
+                   -Intent.Amount
+                 and then Equal_Token
+                   (Qualified.Added.Changes.Values (2).Locus.Token,
+                    Intent.To_Locus.Token)
+                 and then Qualified.Added.Changes.Values (2).Amount =
+                   Intent.Amount;
+            begin
+               if Matches then
+                  Result.State := Canonical_Published_Readback_Verified;
+                  Result.Diagnostic_Len := 0;
+               elsif not After.Success and then After.Error_Len > 0 then
+                  Set_Diagnostic
+                    ("Scheduled was published; read-back not verified: "
+                     & After.Error_Reason (1 .. After.Error_Len));
+               else
+                  Set_Diagnostic
+                    ("Scheduled was published; proved before/after refinement "
+                     & "did not match");
+               end if;
+            end;
+         end;
+      end;
+
+      return Result;
+
+   exception
+      when E : others =>
+         if Result.State = Canonical_Not_Published then
+            Set_Diagnostic
+              ("unexpected canonical Scheduled publication failure: "
+               & Ada.Exceptions.Exception_Message (E));
+         else
+            Set_Diagnostic
+              ("Scheduled was published; application read-back failed: "
+               & Ada.Exceptions.Exception_Message (E));
+         end if;
+         return Result;
+   end Create_Loam_Scheduled;
 
    function Format_Event_Id (Number : Positive) return String is
       Image_Text : constant String := Trim (Number'Image, Both);

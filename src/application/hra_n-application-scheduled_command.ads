@@ -44,6 +44,35 @@ package HRA_N.Application.Scheduled_Command is
    subtype Proposal_Result is HRA_N.Application.Proposal.Proposal_Result;
    subtype Scheduled_Receipt is HRA_N.Application.Proposal.Receipt;
 
+
+   type Canonical_Create_State is
+     (Canonical_Not_Published,
+      Canonical_Published_Readback_Unverified,
+      Canonical_Published_Readback_Verified);
+
+   type Canonical_Create_Result is record
+      State          : Canonical_Create_State := Canonical_Not_Published;
+      Scheduled_Id   : Token_Text;
+      Diagnostic     : String (1 .. 192) := [others => ' '];
+      Diagnostic_Len : Natural := 0;
+   end record;
+
+   --  True when any canonical Scheduled/Actual/Locus authority marker exists
+   --  in Root_Path.  Partial presence deliberately selects the canonical route
+   --  so HRA-N will fail closed instead of silently writing legacy authority.
+   function Canonical_Authority_Present
+     (Root_Path : String) return Boolean;
+
+   --  Publish one practical Scheduled occurrence directly to canonical
+   --  scheduled.loam, then qualify the observed before/after lifecycle against
+   --  the proved one-fresh creation transition.
+   --
+   --  Canonical Loam allocates scheduled-N identity itself.  A non-empty
+   --  caller-supplied Intent.Id is therefore rejected rather than discarded.
+   function Create_Loam_Scheduled
+     (Root_Path : String;
+      Intent    : Create_Intent) return Canonical_Create_Result;
+
    function Propose_Create
      (Paths  : Path_Config;
       Intent : Create_Intent) return Proposal_Result;
