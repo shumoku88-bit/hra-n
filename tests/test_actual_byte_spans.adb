@@ -3,6 +3,7 @@ with Ada.Directories;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with GNAT.OS_Lib;
 with HRA_N.Core.Actual_Bounded_History;
 use HRA_N.Core.Actual_Bounded_History;
 with HRA_N.Core.Actual_Replay_Refinement;
@@ -12,6 +13,7 @@ use HRA_N.Core.Actual_Reader_Refinement;
 with HRA_N.Core.Event;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Storage.Exact_File;
+with HRA_N.Storage.Atomic_Writer; use HRA_N.Storage.Atomic_Writer;
 with HRA_N.Storage.Loam_Actual_Byte_Spans;
 use HRA_N.Storage.Loam_Actual_Byte_Spans;
 with HRA_N.Storage.Loam_Actual_Event_Block;
@@ -62,6 +64,41 @@ package body Test_Actual_Byte_Spans is
       end if;
    end Cleanup;
 
+   function Read_Path_Through_OS (Target : String) return String is
+      use type GNAT.OS_Lib.File_Descriptor;
+      FD       : GNAT.OS_Lib.File_Descriptor := GNAT.OS_Lib.Invalid_FD;
+      Closed   : Boolean := False;
+      Length   : constant Integer := Integer (Ada.Directories.Size (Target));
+   begin
+      FD := GNAT.OS_Lib.Open_Read (Target, GNAT.OS_Lib.Binary);
+      if FD = GNAT.OS_Lib.Invalid_FD then
+         return "";
+      end if;
+
+      if Length = 0 then
+         GNAT.OS_Lib.Close (FD, Closed);
+         return (if Closed then "" else "");
+      end if;
+
+      declare
+         Data : String (1 .. Length);
+         Read_Count : constant Integer :=
+           GNAT.OS_Lib.Read (FD, Data'Address, Data'Length);
+      begin
+         GNAT.OS_Lib.Close (FD, Closed);
+         if not Closed or else Read_Count /= Data'Length then
+            return "";
+         end if;
+         return Data;
+      end;
+   exception
+      when others =>
+         if FD /= GNAT.OS_Lib.Invalid_FD then
+            GNAT.OS_Lib.Close (FD, Closed);
+         end if;
+         return "";
+   end Read_Path_Through_OS;
+
    procedure Run is
       Snapshot : constant Snapshot_Id := 77;
 
@@ -94,8 +131,20 @@ package body Test_Actual_Byte_Spans is
         ASCII.HT & "jpy" & ASCII.HT & "-120" & ASCII.LF &
         "ENDTX" & ASCII.LF;
 
+      Replacement_Document : constant String :=
+        Header & ASCII.LF &
+        "TX" & ASCII.HT & "e9" & ASCII.HT & "2026-09-24" & ASCII.HT &
+        "NODESC" & ASCII.LF &
+        "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" & ASCII.HT &
+        "-1" & ASCII.LF &
+        "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" & ASCII.HT &
+        "1" & ASCII.LF &
+        "ENDTX" & ASCII.LF;
+
       Parsed : Loam_Actual_Result;
       Exact  : HRA_N.Storage.Exact_File.Read_Result;
+      Handle : HRA_N.Storage.Exact_File.Snapshot_Handle;
+      Opened : Boolean;
    begin
       Cleanup;
       Write_Text (Path, Document);
@@ -108,8 +157,14 @@ package body Test_Actual_Byte_Spans is
         (Parsed.Events.Length = 3,
          "relational fixture contains three production Events");
 
-      Exact := HRA_N.Storage.Exact_File.Read_All (Path);
-      Assert (Exact.Success, "exact canonical bytes are readable");
+      HRA_N.Storage.Exact_File.Open_Snapshot (Handle, Path, Opened);
+      Assert (Opened, "canonical Actual snapshot opens once");
+      Assert
+        (HRA_N.Storage.Exact_File.Snapshot_Is_Open (Handle),
+         "open snapshot handle remains live");
+
+      Exact := HRA_N.Storage.Exact_File.Read_All (Handle);
+      Assert (Exact.Success, "exact canonical bytes are readable from one handle");
       Assert
         (To_String (Exact.Content) = Document,
          "fixture writer preserves exact canonical bytes");
@@ -134,12 +189,42 @@ package body Test_Actual_Byte_Spans is
            (Adapted.Status = Refined,
             "production relational fixture refines to bounded image");
 
+         --  Rebind the pathname using HRA-N's normal atomic publication path.
+         --  The already-open handle must continue to identify the original
+         --  file object while a fresh path open observes the replacement.
+         declare
+            Err       : String (1 .. 256) := [others => ' '];
+            Err_Len   : Natural := 0;
+            Replaced  : Boolean;
+         begin
+            Replaced :=
+              Write_File_Atomically
+                (Path, Replacement_Document, Err, Err_Len);
+            Assert
+              (Replaced,
+               "HRA-N atomic writer replaces pathname while snapshot is open");
+         end;
+
+         declare
+            Same_Handle : constant HRA_N.Storage.Exact_File.Read_Result :=
+              HRA_N.Storage.Exact_File.Read_All (Handle);
+            Reopened    : constant String := Read_Path_Through_OS (Path);
+         begin
+            Assert
+              (Same_Handle.Success
+               and then To_String (Same_Handle.Content) = Document,
+               "open handle still reads the original canonical snapshot");
+            Assert
+              (Reopened = Replacement_Document,
+               "fresh OS open of pathname observes the replacement snapshot");
+         end;
+
          for I in Event_Position range 1 .. 3 loop
             declare
                Span      : constant Event_Byte_Span := Located.Spans (I);
                Range_Read : constant HRA_N.Storage.Exact_File.Read_Result :=
                  HRA_N.Storage.Exact_File.Read_Range
-                   (Path,
+                   (Handle,
                     Positive (Span.First_Byte),
                     Positive (Span.Last_Byte));
                Block     : constant String := To_String (Range_Read.Content);
@@ -225,6 +310,14 @@ package body Test_Actual_Byte_Spans is
             end;
          end loop;
       end;
+
+      Assert
+        (HRA_N.Storage.Exact_File.Snapshot_Is_Open (Handle),
+         "range replay keeps the original snapshot handle open");
+      HRA_N.Storage.Exact_File.Close_Snapshot (Handle);
+      Assert
+        (not HRA_N.Storage.Exact_File.Snapshot_Is_Open (Handle),
+         "snapshot handle closes explicitly");
 
       Cleanup;
    end Run;
