@@ -3,7 +3,6 @@
 --  Package body: HRA_N.Storage.Loam_Actual_Reader
 -------------------------------------------------------------------------------
 
-with Ada.Text_IO;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.Loam_Actual_Event_Block;
@@ -117,17 +116,51 @@ package body HRA_N.Storage.Loam_Actual_Reader is
       return True;
    end Exact_Physical_Inverse;
 
-   function Read_Loam_Actual_File
-     (Path : String) return Loam_Actual_Result
+   procedure Next_Line
+     (Content  : String;
+      Position : in out Natural;
+      Line     : out Unbounded_String;
+      Success  : out Boolean)
+   is
+      LF : Natural := 0;
+   begin
+      Line := Null_Unbounded_String;
+      Success := False;
+
+      if Content'Length = 0
+        or else Position < Content'First
+        or else Position > Content'Last
+      then
+         return;
+      end if;
+
+      for I in Position .. Content'Last loop
+         if Content (I) = ASCII.LF then
+            LF := I;
+            exit;
+         end if;
+      end loop;
+
+      if LF = 0 then
+         return;
+      elsif LF > Position then
+         Line := To_Unbounded_String (Content (Position .. LF - 1));
+      end if;
+
+      Position := LF + 1;
+      Success := True;
+   end Next_Line;
+
+   function Read_Loam_Actual_Content
+     (Content : String) return Loam_Actual_Result
    is
       Result : Loam_Actual_Result;
-      File   : Ada.Text_IO.File_Type;
-      Exact  : constant HRA_N.Storage.Exact_File.Read_Result :=
-        HRA_N.Storage.Exact_File.Read_All (Path);
 
       Validity_Entries    : Validity_Entry_List;
       Description_Entries : Description_Entry_List;
       Metadata_Entries    : Metadata_List;
+      Position            : Natural :=
+        (if Content'Length = 0 then 0 else Content'First);
       Line_No             : Natural := 0;
 
       procedure Set_Error
@@ -153,43 +186,32 @@ package body HRA_N.Storage.Loam_Actual_Reader is
       is
       begin
          Set_Error (At_Line, Message);
-         if Ada.Text_IO.Is_Open (File) then
-            Ada.Text_IO.Close (File);
-         end if;
          return Result;
       end Fail;
 
    begin
-      if not Exact.Success then
-         return Fail (0, "cannot read LOAM Actual file");
-      end if;
-
-      declare
-         Bytes : constant String := To_String (Exact.Content);
-      begin
-         if Bytes'Length = 0 then
-            return Fail (0, "LOAM Actual document is empty");
-         elsif Bytes (Bytes'Last) /= ASCII.LF then
-            return Fail (0, "LOAM Actual document must end with newline");
-         end if;
-      end;
-
-      Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Path);
-
-      if Ada.Text_IO.End_Of_File (File) then
+      if Content'Length = 0 then
          return Fail (0, "LOAM Actual document is empty");
+      elsif Content (Content'Last) /= ASCII.LF then
+         return Fail (0, "LOAM Actual document must end with newline");
       end if;
 
-      Line_No := 1;
       declare
-         First_Line : constant String := Ada.Text_IO.Get_Line (File);
+         First_Line : Unbounded_String;
+         Have_Line  : Boolean;
       begin
-         if First_Line /= Header then
+         Next_Line (Content, Position, First_Line, Have_Line);
+         if not Have_Line then
+            return Fail (0, "LOAM Actual document is empty");
+         end if;
+
+         Line_No := 1;
+         if To_String (First_Line) /= Header then
             return Fail (Line_No, "unsupported LOAM Actual header");
          end if;
       end;
 
-      while not Ada.Text_IO.End_Of_File (File) loop
+      while Position <= Content'Last loop
          if Validity_Entries.Count = Max_Admitted_Actual_Events
            or else Metadata_Entries.Count = Metadata_Count'Last
          then
@@ -199,76 +221,90 @@ package body HRA_N.Storage.Loam_Actual_Reader is
 
          declare
             Block_Start : constant Natural := Line_No + 1;
-            First_Line  : constant String := Ada.Text_IO.Get_Line (File);
-            Block       : Unbounded_String :=
-              To_Unbounded_String (First_Line & ASCII.LF);
-            Last_Line   : Unbounded_String :=
-              To_Unbounded_String (First_Line);
+            First_Row   : Unbounded_String;
+            Have_Line   : Boolean;
          begin
-            Line_No := Line_No + 1;
-
-            if not Is_Row (First_Line, "TX") then
-               return Fail (Line_No, "expected TX row");
+            Next_Line (Content, Position, First_Row, Have_Line);
+            if not Have_Line then
+               return Fail (Line_No + 1, "missing final ENDTX");
             end if;
 
-            while not Starts_With (To_String (Last_Line), "ENDTX") loop
-               if Ada.Text_IO.End_Of_File (File) then
-                  return Fail (Line_No, "missing final ENDTX");
+            declare
+               First_Line : constant String := To_String (First_Row);
+               Block      : Unbounded_String :=
+                 To_Unbounded_String (First_Line & ASCII.LF);
+               Last_Line  : Unbounded_String := First_Row;
+            begin
+               Line_No := Line_No + 1;
+
+               if not Is_Row (First_Line, "TX") then
+                  return Fail (Line_No, "expected TX row");
                end if;
+
+               while not Starts_With (To_String (Last_Line), "ENDTX") loop
+                  if Position > Content'Last then
+                     return Fail (Line_No, "missing final ENDTX");
+                  end if;
+
+                  declare
+                     Line      : Unbounded_String;
+                     Have_Next : Boolean;
+                  begin
+                     Next_Line (Content, Position, Line, Have_Next);
+                     if not Have_Next then
+                        return Fail (Line_No, "missing final ENDTX");
+                     end if;
+                     Line_No := Line_No + 1;
+                     Append (Block, To_String (Line) & ASCII.LF);
+                     Last_Line := Line;
+                  end;
+               end loop;
 
                declare
-                  Line : constant String := Ada.Text_IO.Get_Line (File);
+                  Decoded : constant Event_Block_Result :=
+                    Decode_Event_Block (To_String (Block));
+                  Error_Line : constant Natural :=
+                    (if Decoded.Error_Line = 0 then
+                        Block_Start
+                     else
+                        Block_Start + Decoded.Error_Line - 1);
                begin
-                  Line_No := Line_No + 1;
-                  Append (Block, Line & ASCII.LF);
-                  Last_Line := To_Unbounded_String (Line);
-               end;
-            end loop;
-
-            declare
-               Decoded : constant Event_Block_Result :=
-                 Decode_Event_Block (To_String (Block));
-               Error_Line : constant Natural :=
-                 (if Decoded.Error_Line = 0 then
-                     Block_Start
-                  else
-                     Block_Start + Decoded.Error_Line - 1);
-            begin
-               if not Decoded.Success then
-                  if Decoded.Error_Len = 0 then
-                     return Fail (Error_Line, "invalid Event block");
-                  else
+                  if not Decoded.Success then
+                     if Decoded.Error_Len = 0 then
+                        return Fail (Error_Line, "invalid Event block");
+                     else
+                        return Fail
+                          (Error_Line,
+                           Decoded.Error_Reason (1 .. Decoded.Error_Len));
+                     end if;
+                  elsif Event_Exists (Result.Events, Id (Decoded.Value)) then
+                     return Fail (Block_Start, "duplicate Event identity");
+                  elsif Decoded.Has_Description
+                    and then
+                      Description_Entries.Count = Description_Count_Type'Last
+                  then
                      return Fail
-                       (Error_Line,
-                        Decoded.Error_Reason (1 .. Decoded.Error_Len));
+                       (Block_Start,
+                        "HRA-N description bridge capacity exceeded");
                   end if;
-               elsif Event_Exists (Result.Events, Id (Decoded.Value)) then
-                  return Fail (Block_Start, "duplicate Event identity");
-               elsif Decoded.Has_Description
-                 and then
-                   Description_Entries.Count = Description_Count_Type'Last
-               then
-                  return Fail
-                    (Block_Start,
-                     "HRA-N description bridge capacity exceeded");
-               end if;
 
-               Result.Events.Append (Decoded.Value);
+                  Result.Events.Append (Decoded.Value);
 
-               Validity_Entries.Count := Validity_Entries.Count + 1;
-               Validity_Entries.Values (Validity_Entries.Count) :=
-                 Decoded.Validity;
+                  Validity_Entries.Count := Validity_Entries.Count + 1;
+                  Validity_Entries.Values (Validity_Entries.Count) :=
+                    Decoded.Validity;
 
-               if Decoded.Has_Description then
-                  Description_Entries.Count :=
-                    Description_Entries.Count + 1;
-                  Description_Entries.Values
-                    (Description_Entries.Count) := Decoded.Description;
-               end if;
+                  if Decoded.Has_Description then
+                     Description_Entries.Count :=
+                       Description_Entries.Count + 1;
+                     Description_Entries.Values
+                       (Description_Entries.Count) := Decoded.Description;
+                  end if;
 
-               Metadata_Entries.Count := Metadata_Entries.Count + 1;
-               Metadata_Entries.Values (Metadata_Entries.Count) :=
-                 Decoded.Metadata;
+                  Metadata_Entries.Count := Metadata_Entries.Count + 1;
+                  Metadata_Entries.Values (Metadata_Entries.Count) :=
+                    Decoded.Metadata;
+               end;
             end;
          end;
       end loop;
@@ -323,22 +359,6 @@ package body HRA_N.Storage.Loam_Actual_Reader is
          end if;
       end loop;
 
-      --  The semantic image must still correspond to the exact byte snapshot
-      --  observed before parsing. Re-read only after closing the Text_IO handle
-      --  so an atomic authority replacement cannot silently change admission.
-      Ada.Text_IO.Close (File);
-      declare
-         After : constant HRA_N.Storage.Exact_File.Read_Result :=
-           HRA_N.Storage.Exact_File.Read_All (Path);
-      begin
-         if not After.Success
-           or else To_String (After.Content) /= To_String (Exact.Content)
-         then
-            return Fail
-              (Line_No, "LOAM Actual changed while being read");
-         end if;
-      end;
-
       Result.Validities := Make_Validity_Memory (Validity_Entries);
       Result.Descriptions := Make_Description_Memory (Description_Entries);
       Result.Metadata := Make_Metadata_Memory (Metadata_Entries);
@@ -349,6 +369,36 @@ package body HRA_N.Storage.Loam_Actual_Reader is
       when others =>
          return Fail
            (Line_No, "unexpected LOAM Actual reader failure");
+   end Read_Loam_Actual_Content;
+
+   function Read_Loam_Actual_File
+     (Path : String) return Loam_Actual_Result
+   is
+      Exact : constant HRA_N.Storage.Exact_File.Read_Result :=
+        HRA_N.Storage.Exact_File.Read_All (Path);
+      Result : Loam_Actual_Result;
+      Message : constant String := "cannot read LOAM Actual file";
+   begin
+      if not Exact.Success then
+         Result.Error_Line := 0;
+         Result.Error_Len := Message'Length;
+         Result.Error_Reason (1 .. Message'Length) := Message;
+         return Result;
+      end if;
+
+      return Read_Loam_Actual_Content (To_String (Exact.Content));
+   exception
+      when others =>
+         declare
+            Fallback : Loam_Actual_Result;
+            Text     : constant String :=
+              "unexpected LOAM Actual reader failure";
+         begin
+            Fallback.Error_Line := 0;
+            Fallback.Error_Len := Text'Length;
+            Fallback.Error_Reason (1 .. Text'Length) := Text;
+            return Fallback;
+         end;
    end Read_Loam_Actual_File;
 
 end HRA_N.Storage.Loam_Actual_Reader;
