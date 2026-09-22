@@ -201,7 +201,11 @@ package body Test_Loam_Actual_Reader is
            (R.Success,
             "normalized LOAM Actual supported slice reads"
             & (if R.Success or else R.Error_Len = 0 then ""
-               else " (" & R.Error_Reason (1 .. R.Error_Len) & ")"));
+               else " (line"
+                 & Natural'Image (R.Error_Line)
+                 & ": "
+                 & R.Error_Reason (1 .. R.Error_Len)
+                 & ")"));
          if R.Success then
             Assert_Equal_Int
               (4, Long_Long_Integer (R.Events.Length),
