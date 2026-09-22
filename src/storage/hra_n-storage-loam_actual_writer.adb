@@ -19,12 +19,17 @@ with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.File_Lock;
 with HRA_N.Storage.Loam_Actual_Reader;
 with HRA_N.Storage.Loam_Locus_Admission_Reader;
+with HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader;
 
 package body HRA_N.Storage.Loam_Actual_Writer is
 
    package US renames Ada.Strings.Unbounded;
    package Actual_Reader renames HRA_N.Storage.Loam_Actual_Reader;
    package Locus_Reader renames HRA_N.Storage.Loam_Locus_Admission_Reader;
+   package Scheduled_Reader renames
+     HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader;
+
+   Reversal_Id_Prefix : constant String := "actual-reversal:";
 
    function Valid_Token (Value : Token_Text) return Boolean is
    begin
@@ -380,6 +385,138 @@ package body HRA_N.Storage.Loam_Actual_Writer is
       return Has_Succ
         and then Equal_Token (Successor.Token, Replacement_Id);
    end Correction_Candidate_Corresponds;
+
+   function Inverse_Effects (Target : Event) return Effect_List is
+      Result : Effect_List := HRA_N.Core.Event.Effects (Target);
+   begin
+      for I in 1 .. Result.Count loop
+         Result.Values (I).Key := No_Effect_Key;
+         Result.Values (I).Amount.Quanta := -Result.Values (I).Amount.Quanta;
+      end loop;
+      return Result;
+   end Inverse_Effects;
+
+   function Encode_Reversal_Block
+     (Event_Id : Token_Text;
+      Target   : HRA_N.Core.Types.Event_Id;
+      Valid_On : Date_Type;
+      Effects  : Effect_List) return String
+   is
+      Block       : US.Unbounded_String;
+      HT          : constant String := [1 => ASCII.HT];
+      NL          : constant String := [1 => ASCII.LF];
+      Id          : constant String := Event_Id.Value (1 .. Event_Id.Length);
+      Target_Text : constant String :=
+        Target.Token.Value (1 .. Target.Token.Length);
+      Date        : constant String := Format_Iso_Date (Valid_On);
+   begin
+      US.Append
+        (Block, "TX" & HT & Id & HT & Date & HT & "NODESC" & NL);
+      US.Append (Block, "REVERSAL-OF" & HT & Target_Text & NL);
+
+      for I in 1 .. Effects.Count loop
+         declare
+            Item    : constant Effect := Effects.Values (I);
+            Locus   : constant String :=
+              Item.Locus.Token.Value (1 .. Item.Locus.Token.Length);
+            Measure : constant String :=
+              Item.Measure.Token.Value (1 .. Item.Measure.Token.Length);
+            Amount  : constant String :=
+              Trim (Quanta_Type'Image (Item.Amount.Quanta), Both);
+         begin
+            US.Append
+              (Block,
+               "EFFECT" & HT & Locus & HT & Measure & HT & Amount & NL);
+         end;
+      end loop;
+
+      US.Append (Block, "ENDTX" & NL);
+      return US.To_String (Block);
+   end Encode_Reversal_Block;
+
+   function Reversal_Candidate_Corresponds
+     (Image             : Actual_Reader.Loam_Actual_Result;
+      Prior_Event_Count : Natural;
+      Reversal_Id       : Token_Text;
+      Target            : HRA_N.Core.Types.Event_Id;
+      Valid_On          : Date_Type;
+      Effects           : Effect_List;
+      Prior_Target      : Event) return Boolean
+   is
+      Date          : Date_Type := (Year => 2026, Month => 1, Day => 1);
+      Has_Date      : Boolean := False;
+      Desc          : Description_Text :=
+        (Length => 0, Value => [others => ' ']);
+      Has_Desc      : Boolean := False;
+      Meta          : Transaction_Metadata_Entry;
+      Has_Meta      : Boolean := False;
+      Reverser      : HRA_N.Core.Types.Event_Id;
+      Has_Reverser  : Boolean := False;
+      Successor     : HRA_N.Core.Types.Event_Id;
+      Has_Successor : Boolean := False;
+      Retained      : Event;
+      Has_Retained  : Boolean := False;
+   begin
+      if not Image.Success
+        or else Natural (Image.Events.Length) /= Prior_Event_Count + 1
+      then
+         return False;
+      end if;
+
+      declare
+         Added : constant Event :=
+           Image.Events.Element (Positive (Prior_Event_Count + 1));
+      begin
+         if not Equal_Token
+           (HRA_N.Core.Event.Id (Added).Token, Reversal_Id)
+           or else HRA_N.Core.Event.Effects (Added) /= Effects
+         then
+            return False;
+         end if;
+      end;
+
+      Find_Occurrence_Date
+        (Image.Validities, (Token => Reversal_Id), Date, Has_Date);
+      if not Has_Date or else not Equal_Date (Date, Valid_On) then
+         return False;
+      end if;
+
+      Find_Description
+        (Image.Descriptions, (Token => Reversal_Id), Desc, Has_Desc);
+      if Has_Desc then
+         return False;
+      end if;
+
+      Find_Metadata
+        (Image.Metadata, (Token => Reversal_Id), Meta, Has_Meta);
+      if not Has_Meta
+        or else Meta.Replaces.Present
+        or else not Meta.Reverses.Present
+        or else not Equal_Token (Meta.Reverses.Value.Token, Target.Token)
+      then
+         return False;
+      end if;
+
+      Find_Reverser (Image.Metadata, Target, Reverser, Has_Reverser);
+      if not Has_Reverser
+        or else not Equal_Token (Reverser.Token, Reversal_Id)
+      then
+         return False;
+      end if;
+
+      Find_Successor (Image.Metadata, Target, Successor, Has_Successor);
+      if Has_Successor then
+         return False;
+      end if;
+
+      Find_Event_By_Id (Image, Target, Retained, Has_Retained);
+      return Has_Retained
+        and then Equal_Token
+          (HRA_N.Core.Event.Id (Retained).Token,
+           HRA_N.Core.Event.Id (Prior_Target).Token)
+        and then HRA_N.Core.Event.Effects (Retained) =
+          HRA_N.Core.Event.Effects (Prior_Target);
+   end Reversal_Candidate_Corresponds;
 
    function Publish_Movement
      (Root_Path   : String;
@@ -880,5 +1017,308 @@ package body HRA_N.Storage.Loam_Actual_Writer is
          Release;
          return Fail ("unexpected LOAM Actual correction writer failure");
    end Publish_Correction;
+
+
+   function Publish_Reversal
+     (Root_Path : String;
+      Target    : HRA_N.Core.Types.Event_Id;
+      Valid_On  : Date_Type) return Publish_Result
+   is
+      Result : Publish_Result;
+      Actual_Path : constant String :=
+        Ada.Directories.Compose (Root_Path, "actual.loam");
+      Scheduled_Path : constant String :=
+        Ada.Directories.Compose (Root_Path, "scheduled.loam");
+      Policy_Path : constant String :=
+        Ada.Directories.Compose (Root_Path, "locus-admission.loam");
+      Stage_Path : constant String := Actual_Path & ".loam-stage";
+      Scheduled_Lock_Path : constant String :=
+        Scheduled_Path & ".loam-writer-lock";
+      Actual_Lock_Path : constant String :=
+        Actual_Path & ".loam-writer-lock";
+      Scheduled_Lock : HRA_N.Storage.File_Lock.Lock_Handle;
+      Actual_Lock    : HRA_N.Storage.File_Lock.Lock_Handle;
+
+      procedure Set_Error (Message : String) is
+         Len : constant Natural :=
+           Natural'Min (Message'Length, Result.Error_Reason'Length);
+      begin
+         Result.Success := False;
+         Result.Error_Reason := [others => ' '];
+         Result.Error_Len := Len;
+         if Len > 0 then
+            Result.Error_Reason (1 .. Len) :=
+              Message (Message'First .. Message'First + Len - 1);
+         end if;
+      end Set_Error;
+
+      function Fail (Message : String) return Publish_Result is
+      begin
+         Set_Error (Message);
+         return Result;
+      end Fail;
+
+      procedure Release_All is
+      begin
+         HRA_N.Storage.File_Lock.Release (Actual_Lock);
+         HRA_N.Storage.File_Lock.Release (Scheduled_Lock);
+      exception
+         when others =>
+            begin
+               HRA_N.Storage.File_Lock.Release (Scheduled_Lock);
+            exception
+               when others =>
+                  null;
+            end;
+      end Release_All;
+
+      procedure Remove_Stage is
+      begin
+         if Ada.Directories.Exists (Stage_Path) then
+            Ada.Directories.Delete_File (Stage_Path);
+         end if;
+      exception
+         when others =>
+            null;
+      end Remove_Stage;
+
+   begin
+      if Root_Path'Length = 0 then
+         return Fail ("LOAM data root must not be empty");
+      elsif not Valid_Token (Target.Token) then
+         return Fail ("reversal target identity is invalid");
+      elsif Target.Token.Length + Reversal_Id_Prefix'Length >
+        Max_Token_Length
+      then
+         return Fail
+           ("deterministic reversal identity exceeds HRA-N token capacity");
+      elsif not Is_Valid_Date
+        (Valid_On.Year, Valid_On.Month, Valid_On.Day)
+      then
+         return Fail ("reversal occurrence date is invalid");
+      end if;
+
+      --  Match Loam shared ownership order exactly: Scheduled first, Actual
+      --  second.  Both locks remain held through guard reads, candidate
+      --  admission, staging, and the final Actual authority switch.
+      if not HRA_N.Storage.File_Lock.Acquire
+        (Scheduled_Lock_Path, Scheduled_Lock)
+      then
+         return Fail ("cannot acquire LOAM Scheduled writer ownership");
+      end if;
+
+      if not HRA_N.Storage.File_Lock.Acquire
+        (Actual_Lock_Path, Actual_Lock)
+      then
+         HRA_N.Storage.File_Lock.Release (Scheduled_Lock);
+         return Fail ("cannot acquire LOAM Actual writer ownership");
+      end if;
+
+      declare
+         Existing : constant HRA_N.Storage.Exact_File.Read_Result :=
+           HRA_N.Storage.Exact_File.Read_All (Actual_Path);
+      begin
+         if not Existing.Success then
+            Release_All;
+            return Fail ("cannot read current actual.loam authority");
+         end if;
+
+         declare
+            Existing_Text : constant String := US.To_String (Existing.Content);
+            Current : constant Actual_Reader.Loam_Actual_Result :=
+              Actual_Reader.Read_Loam_Actual_Content (Existing_Text);
+            Policy : constant Locus_Reader.Read_Result :=
+              Locus_Reader.Read_File (Policy_Path);
+            Scheduled : constant Scheduled_Reader.Read_Result :=
+              Scheduled_Reader.Read_File (Scheduled_Path);
+            Target_Event : Event;
+            Have_Target  : Boolean := False;
+            Target_Measure : Measure_Id;
+            Target_Practical : Boolean := False;
+            Target_Meta : Transaction_Metadata_Entry;
+            Has_Target_Meta : Boolean := False;
+            Prior_Reverser : HRA_N.Core.Types.Event_Id;
+            Has_Prior_Reverser : Boolean := False;
+         begin
+            if not Current.Success then
+               Release_All;
+               return Fail
+                 ("current actual.loam is malformed, unsupported, or over capacity");
+            elsif not Policy.Success then
+               Release_All;
+               return Fail
+                 ("current locus-admission.loam is malformed or unsupported");
+            elsif not Scheduled.Success then
+               Release_All;
+               return Fail
+                 ("current scheduled.loam is malformed, unsupported, or over capacity");
+            elsif Natural (Current.Events.Length) =
+              Actual_Reader.Max_Admitted_Actual_Events
+            then
+               Release_All;
+               return Fail
+                 ("HRA-N Actual writer working-set capacity exceeded");
+            end if;
+
+            Find_Event_By_Id (Current, Target, Target_Event, Have_Target);
+            if not Have_Target then
+               Release_All;
+               return Fail ("selected reversal target is not retained");
+            elsif not Target_Is_Current (Current, Target) then
+               Release_All;
+               return Fail ("selected Actual is no longer current");
+            end if;
+
+            Find_Metadata
+              (Current.Metadata, Target, Target_Meta, Has_Target_Meta);
+            if Has_Target_Meta and then Target_Meta.Reverses.Present then
+               Release_All;
+               return Fail
+                 ("reversal-of-reversal chains are not qualified");
+            end if;
+
+            Find_Reverser
+              (Current.Metadata, Target, Prior_Reverser, Has_Prior_Reverser);
+            if Has_Prior_Reverser then
+               Release_All;
+               return Fail ("selected Actual is already reversed");
+            end if;
+
+            --  Relation and Discharge canonical rows are not silently ignored:
+            --  the current Actual reader rejects those row families before this
+            --  point.  This writer therefore remains narrower than Loam until
+            --  that evidence receives its own HRA-N qualification boundary.
+
+            if Scheduled_Reader.Completion_Mentions_Actual
+              (Scheduled, Target)
+            then
+               Release_All;
+               return Fail
+                 ("reversal of a Scheduled-completion Actual is not qualified");
+            end if;
+
+            Practical_Measure
+              (Target_Event, Target_Measure, Target_Practical);
+            if not Target_Practical
+              or else not Equal_Token
+                (Target_Measure.Token, Make_Token ("jpy"))
+            then
+               Release_All;
+               return Fail
+                 ("selected Actual is outside the practical balanced-JPY reversal entrance");
+            end if;
+
+            declare
+               Inverse : constant Effect_List :=
+                 Inverse_Effects (Target_Event);
+               Target_Text : constant String :=
+                 Target.Token.Value (1 .. Target.Token.Length);
+               Reversal_Id : constant Token_Text :=
+                 Make_Token (Reversal_Id_Prefix & Target_Text);
+            begin
+               if not Admits_Effects (Policy.Vocabulary, Inverse) then
+                  Release_All;
+                  return Fail
+                    ("reversal uses a Locus not approved for new publication");
+               elsif Event_Id_In_Use
+                 (Current, Reversal_Id_Prefix & Target_Text)
+               then
+                  Release_All;
+                  return Fail
+                    ("deterministic reversal Event identity collides with retained Movement evidence");
+               end if;
+
+               declare
+                  Block : constant String :=
+                    Encode_Reversal_Block
+                      (Reversal_Id, Target, Valid_On, Inverse);
+                  Candidate : constant String := Existing_Text & Block;
+                  Admitted : constant Actual_Reader.Loam_Actual_Result :=
+                    Actual_Reader.Read_Loam_Actual_Content (Candidate);
+                  Error     : String (1 .. 192) := [others => ' '];
+                  Error_Len : Natural := 0;
+               begin
+                  if not Reversal_Candidate_Corresponds
+                    (Admitted,
+                     Natural (Current.Events.Length),
+                     Reversal_Id,
+                     Target,
+                     Valid_On,
+                     Inverse,
+                     Target_Event)
+                  then
+                     Release_All;
+                     return Fail
+                       ("candidate reversal generation failed semantic correspondence");
+                  end if;
+
+                  Remove_Stage;
+                  if not HRA_N.Storage.Atomic_Writer.Write_Staging_File_Durably
+                    (Stage_Path, Candidate, Error, Error_Len)
+                  then
+                     Release_All;
+                     return Fail
+                       ("cannot durably stage canonical reversal candidate");
+                  end if;
+
+                  declare
+                     Staged : constant HRA_N.Storage.Exact_File.Read_Result :=
+                       HRA_N.Storage.Exact_File.Read_All (Stage_Path);
+                  begin
+                     if not Staged.Success
+                       or else US.To_String (Staged.Content) /= Candidate
+                     then
+                        Remove_Stage;
+                        Release_All;
+                        return Fail
+                          ("staged reversal bytes do not match candidate generation");
+                     end if;
+
+                     declare
+                        Staged_Image :
+                          constant Actual_Reader.Loam_Actual_Result :=
+                            Actual_Reader.Read_Loam_Actual_Content
+                              (US.To_String (Staged.Content));
+                     begin
+                        if not Reversal_Candidate_Corresponds
+                          (Staged_Image,
+                           Natural (Current.Events.Length),
+                           Reversal_Id,
+                           Target,
+                           Valid_On,
+                           Inverse,
+                           Target_Event)
+                        then
+                           Remove_Stage;
+                           Release_All;
+                           return Fail
+                             ("staged reversal generation failed semantic admission");
+                        end if;
+                     end;
+                  end;
+
+                  if not HRA_N.Storage.Atomic_Writer.Publish_Staged_File_Atomically
+                    (Stage_Path, Actual_Path, Error, Error_Len)
+                  then
+                     Release_All;
+                     return Fail
+                       ("failed to switch canonical Actual reversal authority");
+                  end if;
+
+                  Result.Success := True;
+                  Result.Event_Id := Reversal_Id;
+                  Release_All;
+                  return Result;
+               end;
+            end;
+         end;
+      end;
+
+   exception
+      when others =>
+         Remove_Stage;
+         Release_All;
+         return Fail ("unexpected LOAM Actual reversal writer failure");
+   end Publish_Reversal;
 
 end HRA_N.Storage.Loam_Actual_Writer;
