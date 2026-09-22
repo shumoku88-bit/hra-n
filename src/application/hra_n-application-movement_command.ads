@@ -80,6 +80,19 @@ package HRA_N.Application.Movement_Command is
       Diagnostic_Len : Natural := 0;
    end record;
 
+   --  Canonical correction uses the same publication/read-back state machine.
+   --  Effective_Date is populated only when the post-publication snapshot-bound
+   --  observation exposes the replacement occurrence date.
+   type Canonical_Correction_Result is record
+      State              : Canonical_Record_State := Canonical_Not_Published;
+      Event_Id           : Token_Text;
+      Has_Effective_Date : Boolean := False;
+      Effective_Date     : Date_Type :=
+        (Year => 2026, Month => 1, Day => 1);
+      Diagnostic         : String (1 .. 192) := [others => ' '];
+      Diagnostic_Len     : Natural := 0;
+   end record;
+
    --  True when any Loam canonical Actual authority marker exists in Root_Path.
    --  Partial presence intentionally selects the canonical route so HRA-N will
    --  fail closed rather than silently writing the transitional journal.
@@ -92,6 +105,16 @@ package HRA_N.Application.Movement_Command is
    function Record_Loam_Actual
      (Root_Path : String;
       Intent    : Movement_Intent) return Canonical_Record_Result;
+
+   --  Publish one practical correction directly to canonical actual.loam.
+   --  Loam correction inherits the target occurrence date.  If the CLI/user
+   --  explicitly supplied a date, it is admitted only when it already equals
+   --  the target date; changing occurrence date is a distinct operation.
+   function Correct_Loam_Actual
+     (Root_Path              : String;
+      Intent                 : Correction_Intent;
+      Requested_Date_Present : Boolean := False)
+      return Canonical_Correction_Result;
 
    function Propose
      (Paths  : Path_Config;

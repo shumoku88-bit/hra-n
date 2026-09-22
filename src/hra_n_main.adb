@@ -72,6 +72,7 @@ procedure HRA_N_Main is
       Put_Line ("  record, movement       Record transaction: <FROM> <TO> <AMOUNT> [DATE] [DESC]");
       Put_Line ("                         (without arguments: opens TUI form, or --cli for prompt)");
       Put_Line ("  correct                Correct transaction: <TARGET_ID> <FROM> <TO> <AMT> [DATE] [DESC]");
+      Put_Line ("                         (canonical actual.loam inherits target DATE; supplied DATE must match)");
       Put_Line ("  revert                 Revert transaction: <EVENT_ID> [DATE] [REASON]");
       Put_Line ("  split                  Record multi-posting split transaction");
       Put_Line ("  scheduled              Manage scheduled obligations (list, complete, retire)");
@@ -253,9 +254,10 @@ begin
                To_Locus   : constant String := Ada.Command_Line.Argument (Arg_Offset + 3);
                Amt_Str    : constant String := Ada.Command_Line.Argument (Arg_Offset + 4);
                Amount_Val : Quanta_Type;
-               Date_Val   : Date_Type         := Get_System_Date;
-               Desc_Val   : String (1 .. 128) := [others => ' '];
-               Desc_Len   : Natural           := 0;
+               Date_Val          : Date_Type         := Get_System_Date;
+               Date_Was_Explicit : Boolean           := False;
+               Desc_Val          : String (1 .. 128) := [others => ' '];
+               Desc_Len          : Natural           := 0;
             begin
                begin
                   Amount_Val := Quanta_Type'Value (Amt_Str);
@@ -273,6 +275,7 @@ begin
                   begin
                      if Parse_Iso_Date (Arg_5, Parsed_D) then
                         Date_Val := Parsed_D;
+                        Date_Was_Explicit := True;
                         if Eff_Rem >= 6 then
                            declare
                               Arg_6 : constant String := Ada.Command_Line.Argument (Arg_Offset + 6);
@@ -302,39 +305,104 @@ begin
                      Amount      => Amount_Val,
                      Valid_On    => Date_Val,
                      Description => Make_Token (Desc_Val (1 .. Desc_Len)));
-                  Prop_Res : constant Proposal_Result :=
-                    Propose_Correction (Paths, Intent);
                begin
-                  if not Prop_Res.Success then
-                     Put_Line ("[ERROR] Correction rejected: " &
-                               Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                     return;
-                  end if;
+                  if Canonical_Authority_Present (Data_Dir) then
+                     declare
+                        Canonical : constant Canonical_Correction_Result :=
+                          Correct_Loam_Actual
+                            (Root_Path              => Data_Dir,
+                             Intent                 => Intent,
+                             Requested_Date_Present => Date_Was_Explicit);
+                     begin
+                        if Canonical.State = Canonical_Not_Published then
+                           Put_Line
+                             ("[ERROR] Canonical correction rejected: "
+                              & Canonical.Diagnostic
+                                (1 .. Canonical.Diagnostic_Len));
+                           Ada.Command_Line.Set_Exit_Status
+                             (Ada.Command_Line.Failure);
+                           return;
+                        end if;
 
-                  declare
-                     Receipt : constant Movement_Receipt := Commit (Prop_Res.Proposal);
-                  begin
-                     if Receipt.Success then
                         Put_Line ("============================================================");
-                        Put_Line (" [OK] Committed Correction: " &
-                                  Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                        Put_Line ("      REPLACED: " & Target_Id);
-                        Put_Line ("      SNAPSHOT: " &
-                                  Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-                        Put_Line ("      FLOW:     " & From_Locus & " (-" & Amt_Str & " jpy) -> " &
-                                  To_Locus & " (+" & Amt_Str & " jpy)");
-                        Put_Line ("      DATE:     " & Format_Iso_Date (Date_Val));
+                        Put_Line
+                          (" [OK] Committed Canonical Correction: "
+                           & Canonical.Event_Id.Value
+                             (1 .. Canonical.Event_Id.Length));
+                        Put_Line ("      REPLACED:  " & Target_Id);
+                        Put_Line ("      AUTHORITY: actual.loam");
+                        Put_Line
+                          ("      FLOW:      " & From_Locus & " (-" & Amt_Str
+                           & " jpy) -> " & To_Locus & " (+" & Amt_Str & " jpy)");
+                        if Canonical.Has_Effective_Date then
+                           Put_Line
+                             ("      DATE:      "
+                              & Format_Iso_Date (Canonical.Effective_Date)
+                              & " (inherited)");
+                        end if;
                         if Desc_Len > 0 then
-                           Put_Line ("      DESC:     " & Desc_Val (1 .. Desc_Len));
+                           Put_Line
+                             ("      DESC:      " & Desc_Val (1 .. Desc_Len));
+                        end if;
+
+                        if Canonical.State =
+                          Canonical_Published_Readback_Verified
+                        then
+                           Put_Line
+                             ("      READ-BACK: snapshot-bound verified");
+                        else
+                           Put_Line
+                             (" [WARN] Publication succeeded; snapshot-bound "
+                              & "read-back was not verified");
+                           if Canonical.Diagnostic_Len > 0 then
+                              Put_Line
+                                ("        "
+                                 & Canonical.Diagnostic
+                                   (1 .. Canonical.Diagnostic_Len));
+                           end if;
                         end if;
                         Put_Line ("============================================================");
-                     else
-                        Put_Line ("[ERROR] Correction commit rejected: " &
-                                  Receipt.Error (1 .. Receipt.Error_Len));
-                        Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                     end if;
-                  end;
+                     end;
+                  else
+                     declare
+                        Prop_Res : constant Proposal_Result :=
+                          Propose_Correction (Paths, Intent);
+                     begin
+                        if not Prop_Res.Success then
+                           Put_Line ("[ERROR] Correction rejected: " &
+                                     Prop_Res.Error (1 .. Prop_Res.Error_Len));
+                           Ada.Command_Line.Set_Exit_Status
+                             (Ada.Command_Line.Failure);
+                           return;
+                        end if;
+
+                        declare
+                           Receipt : constant Movement_Receipt :=
+                             Commit (Prop_Res.Proposal);
+                        begin
+                           if Receipt.Success then
+                              Put_Line ("============================================================");
+                              Put_Line (" [OK] Committed Correction: " &
+                                        Receipt.Primary_Id (1 .. Receipt.Primary_Len));
+                              Put_Line ("      REPLACED: " & Target_Id);
+                              Put_Line ("      SNAPSHOT: " &
+                                        Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                              Put_Line ("      FLOW:     " & From_Locus & " (-" & Amt_Str & " jpy) -> " &
+                                        To_Locus & " (+" & Amt_Str & " jpy)");
+                              Put_Line ("      DATE:     " & Format_Iso_Date (Date_Val));
+                              if Desc_Len > 0 then
+                                 Put_Line ("      DESC:     " & Desc_Val (1 .. Desc_Len));
+                              end if;
+                              Put_Line ("============================================================");
+                           else
+                              Put_Line ("[ERROR] Correction commit rejected: " &
+                                        Receipt.Error (1 .. Receipt.Error_Len));
+                              Ada.Command_Line.Set_Exit_Status
+                                (Ada.Command_Line.Failure);
+                           end if;
+                        end;
+                     end;
+                  end if;
                end;
             end;
          end;

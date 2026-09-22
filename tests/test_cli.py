@@ -1002,6 +1002,89 @@ class TestHraNCli(unittest.TestCase):
             "partial canonical authority must not fall back to transitional journal",
         )
 
+    def test_canonical_correction_routes_to_actual_writer(self) -> None:
+        actual = os.path.join(self.test_dir, "actual.loam")
+        policy = os.path.join(self.test_dir, "locus-admission.loam")
+        with open(actual, "wb") as handle:
+            handle.write(
+                b"LOAM-NORMALIZED-ACTUAL\t1\n"
+                b"TX\trecord-1\t2026-09-20\tNODESC\n"
+                b"EFFECT\tcash\tjpy\t-10\n"
+                b"EFFECT\tfood\tjpy\t10\n"
+                b"ENDTX\n"
+            )
+        with open(policy, "wb") as handle:
+            handle.write(
+                b"LOAM-LOCUS-ADMISSION-VOCABULARY\t1\n"
+                b"LOCUS\tcash\n"
+                b"LOCUS\tfood\n"
+            )
+
+        first = self.run_cmd(
+            "correct", "record-1", "cash", "food", "15", "corrected route"
+        )
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        self.assertIn(
+            "[OK] Committed Canonical Correction: replacement-1", first.stdout
+        )
+        self.assertIn("REPLACED:  record-1", first.stdout)
+        self.assertIn("AUTHORITY: actual.loam", first.stdout)
+        self.assertIn("DATE:      2026-09-20 (inherited)", first.stdout)
+        self.assertIn("READ-BACK: snapshot-bound verified", first.stdout)
+
+        with open(actual, "rb") as handle:
+            first_bytes = handle.read()
+        self.assertIn(
+            b"TX\treplacement-1\t2026-09-20\tDESC\tcorrected route\n",
+            first_bytes,
+        )
+        self.assertIn(b"REPLACES\trecord-1\n", first_bytes)
+        self.assertIn(b"EFFECT\tcash\tjpy\t-15\n", first_bytes)
+        self.assertIn(b"EFFECT\tfood\tjpy\t15\n", first_bytes)
+
+        with open(actual, "rb") as handle:
+            before_mismatch = handle.read()
+        mismatch = self.run_cmd(
+            "correct", "replacement-1", "cash", "food", "20",
+            "2026-09-22", "wrong date",
+        )
+        self.assertNotEqual(mismatch.returncode, 0)
+        self.assertIn("Canonical correction rejected", mismatch.stdout)
+        self.assertIn("inherits the target occurrence date", mismatch.stdout)
+        with open(actual, "rb") as handle:
+            self.assertEqual(handle.read(), before_mismatch)
+
+        second = self.run_cmd(
+            "movement", "correct", "replacement-1", "cash", "food", "20",
+            "2026-09-20", "second correction",
+        )
+        self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+        self.assertIn(
+            "[OK] Committed Canonical Correction: replacement-2", second.stdout
+        )
+        self.assertIn("READ-BACK: snapshot-bound verified", second.stdout)
+
+        with open(actual, "rb") as handle:
+            before_old = handle.read()
+        old = self.run_cmd(
+            "correct", "record-1", "cash", "food", "25", "old target"
+        )
+        self.assertNotEqual(old.returncode, 0)
+        self.assertIn("Canonical correction rejected", old.stdout)
+        with open(actual, "rb") as handle:
+            self.assertEqual(handle.read(), before_old)
+
+        os.remove(policy)
+        partial = self.run_cmd(
+            "correct", "replacement-2", "cash", "food", "25", "partial"
+        )
+        self.assertNotEqual(partial.returncode, 0)
+        self.assertIn("Canonical correction rejected", partial.stdout)
+        self.assertFalse(
+            os.path.exists(os.path.join(self.test_dir, "journal.hra")),
+            "partial canonical authority must not fall back to transitional journal",
+        )
+
     def test_canonical_actual_read_only_cli(self) -> None:
         path = os.path.join(self.test_dir, "actual.loam")
         data = (

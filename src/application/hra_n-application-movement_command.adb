@@ -712,4 +712,211 @@ package body HRA_N.Application.Movement_Command is
          return Result;
    end Record_Loam_Actual;
 
+   function Correct_Loam_Actual
+     (Root_Path              : String;
+      Intent                 : Correction_Intent;
+      Requested_Date_Present : Boolean := False)
+      return Canonical_Correction_Result
+   is
+      use type HRA_N.Application.Frontend_Types.Query_Status;
+
+      Result      : Canonical_Correction_Result;
+      Actual_Path : constant String :=
+        Ada.Directories.Compose (Root_Path, "actual.loam");
+
+      procedure Set_Diagnostic (Message : String) is
+         Len : constant Natural :=
+           Natural'Min (Message'Length, Result.Diagnostic'Length);
+      begin
+         Result.Diagnostic := [others => ' '];
+         Result.Diagnostic_Len := Len;
+         if Len > 0 then
+            Result.Diagnostic (1 .. Len) :=
+              Message (Message'First .. Message'First + Len - 1);
+         end if;
+      end Set_Diagnostic;
+
+      function Description_Is_Canonical
+        (Value : Token_Text) return Boolean
+      is
+      begin
+         for I in 1 .. Value.Length loop
+            if Value.Value (I) in ASCII.LF | ASCII.CR then
+               return False;
+            end if;
+         end loop;
+         return True;
+      end Description_Is_Canonical;
+
+   begin
+      if Root_Path'Length = 0 then
+         Set_Diagnostic ("canonical data root must not be empty");
+         return Result;
+      elsif Intent.Amount <= 0 then
+         Set_Diagnostic ("correction amount must be positive");
+         return Result;
+      elsif Equal_Token
+        (Intent.From_Locus.Token, Intent.To_Locus.Token)
+      then
+         Set_Diagnostic ("correction loci must be distinct");
+         return Result;
+      elsif not Description_Is_Canonical (Intent.Description) then
+         Set_Diagnostic
+           ("correction description is not canonically encodable");
+         return Result;
+      end if;
+
+      declare
+         Target_Detail : constant
+           HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+             HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual
+               (Actual_Path, Intent.Target_Id);
+      begin
+         if Target_Detail.Status /=
+           HRA_N.Application.Frontend_Types.Query_Complete
+           or else not Target_Detail.Has_Date
+         then
+            if Target_Detail.Diagnostic_Len > 0 then
+               Set_Diagnostic
+                 ("canonical correction target unavailable: "
+                  & Target_Detail.Diagnostic
+                    (1 .. Target_Detail.Diagnostic_Len));
+            else
+               Set_Diagnostic
+                 ("canonical correction target is not a complete admitted Actual");
+            end if;
+            return Result;
+         elsif Target_Detail.Is_Superseded then
+            Set_Diagnostic ("selected Actual is no longer current");
+            return Result;
+         elsif Target_Detail.Is_Reversed
+           or else Target_Detail.Has_Reverses
+         then
+            Set_Diagnostic
+              ("correction target participates in Reversal evidence");
+            return Result;
+         elsif Requested_Date_Present
+           and then not Equal_Date
+             (Intent.Valid_On, Target_Detail.Valid_On)
+         then
+            Set_Diagnostic
+              ("canonical correction inherits the target occurrence date; "
+               & "use date correction for a date change");
+            return Result;
+         end if;
+
+         declare
+            Items : Effect_List;
+            Desc_Text : constant String :=
+              (if Intent.Description.Length = 0
+               then ""
+               else Intent.Description.Value
+                 (1 .. Intent.Description.Length));
+            Description : constant Description_Text :=
+              Make_Description (Desc_Text);
+         begin
+            Items.Count := 2;
+            Items.Values (1) :=
+              (Key     => No_Effect_Key,
+               Locus   => Intent.From_Locus,
+               Measure => Intent.Measure,
+               Amount  => (Quanta => -Intent.Amount));
+            Items.Values (2) :=
+              (Key     => No_Effect_Key,
+               Locus   => Intent.To_Locus,
+               Measure => Intent.Measure,
+               Amount  => (Quanta => Intent.Amount));
+
+            declare
+               Published : constant
+                 HRA_N.Storage.Loam_Actual_Writer.Publish_Result :=
+                   HRA_N.Storage.Loam_Actual_Writer.Publish_Correction
+                     (Root_Path   => Root_Path,
+                      Target      => (Token => Intent.Target_Id),
+                      Description => Description,
+                      Effects     => Items);
+            begin
+               if not Published.Success then
+                  if Published.Error_Len > 0 then
+                     Set_Diagnostic
+                       (Published.Error_Reason (1 .. Published.Error_Len));
+                  else
+                     Set_Diagnostic
+                       ("canonical Actual correction publication was rejected");
+                  end if;
+                  return Result;
+               end if;
+
+               --  Publication is already authoritative from this point onward.
+               --  A later observation problem must not invite a duplicate retry.
+               Result.State := Canonical_Published_Readback_Unverified;
+               Result.Event_Id := Published.Event_Id;
+
+               declare
+                  Detail : constant
+                    HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+                      HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual
+                        (Actual_Path, Published.Event_Id);
+                  Matches : constant Boolean :=
+                    Detail.Status =
+                      HRA_N.Application.Frontend_Types.Query_Complete
+                    and then Equal_Token
+                      (Detail.Event_Id, Published.Event_Id)
+                    and then Detail.Has_Date
+                    and then Equal_Date
+                      (Detail.Valid_On, Target_Detail.Valid_On)
+                    and then Equal_Description
+                      (Detail.Description, Description)
+                    and then Detail.Has_Replaces
+                    and then Equal_Token
+                      (Detail.Replaces, Intent.Target_Id)
+                    and then Detail.Effect_Count = 2
+                    and then Equal_Token
+                      (Detail.Effects (1).Locus, Intent.From_Locus.Token)
+                    and then Equal_Token
+                      (Detail.Effects (1).Measure, Intent.Measure.Token)
+                    and then Detail.Effects (1).Amount = -Intent.Amount
+                    and then Equal_Token
+                      (Detail.Effects (2).Locus, Intent.To_Locus.Token)
+                    and then Equal_Token
+                      (Detail.Effects (2).Measure, Intent.Measure.Token)
+                    and then Detail.Effects (2).Amount = Intent.Amount;
+               begin
+                  if Detail.Has_Date then
+                     Result.Has_Effective_Date := True;
+                     Result.Effective_Date := Detail.Valid_On;
+                  end if;
+
+                  if Matches then
+                     Result.State := Canonical_Published_Readback_Verified;
+                     Result.Diagnostic_Len := 0;
+                  elsif Detail.Diagnostic_Len > 0 then
+                     Set_Diagnostic
+                       ("correction was published; read-back not verified: "
+                        & Detail.Diagnostic
+                          (1 .. Detail.Diagnostic_Len));
+                  else
+                     Set_Diagnostic
+                       ("correction was published; snapshot-bound read-back did not match");
+                  end if;
+               end;
+            end;
+         end;
+      end;
+      return Result;
+
+   exception
+      when E : others =>
+         if Result.State = Canonical_Not_Published then
+            Set_Diagnostic
+              ("unexpected canonical correction publication failure: "
+               & Ada.Exceptions.Exception_Message (E));
+         else
+            Set_Diagnostic
+              ("correction was published; application read-back failed: "
+               & Ada.Exceptions.Exception_Message (E));
+         end if;
+         return Result;
+   end Correct_Loam_Actual;
+
 end HRA_N.Application.Movement_Command;
