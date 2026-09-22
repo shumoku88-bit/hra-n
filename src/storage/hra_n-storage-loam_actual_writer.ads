@@ -2,9 +2,9 @@
 --  HRA-N: Verified Household Engine
 --  Package: HRA_N.Storage.Loam_Actual_Writer
 --
---  Minimal production writer for one new Movement in canonical actual.loam.
---  This is deliberately narrower than the complete Loam writer surface:
---  correction, reversal, relation, discharge, merchant and operation evidence
+--  Minimal production writer for canonical actual.loam.
+--  Ordinary Movement publication and practical append-only Event correction are
+--  supported. Reversal, relation, discharge, merchant and operation evidence
 --  are not created here.
 -------------------------------------------------------------------------------
 
@@ -33,6 +33,19 @@ package HRA_N.Storage.Loam_Actual_Writer is
    function Publish_Movement
      (Root_Path   : String;
       Valid_On    : Date_Type;
+      Description : Description_Text;
+      Effects     : Effect_List) return Publish_Result;
+
+   --  Publish one append-only correction of a current practical Movement.
+   --  The target Event remains retained. A fresh replacement-N Event is
+   --  appended with REPLACES <target>, inherits the target occurrence date,
+   --  preserves its Measure, and uses the current Locus admission vocabulary.
+   --
+   --  Empty Description means no replacement description. The old description
+   --  is not implicitly copied, matching Loam CorrectionPublisher semantics.
+   function Publish_Correction
+     (Root_Path   : String;
+      Target      : Event_Id;
       Description : Description_Text;
       Effects     : Effect_List) return Publish_Result;
 
