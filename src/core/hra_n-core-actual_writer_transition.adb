@@ -46,7 +46,7 @@ is
 
    procedure Prove_Target_Unique
      (Source : Semantic_Image;
-      Added  : Event;
+      Added  : HRA_N.Core.Event.Event;
       Target : Semantic_Image)
    with
      Ghost,
@@ -61,7 +61,7 @@ is
 
    procedure Prove_Target_Unique
      (Source : Semantic_Image;
-      Added  : Event;
+      Added  : HRA_N.Core.Event.Event;
       Target : Semantic_Image)
    is
    begin
@@ -102,7 +102,7 @@ is
 
    procedure Append_Fresh
      (Source          : Semantic_Image;
-      Added           : Event;
+      Added           : HRA_N.Core.Event.Event;
       Target_Snapshot : Snapshot_Id;
       Target          : out Semantic_Image;
       Status          : out Transition_Status)
@@ -133,7 +133,7 @@ is
 
    procedure Prove_Added_Lookup
      (Source          : Semantic_Image;
-      Added           : Event;
+      Added           : HRA_N.Core.Event.Event;
       Target_Snapshot : Snapshot_Id;
       Target          : Semantic_Image)
    is
@@ -163,7 +163,7 @@ is
 
    procedure Prove_Prior_Lookup_Preserved
      (Source          : Semantic_Image;
-      Added           : Event;
+      Added           : HRA_N.Core.Event.Event;
       Target_Snapshot : Snapshot_Id;
       Target          : Semantic_Image;
       Key             : Event_Id)

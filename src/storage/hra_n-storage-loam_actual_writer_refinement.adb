@@ -19,7 +19,7 @@ package body HRA_N.Storage.Loam_Actual_Writer_Refinement is
    Empty_Effects : constant Effect_List :=
      (Count => 0, Values => [others => Empty_Effect]);
 
-   Empty_Event : constant Event :=
+   Empty_Event : constant HRA_N.Core.Event.Event :=
      Make_Event
        ((Token => (Length => 0, Value => [others => ' '])),
         Empty_Effects);

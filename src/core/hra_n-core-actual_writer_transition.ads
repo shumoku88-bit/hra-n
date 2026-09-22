@@ -27,7 +27,7 @@ is
    --  The proposed Event identity is absent from the admitted source image.
    function Fresh_For
      (Source : Semantic_Image;
-      Added  : Event) return Boolean is
+      Added  : HRA_N.Core.Event.Event) return Boolean is
      (for all I in 1 .. Source.Count =>
         not Same_Id (Id (Source.Events (I)), Id (Added)));
 
@@ -48,7 +48,7 @@ is
    --  claims a filesystem snapshot identity.
    function One_Fresh_Append
      (Source          : Semantic_Image;
-      Added           : Event;
+      Added           : HRA_N.Core.Event.Event;
       Target_Snapshot : Snapshot_Id;
       Target          : Semantic_Image) return Boolean is
      (Event_Ids_Are_Unique (Source)
@@ -62,7 +62,7 @@ is
 
    procedure Append_Fresh
      (Source          : Semantic_Image;
-      Added           : Event;
+      Added           : HRA_N.Core.Event.Event;
       Target_Snapshot : Snapshot_Id;
       Target          : out Semantic_Image;
       Status          : out Transition_Status)
@@ -83,7 +83,7 @@ is
    --  The newly added identity resolves to exactly the complete added Event.
    procedure Prove_Added_Lookup
      (Source          : Semantic_Image;
-      Added           : Event;
+      Added           : HRA_N.Core.Event.Event;
       Target_Snapshot : Snapshot_Id;
       Target          : Semantic_Image)
    with
@@ -102,7 +102,7 @@ is
    --  complete same Lookup_Result afterwards.
    procedure Prove_Prior_Lookup_Preserved
      (Source          : Semantic_Image;
-      Added           : Event;
+      Added           : HRA_N.Core.Event.Event;
       Target_Snapshot : Snapshot_Id;
       Target          : Semantic_Image;
       Key             : Event_Id)

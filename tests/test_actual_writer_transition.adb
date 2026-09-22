@@ -14,7 +14,7 @@ package body Test_Actual_Writer_Transition is
 
    function Make_Test_Event
      (Name   : String;
-      Amount : Quanta_Type) return Event
+      Amount : Quanta_Type) return HRA_N.Core.Event.Event
    is
       Items : Effect_List;
    begin
@@ -28,10 +28,10 @@ package body Test_Actual_Writer_Transition is
    end Make_Test_Event;
 
    procedure Run is
-      Empty : constant Event := Make_Test_Event ("empty", 0);
-      E1    : constant Event := Make_Test_Event ("record-1", 10);
-      E2    : constant Event := Make_Test_Event ("record-2", 20);
-      E3    : constant Event := Make_Test_Event ("record-3", 30);
+      Empty : constant HRA_N.Core.Event.Event := Make_Test_Event ("empty", 0);
+      E1    : constant HRA_N.Core.Event.Event := Make_Test_Event ("record-1", 10);
+      E2    : constant HRA_N.Core.Event.Event := Make_Test_Event ("record-2", 20);
+      E3    : constant HRA_N.Core.Event.Event := Make_Test_Event ("record-3", 30);
       Source : constant Semantic_Image :=
         (Snapshot => 100,
          Count    => 2,
