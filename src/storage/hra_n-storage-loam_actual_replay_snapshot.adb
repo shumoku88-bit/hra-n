@@ -4,7 +4,10 @@
 -------------------------------------------------------------------------------
 
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Core.Event;
+with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
+with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.Loam_Actual_Reader;
 use HRA_N.Storage.Loam_Actual_Reader;
@@ -154,6 +157,68 @@ package body HRA_N.Storage.Loam_Actual_Replay_Snapshot is
       when others =>
          return (Present => False);
    end Admitted_Event_At;
+
+   function Admitted_Context_For
+     (Snapshot : Replay_Snapshot;
+      Key      : Event_Id) return Admitted_Context_Result
+   is
+      Date             : Date_Type := (Year => 2026, Month => 1, Day => 1);
+      Has_Date         : Boolean := False;
+      Description      : Description_Text :=
+        (Length => 0, Value => [others => ' ']);
+      Has_Description  : Boolean := False;
+      Metadata         : Transaction_Metadata_Entry := Empty_Entry;
+      Metadata_Found   : Boolean := False;
+      Successor        : Event_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
+      Has_Successor    : Boolean := False;
+      Reverser         : Event_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
+      Has_Reverser     : Boolean := False;
+      Found_Event      : Boolean := False;
+   begin
+      if not Is_Open (Snapshot) then
+         return (Present => False);
+      end if;
+
+      for Item of Snapshot.Admitted.Events loop
+         if Equal_Token (HRA_N.Core.Event.Id (Item).Token, Key.Token) then
+            Found_Event := True;
+            exit;
+         end if;
+      end loop;
+
+      if not Found_Event then
+         return (Present => False);
+      end if;
+
+      Find_Occurrence_Date
+        (Snapshot.Admitted.Validities, Key, Date, Has_Date);
+      Find_Description
+        (Snapshot.Admitted.Descriptions, Key, Description, Has_Description);
+      Find_Metadata
+        (Snapshot.Admitted.Metadata, Key, Metadata, Metadata_Found);
+      Find_Successor
+        (Snapshot.Admitted.Metadata, Key, Successor, Has_Successor);
+      Find_Reverser
+        (Snapshot.Admitted.Metadata, Key, Reverser, Has_Reverser);
+
+      return
+        (Present         => True,
+         Has_Date        => Has_Date,
+         Valid_On        => Date,
+         Has_Description => Has_Description,
+         Description     => Description,
+         Metadata_Found  => Metadata_Found,
+         Metadata        => Metadata,
+         Has_Successor   => Has_Successor,
+         Successor       => Successor,
+         Has_Reverser    => Has_Reverser,
+         Reverser        => Reverser);
+   exception
+      when others =>
+         return (Present => False);
+   end Admitted_Context_For;
 
    function Replay_Event
      (Snapshot : in out Replay_Snapshot;
