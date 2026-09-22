@@ -22,6 +22,7 @@ with Test_Loam_Actual_Reader;
 with Test_Loam_Actual_Writer;
 with Test_Loam_Actual_Correction_Writer;
 with Test_Loam_Actual_Reversal_Writer;
+with Test_Loam_Actual_Reversal_Refinement;
 with Test_Loam_Actual_Correction_Refinement;
 with Test_Loam_Actual_Writer_Refinement;
 with Test_Loam_Scheduled_Lifecycle_Reader;
@@ -160,6 +161,11 @@ begin
    if Selected ("Test_Loam_Actual_Reversal_Writer") then
       Announce ("Test_Loam_Actual_Reversal_Writer");
       Test_Loam_Actual_Reversal_Writer.Run;
+   end if;
+
+   if Selected ("Test_Loam_Actual_Reversal_Refinement") then
+      Announce ("Test_Loam_Actual_Reversal_Refinement");
+      Test_Loam_Actual_Reversal_Refinement.Run;
    end if;
 
    if Selected ("Test_Loam_Actual_Correction_Refinement") then
