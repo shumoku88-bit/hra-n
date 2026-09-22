@@ -17,6 +17,7 @@ with Test_Actual_Replay_Refinement;
 with Test_Actual_Reader_Refinement;
 with Test_Actual_Writer_Transition;
 with Test_Actual_Correction_Transition;
+with Test_Actual_Reversal_Transition;
 with Test_Loam_Actual_Reader;
 with Test_Loam_Actual_Writer;
 with Test_Loam_Actual_Correction_Writer;
@@ -134,6 +135,11 @@ begin
    if Selected ("Test_Actual_Correction_Transition") then
       Announce ("Test_Actual_Correction_Transition");
       Test_Actual_Correction_Transition.Run;
+   end if;
+
+   if Selected ("Test_Actual_Reversal_Transition") then
+      Announce ("Test_Actual_Reversal_Transition");
+      Test_Actual_Reversal_Transition.Run;
    end if;
 
    if Selected ("Test_Loam_Actual_Reader") then
