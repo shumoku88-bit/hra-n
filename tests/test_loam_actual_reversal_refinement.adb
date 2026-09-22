@@ -1,4 +1,8 @@
 with Ada.Directories;
+with HRA_N.Core.Actual_Bounded_History;
+use HRA_N.Core.Actual_Bounded_History;
+with HRA_N.Core.Actual_Correction_Transition;
+use HRA_N.Core.Actual_Correction_Transition;
 with HRA_N.Core.Actual_Reversal_Transition;
 use HRA_N.Core.Actual_Reversal_Transition;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
