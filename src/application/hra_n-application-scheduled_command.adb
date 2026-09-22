@@ -23,6 +23,7 @@ package body HRA_N.Application.Scheduled_Command is
      HRA_N.Storage.Loam_Scheduled_Creation_Writer;
    package Canonical_Refinement renames
      HRA_N.Storage.Loam_Scheduled_Creation_Refinement;
+   use type Canonical_Refinement.Qualification_Status;
    package Canonical_Reader renames
      HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader;
 
