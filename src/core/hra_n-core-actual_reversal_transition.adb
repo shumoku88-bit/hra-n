@@ -63,6 +63,22 @@ is
       pragma Assert (False);
    end Prove_Present_Not_Fresh;
 
+   procedure Prove_Correction_Edge_Target_Substitution
+     (Left, Right : Correction_Edge;
+      Key         : Event_Id)
+   with
+     Ghost,
+     Pre  => Left = Right and then not Same_Id (Left.Target, Key),
+     Post => not Same_Id (Right.Target, Key);
+
+   procedure Prove_Correction_Edge_Target_Substitution
+     (Left, Right : Correction_Edge;
+      Key         : Event_Id)
+   is
+   begin
+      null;
+   end Prove_Correction_Edge_Target_Substitution;
+
    procedure Prove_Target_Preserved
      (Source       : Reversal_Image;
       Target_Id    : Event_Id;
@@ -99,6 +115,8 @@ is
         Reference_Lookup (Result.Corrections.Events, Target_Id);
    begin
       pragma Assert (Before.State = Found);
+      pragma Assert (Before.Value = Target_Event);
+      pragma Assert (not Is_Targeted (Source.Corrections, Target_Id));
 
       Prove_Prior_Lookup_Preserved
         (Source.Corrections.Events,
@@ -107,7 +125,9 @@ is
          Result.Corrections.Events,
          Target_Id);
 
+      pragma Assert (After = Before);
       pragma Assert (After.State = Found);
+      pragma Assert (After.Value = Target_Event);
       pragma Assert
         (HRA_N.Core.Actual_Correction_Transition.Event_Present
            (Result.Corrections, Target_Id));
@@ -123,30 +143,18 @@ is
          pragma Assert
            (not Same_Id
               (Source.Corrections.Edges (I).Target, Target_Id));
+         Prove_Correction_Edge_Target_Substitution
+           (Source.Corrections.Edges (I),
+            Result.Corrections.Edges (I),
+            Target_Id);
       end loop;
 
       pragma Assert
         (not Is_Targeted (Result.Corrections, Target_Id));
       pragma Assert
         (Current_In_Frontier (Result.Corrections, Target_Id));
-
-      for I in 1 .. Source.Corrections.Events.Count loop
-         if Same_Id
-           (HRA_N.Core.Event.Id
-              (Source.Corrections.Events.Events (I)),
-            Target_Id)
-         then
-            pragma Assert
-              (Source.Corrections.Events.Events (I) = Target_Event);
-            pragma Assert
-              (Result.Corrections.Events.Events (I) =
-                 Source.Corrections.Events.Events (I));
-            pragma Assert
-              (Result.Corrections.Events.Events (I) = Target_Event);
-            return;
-         end if;
-      end loop;
-      pragma Assert (False);
+      pragma Assert
+        (Target_Matches_Source (Result, Target_Id, Target_Event));
    end Prove_Target_Preserved;
 
    procedure Append_Current_Reversal
