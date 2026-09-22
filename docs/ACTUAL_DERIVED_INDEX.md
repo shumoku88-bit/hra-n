@@ -227,7 +227,9 @@ over `actual.loam`. Loam does not currently make the same fsync durability claim
 That distinction is deliberate: **snapshot identity here depends on replacement
 rather than in-place mutation; power-loss durability is a separate property.**
 
-Production Actual lookup routing is still unchanged.
+At this experiment checkpoint, production Actual lookup routing remained
+unchanged. Section 10 records the first later Application query to consume the
+capability.
 
 ## 8. Snapshot-bound replay capability
 
@@ -253,9 +255,9 @@ replacement, the open capability continues to replay the old Events and cannot
 see the replacement-only Event. After explicit close/reopen, it sees the new
 generation and no longer exposes the old Event.
 
-This is a production-language capability boundary, not yet a claim that arbitrary
-filesystem mutation produces immutable snapshots and not yet a switch of
-production Actual queries onto byte-range replay.
+This is a production-language capability boundary, not a claim that arbitrary
+filesystem mutation produces immutable snapshots. At this checkpoint it was not
+yet a switch of production Actual queries onto byte-range replay.
 
 ## 9. Bounded replay proof bridge
 
@@ -294,10 +296,36 @@ confirms that a valid nine-Event production snapshot is admitted by production
 storage but rejected as a whole by the eight-Event proof bridge.
 
 This connects the qualified production capability to the proved pure relation.
-It does **not** turn filesystem behavior into a SPARK theorem, and production
-Actual queries are still not routed through byte-range replay.
+It does **not** turn filesystem behavior into a SPARK theorem. At this proof
+checkpoint, Application queries had not yet been routed through byte-range
+replay.
 
-## 10. What remains unproved
+## 10. First Application routing checkpoint
+
+`HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual` is the first
+production Application query to consume the snapshot-bound replay capability.
+
+The entrance deliberately remains narrow:
+
+1. open one `Replay_Snapshot` for the requested `actual.loam`;
+2. request exactly one Event by `Event_Id` through `Replay_Event`;
+3. construct the Effect portion of the detail view only from the replayed
+   complete Event;
+4. obtain occurrence date, description, replacement, and reversal context from
+   semantic evidence admitted inside that same `Replay_Snapshot`; and
+5. close the snapshot before returning.
+
+The Loam entrance does not call the transitional journal-backed
+`Relation_Query`, because doing so would mix two authorities in one detail
+result. Relation links remain unavailable until Loam canonical relation evidence
+has its own aligned query path.
+
+This checkpoint is about semantic routing, not performance. Opening
+`Replay_Snapshot` still reads and admits the complete normalized Actual image,
+so this does not yet establish sublinear lookup or lower whole-history memory
+use. The existing journal-backed detail entrance is unchanged.
+
+## 11. What remains unproved
 
 This checkpoint does not establish:
 
@@ -310,7 +338,10 @@ This checkpoint does not establish:
 - a canonical writer;
 - removal of the current 1,024-Event working-set bound.
 
-Before production promotion, HRA-N still needs a deliberate decision about
-routing production Actual lookup through the qualified replay capability.
+Further production promotion still needs deliberate decisions for list,
+selected-day, report, and other Actual queries. In particular, those queries
+often require global semantic evidence and should not be routed through replay
+merely to claim an indexing benefit.
+
 Persisted indexes remain optional, and byte offsets remain a qualified candidate
 representation rather than an established architectural requirement.

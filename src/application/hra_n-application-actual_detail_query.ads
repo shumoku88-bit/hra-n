@@ -57,4 +57,11 @@ package HRA_N.Application.Actual_Detail_Query is
      (Paths    : HRA_N.Application.Path_Resolver.Path_Config;
       Event_Id : Token_Text) return Actual_Detail_View;
 
+   --  Resolve one identity directly from Loam canonical normalized Actual.
+   --  The Event payload is obtained through snapshot-bound byte replay, while
+   --  semantic context comes from admission of that same exact byte image.
+   function Execute_Loam_Actual
+     (Path     : String;
+      Event_Id : Token_Text) return Actual_Detail_View;
+
 end HRA_N.Application.Actual_Detail_Query;
