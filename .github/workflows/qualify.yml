@@ -56,11 +56,17 @@ jobs:
       - name: Test Actual Reader Refinement
         run: ./tests/bin/test_runner Test_Actual_Reader_Refinement
 
+      - name: Test Actual Writer Transition
+        run: ./tests/bin/test_runner Test_Actual_Writer_Transition
+
       - name: Test LOAM Actual Reader
         run: ./tests/bin/test_runner Test_Loam_Actual_Reader
 
       - name: Test LOAM Actual Writer
         run: ./tests/bin/test_runner Test_Loam_Actual_Writer
+
+      - name: Test LOAM Actual Writer Refinement
+        run: ./tests/bin/test_runner Test_Loam_Actual_Writer_Refinement
 
       - name: Test Validity
         run: ./tests/bin/test_runner Test_Validity
