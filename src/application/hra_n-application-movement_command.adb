@@ -919,4 +919,232 @@ package body HRA_N.Application.Movement_Command is
          return Result;
    end Correct_Loam_Actual;
 
+   function Reverse_Loam_Actual
+     (Root_Path : String;
+      Intent    : Reversal_Intent) return Canonical_Record_Result
+   is
+      use type HRA_N.Application.Frontend_Types.Query_Status;
+
+      Result      : Canonical_Record_Result;
+      Actual_Path : constant String :=
+        Ada.Directories.Compose (Root_Path, "actual.loam");
+
+      procedure Set_Diagnostic (Message : String) is
+         Len : constant Natural :=
+           Natural'Min (Message'Length, Result.Diagnostic'Length);
+      begin
+         Result.Diagnostic := [others => ' '];
+         Result.Diagnostic_Len := Len;
+         if Len > 0 then
+            Result.Diagnostic (1 .. Len) :=
+              Message (Message'First .. Message'First + Len - 1);
+         end if;
+      end Set_Diagnostic;
+
+      function Same_Effects
+        (Left, Right :
+           HRA_N.Application.Actual_Detail_Query.Actual_Detail_View)
+         return Boolean
+      is
+      begin
+         if Left.Effect_Count /= Right.Effect_Count then
+            return False;
+         end if;
+
+         for I in 1 .. Natural (Left.Effect_Count) loop
+            declare
+               Index : constant Effect_Index_Type := Effect_Index_Type (I);
+            begin
+               if not Equal_Token
+                 (Left.Effects (Index).Locus, Right.Effects (Index).Locus)
+                 or else not Equal_Token
+                   (Left.Effects (Index).Measure,
+                    Right.Effects (Index).Measure)
+                 or else Left.Effects (Index).Amount /=
+                   Right.Effects (Index).Amount
+               then
+                  return False;
+               end if;
+            end;
+         end loop;
+         return True;
+      end Same_Effects;
+
+      function Exact_Inverse
+        (Target, Reversal :
+           HRA_N.Application.Actual_Detail_Query.Actual_Detail_View)
+         return Boolean
+      is
+      begin
+         if Target.Effect_Count /= Reversal.Effect_Count then
+            return False;
+         end if;
+
+         for I in 1 .. Natural (Target.Effect_Count) loop
+            declare
+               Index : constant Effect_Index_Type := Effect_Index_Type (I);
+            begin
+               if not Equal_Token
+                 (Target.Effects (Index).Locus,
+                  Reversal.Effects (Index).Locus)
+                 or else not Equal_Token
+                   (Target.Effects (Index).Measure,
+                    Reversal.Effects (Index).Measure)
+                 or else Reversal.Effects (Index).Amount /=
+                   -Target.Effects (Index).Amount
+               then
+                  return False;
+               end if;
+            end;
+         end loop;
+         return True;
+      exception
+         when Constraint_Error =>
+            return False;
+      end Exact_Inverse;
+
+   begin
+      if Root_Path'Length = 0 then
+         Set_Diagnostic ("canonical data root must not be empty");
+         return Result;
+      elsif Intent.Target_Id.Length = 0 then
+         Set_Diagnostic ("reversal target identity cannot be empty");
+         return Result;
+      elsif not Is_Valid_Date
+        (Intent.Valid_On.Year, Intent.Valid_On.Month, Intent.Valid_On.Day)
+      then
+         Set_Diagnostic ("reversal occurrence date is invalid");
+         return Result;
+      elsif Intent.Description.Length > 0 then
+         Set_Diagnostic
+           ("canonical reversal has no persisted reason/description field; "
+            & "omit the reason");
+         return Result;
+      end if;
+
+      declare
+         Target_Before : constant
+           HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+             HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual
+               (Actual_Path, Intent.Target_Id);
+      begin
+         if Target_Before.Status /=
+           HRA_N.Application.Frontend_Types.Query_Complete
+           or else not Target_Before.Has_Date
+         then
+            if Target_Before.Diagnostic_Len > 0 then
+               Set_Diagnostic
+                 ("canonical reversal target unavailable: "
+                  & Target_Before.Diagnostic
+                    (1 .. Target_Before.Diagnostic_Len));
+            else
+               Set_Diagnostic
+                 ("canonical reversal target is not a complete admitted Actual");
+            end if;
+            return Result;
+         elsif Target_Before.Is_Superseded then
+            Set_Diagnostic ("selected Actual is no longer current");
+            return Result;
+         elsif Target_Before.Is_Reversed
+           or else Target_Before.Has_Reverses
+         then
+            Set_Diagnostic
+              ("reversal target already participates in Reversal evidence");
+            return Result;
+         end if;
+
+         declare
+            Published : constant
+              HRA_N.Storage.Loam_Actual_Writer.Publish_Result :=
+                HRA_N.Storage.Loam_Actual_Writer.Publish_Reversal
+                  (Root_Path => Root_Path,
+                   Target    => (Token => Intent.Target_Id),
+                   Valid_On  => Intent.Valid_On);
+         begin
+            if not Published.Success then
+               if Published.Error_Len > 0 then
+                  Set_Diagnostic
+                    (Published.Error_Reason (1 .. Published.Error_Len));
+               else
+                  Set_Diagnostic
+                    ("canonical Actual reversal publication was rejected");
+               end if;
+               return Result;
+            end if;
+
+            Result.State := Canonical_Published_Readback_Unverified;
+            Result.Event_Id := Published.Event_Id;
+
+            declare
+               Reversal_Detail : constant
+                 HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+                   HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual
+                     (Actual_Path, Published.Event_Id);
+               Target_After : constant
+                 HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+                   HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual
+                     (Actual_Path, Intent.Target_Id);
+               Matches : constant Boolean :=
+                 Reversal_Detail.Status =
+                   HRA_N.Application.Frontend_Types.Query_Complete
+                 and then Equal_Token
+                   (Reversal_Detail.Event_Id, Published.Event_Id)
+                 and then Reversal_Detail.Has_Date
+                 and then Equal_Date
+                   (Reversal_Detail.Valid_On, Intent.Valid_On)
+                 and then Reversal_Detail.Description.Length = 0
+                 and then Reversal_Detail.Has_Reverses
+                 and then Equal_Token
+                   (Reversal_Detail.Reverses, Intent.Target_Id)
+                 and then not Reversal_Detail.Has_Replaces
+                 and then Exact_Inverse
+                   (Target_Before, Reversal_Detail)
+                 and then Target_After.Status =
+                   HRA_N.Application.Frontend_Types.Query_Complete
+                 and then Equal_Token
+                   (Target_After.Event_Id, Intent.Target_Id)
+                 and then not Target_After.Is_Superseded
+                 and then Target_After.Is_Reversed
+                 and then Equal_Token
+                   (Target_After.Reversed_By, Published.Event_Id)
+                 and then Same_Effects (Target_Before, Target_After);
+            begin
+               if Matches then
+                  Result.State := Canonical_Published_Readback_Verified;
+                  Result.Diagnostic_Len := 0;
+               elsif Reversal_Detail.Diagnostic_Len > 0 then
+                  Set_Diagnostic
+                    ("reversal was published; read-back not verified: "
+                     & Reversal_Detail.Diagnostic
+                       (1 .. Reversal_Detail.Diagnostic_Len));
+               elsif Target_After.Diagnostic_Len > 0 then
+                  Set_Diagnostic
+                    ("reversal was published; target read-back not verified: "
+                     & Target_After.Diagnostic
+                       (1 .. Target_After.Diagnostic_Len));
+               else
+                  Set_Diagnostic
+                    ("reversal was published; snapshot-bound read-back did not match");
+               end if;
+            end;
+         end;
+      end;
+
+      return Result;
+
+   exception
+      when E : others =>
+         if Result.State = Canonical_Not_Published then
+            Set_Diagnostic
+              ("unexpected canonical reversal publication failure: "
+               & Ada.Exceptions.Exception_Message (E));
+         else
+            Set_Diagnostic
+              ("reversal was published; application read-back failed: "
+               & Ada.Exceptions.Exception_Message (E));
+         end if;
+         return Result;
+   end Reverse_Loam_Actual;
+
+
 end HRA_N.Application.Movement_Command;
