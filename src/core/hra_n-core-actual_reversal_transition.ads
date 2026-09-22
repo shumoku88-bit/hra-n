@@ -56,12 +56,10 @@ is
      (Image        : Reversal_Image;
       Target_Id    : Event_Id;
       Target_Event : HRA_N.Core.Event.Event) return Boolean is
-     (for some I in 1 .. Image.Corrections.Events.Count =>
-        Same_Id
-          (HRA_N.Core.Event.Id (Image.Corrections.Events.Events (I)),
-           Target_Id)
-        and then
-          Image.Corrections.Events.Events (I) = Target_Event);
+     (Reference_Lookup (Image.Corrections.Events, Target_Id).State = Found
+      and then
+        Reference_Lookup
+          (Image.Corrections.Events, Target_Id).Value = Target_Event);
 
    --  Writer-specific exact inverse construction.  The production writer
    --  preserves Effect order and coordinates, removes Effect identity, and
