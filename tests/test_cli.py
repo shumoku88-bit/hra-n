@@ -944,6 +944,64 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("Available TUI Workspaces:", res.stdout)
 
 
+    def test_canonical_movement_routes_to_actual_writer(self) -> None:
+        actual = os.path.join(self.test_dir, "actual.loam")
+        policy = os.path.join(self.test_dir, "locus-admission.loam")
+        with open(actual, "wb") as handle:
+            handle.write(b"LOAM-NORMALIZED-ACTUAL\t1\n")
+        with open(policy, "wb") as handle:
+            handle.write(
+                b"LOAM-LOCUS-ADMISSION-VOCABULARY\t1\n"
+                b"LOCUS\tcash\n"
+                b"LOCUS\tfood\n"
+            )
+
+        first = self.run_cmd(
+            "movement", "cash", "food", "125",
+            "2026-09-22", "canonical route",
+        )
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        self.assertIn("[OK] Committed Canonical Movement: record-1", first.stdout)
+        self.assertIn("AUTHORITY: actual.loam", first.stdout)
+        self.assertIn("READ-BACK: snapshot-bound verified", first.stdout)
+
+        with open(actual, "rb") as handle:
+            first_bytes = handle.read()
+        self.assertIn(b"TX\trecord-1\t2026-09-22\tDESC\tcanonical route\n", first_bytes)
+        self.assertIn(b"EFFECT\tcash\tjpy\t-125\n", first_bytes)
+        self.assertIn(b"EFFECT\tfood\tjpy\t125\n", first_bytes)
+
+        second = self.run_cmd(
+            "record", "cash", "food", "75",
+            "2026-09-22", "second",
+        )
+        self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+        self.assertIn("[OK] Committed Canonical Movement: record-2", second.stdout)
+        self.assertIn("READ-BACK: snapshot-bound verified", second.stdout)
+
+        with open(actual, "rb") as handle:
+            before_reject = handle.read()
+        rejected = self.run_cmd(
+            "movement", "cash", "unknown", "10",
+            "2026-09-22", "reject",
+        )
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("Canonical movement rejected", rejected.stdout)
+        with open(actual, "rb") as handle:
+            self.assertEqual(handle.read(), before_reject)
+
+        os.remove(policy)
+        partial = self.run_cmd(
+            "movement", "cash", "food", "10",
+            "2026-09-22", "partial",
+        )
+        self.assertNotEqual(partial.returncode, 0)
+        self.assertIn("Canonical movement rejected", partial.stdout)
+        self.assertFalse(
+            os.path.exists(os.path.join(self.test_dir, "journal.hra")),
+            "partial canonical authority must not fall back to transitional journal",
+        )
+
     def test_canonical_actual_read_only_cli(self) -> None:
         path = os.path.join(self.test_dir, "actual.loam")
         data = (

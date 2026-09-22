@@ -1,8 +1,12 @@
+with Ada.Directories;
 with Ada.Exceptions;
 with Ada.Strings; use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with HRA_N.Application.Actual_Detail_Query;
+with HRA_N.Application.Frontend_Types;
 with HRA_N.Core.Actual_Routing; use HRA_N.Core.Actual_Routing;
+with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Core.Admission; use HRA_N.Core.Admission;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Core.Relation; use HRA_N.Core.Relation;
@@ -11,6 +15,7 @@ with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Journal_Writer; use HRA_N.Storage.Journal_Writer;
 with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
+with HRA_N.Storage.Loam_Actual_Writer;
 
 package body HRA_N.Application.Movement_Command is
 
@@ -530,5 +535,181 @@ package body HRA_N.Application.Movement_Command is
    end Propose_Split;
 
 
+
+   function Canonical_Authority_Present
+     (Root_Path : String) return Boolean
+   is
+      Actual_Path : constant String :=
+        Ada.Directories.Compose (Root_Path, "actual.loam");
+      Policy_Path : constant String :=
+        Ada.Directories.Compose (Root_Path, "locus-admission.loam");
+   begin
+      --  OR is deliberate.  A half-created canonical authority must not make
+      --  callers fall back to the transitional journal and create two writers.
+      return Ada.Directories.Exists (Actual_Path)
+        or else Ada.Directories.Exists (Policy_Path);
+   exception
+      when others =>
+         return False;
+   end Canonical_Authority_Present;
+
+   function Record_Loam_Actual
+     (Root_Path : String;
+      Intent    : Movement_Intent) return Canonical_Record_Result
+   is
+      use type HRA_N.Application.Frontend_Types.Query_Status;
+
+      Result : Canonical_Record_Result;
+
+      procedure Set_Diagnostic (Message : String) is
+         Len : constant Natural :=
+           Natural'Min (Message'Length, Result.Diagnostic'Length);
+      begin
+         Result.Diagnostic := [others => ' '];
+         Result.Diagnostic_Len := Len;
+         if Len > 0 then
+            Result.Diagnostic (1 .. Len) :=
+              Message (Message'First .. Message'First + Len - 1);
+         end if;
+      end Set_Diagnostic;
+
+      function Description_Is_Canonical
+        (Value : Token_Text) return Boolean
+      is
+      begin
+         for I in 1 .. Value.Length loop
+            if Value.Value (I) in ASCII.LF | ASCII.CR then
+               return False;
+            end if;
+         end loop;
+         return True;
+      end Description_Is_Canonical;
+
+   begin
+      if Root_Path'Length = 0 then
+         Set_Diagnostic ("canonical data root must not be empty");
+         return Result;
+      elsif Intent.Amount <= 0 then
+         Set_Diagnostic ("movement amount must be positive");
+         return Result;
+      elsif Equal_Token
+        (Intent.From_Locus.Token, Intent.To_Locus.Token)
+      then
+         Set_Diagnostic ("movement loci must be distinct");
+         return Result;
+      elsif not Is_Valid_Date
+        (Intent.Valid_On.Year, Intent.Valid_On.Month, Intent.Valid_On.Day)
+      then
+         Set_Diagnostic ("movement occurrence date is invalid");
+         return Result;
+      elsif not Description_Is_Canonical (Intent.Description) then
+         Set_Diagnostic
+           ("movement description is not canonically encodable");
+         return Result;
+      end if;
+
+      declare
+         Items : Effect_List;
+         Desc_Text : constant String :=
+           (if Intent.Description.Length = 0
+            then ""
+            else Intent.Description.Value
+              (1 .. Intent.Description.Length));
+         Description : constant Description_Text :=
+           Make_Description (Desc_Text);
+      begin
+         Items.Count := 2;
+         Items.Values (1) :=
+           (Key     => No_Effect_Key,
+            Locus   => Intent.From_Locus,
+            Measure => Intent.Measure,
+            Amount  => (Quanta => -Intent.Amount));
+         Items.Values (2) :=
+           (Key     => No_Effect_Key,
+            Locus   => Intent.To_Locus,
+            Measure => Intent.Measure,
+            Amount  => (Quanta => Intent.Amount));
+
+         declare
+            Published : constant HRA_N.Storage.Loam_Actual_Writer.Publish_Result :=
+              HRA_N.Storage.Loam_Actual_Writer.Publish_Movement
+                (Root_Path   => Root_Path,
+                 Valid_On    => Intent.Valid_On,
+                 Description => Description,
+                 Effects     => Items);
+         begin
+            if not Published.Success then
+               if Published.Error_Len > 0 then
+                  Set_Diagnostic
+                    (Published.Error_Reason (1 .. Published.Error_Len));
+               else
+                  Set_Diagnostic ("canonical Actual publication was rejected");
+               end if;
+               return Result;
+            end if;
+
+            --  Publication is already authoritative from this point onward.
+            --  Never collapse a later observation failure into Not_Published.
+            Result.State := Canonical_Published_Readback_Unverified;
+            Result.Event_Id := Published.Event_Id;
+
+            declare
+               Actual_Path : constant String :=
+                 Ada.Directories.Compose (Root_Path, "actual.loam");
+               Detail : constant
+                 HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+                   HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual
+                     (Actual_Path, Published.Event_Id);
+               Matches : constant Boolean :=
+                 Detail.Status =
+                   HRA_N.Application.Frontend_Types.Query_Complete
+                 and then Equal_Token
+                   (Detail.Event_Id, Published.Event_Id)
+                 and then Detail.Has_Date
+                 and then Equal_Date (Detail.Valid_On, Intent.Valid_On)
+                 and then Equal_Description
+                   (Detail.Description, Description)
+                 and then Detail.Effect_Count = 2
+                 and then Equal_Token
+                   (Detail.Effects (1).Locus, Intent.From_Locus.Token)
+                 and then Equal_Token
+                   (Detail.Effects (1).Measure, Intent.Measure.Token)
+                 and then Detail.Effects (1).Amount = -Intent.Amount
+                 and then Equal_Token
+                   (Detail.Effects (2).Locus, Intent.To_Locus.Token)
+                 and then Equal_Token
+                   (Detail.Effects (2).Measure, Intent.Measure.Token)
+                 and then Detail.Effects (2).Amount = Intent.Amount;
+            begin
+               if Matches then
+                  Result.State := Canonical_Published_Readback_Verified;
+                  Result.Diagnostic_Len := 0;
+               elsif Detail.Diagnostic_Len > 0 then
+                  Set_Diagnostic
+                    ("movement was published; read-back not verified: "
+                     & Detail.Diagnostic
+                       (1 .. Detail.Diagnostic_Len));
+               else
+                  Set_Diagnostic
+                    ("movement was published; snapshot-bound read-back did not match");
+               end if;
+            end;
+         end;
+      end;
+      return Result;
+
+   exception
+      when E : others =>
+         if Result.State = Canonical_Not_Published then
+            Set_Diagnostic
+              ("unexpected canonical movement publication failure: "
+               & Ada.Exceptions.Exception_Message (E));
+         else
+            Set_Diagnostic
+              ("movement was published; application read-back failed: "
+               & Ada.Exceptions.Exception_Message (E));
+         end if;
+         return Result;
+   end Record_Loam_Actual;
 
 end HRA_N.Application.Movement_Command;
