@@ -3,6 +3,10 @@
 --  Package body: HRA_N.Storage.Loam_Actual_Replay_Refinement
 -------------------------------------------------------------------------------
 
+with HRA_N.Core.Actual_Bounded_History;
+use HRA_N.Core.Actual_Bounded_History;
+with HRA_N.Core.Actual_Replay_Refinement;
+use HRA_N.Core.Actual_Replay_Refinement;
 with HRA_N.Core.Event;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Storage.Loam_Actual_Byte_Spans;
