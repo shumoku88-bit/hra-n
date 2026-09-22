@@ -113,6 +113,51 @@ package body Test_Actual_Query is
       end;
 
       declare
+         Detail : constant
+           HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+             HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual
+               (Loam_Path, Make_Token ("e0003"));
+      begin
+         Assert
+           (Detail.Status = Query_Complete,
+            "Loam Actual detail resolves identity through bound replay");
+         Assert_Equal_Int
+           (2, Long_Long_Integer (Detail.Effect_Count),
+            "Loam replay detail retains every Effect");
+         Assert
+           (Detail.Effects (1).Amount = -300,
+            "Loam replay detail retains exact signed amount");
+         Assert
+           (Equal_Token (Detail.Effects (2).Locus, Make_Token ("food")),
+            "Loam replay detail retains effect locus");
+         Assert
+           (Detail.Description.Length = 5,
+            "Loam replay detail uses admitted description from same snapshot");
+         Assert
+           (Detail.Has_Date
+            and then Equal_Date
+              (Detail.Valid_On, (Year => 2026, Month => 9, Day => 11)),
+            "Loam replay detail uses admitted occurrence date from same snapshot");
+         Assert
+           (not Detail.Links.Success,
+            "Loam replay detail does not mix transitional journal relation links");
+      end;
+
+      declare
+         Missing : constant
+           HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+             HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual
+               (Loam_Path, Make_Token ("absent"));
+      begin
+         Assert
+           (Missing.Status = Query_Rejected,
+            "Loam replay detail rejects absent identity");
+         Assert
+           (Missing.Diagnostic_Len > 0,
+            "Loam replay detail absent identity carries diagnostic");
+      end;
+
+      declare
          View : constant Actual_View :=
            Execute
              (Paths,
@@ -207,6 +252,20 @@ package body Test_Actual_Query is
          Assert
            (Rejected.Diagnostic_Len > 0,
             "Rejected Loam canonical query carries diagnostic");
+      end;
+
+      declare
+         Rejected_Detail : constant
+           HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+             HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual
+               (Loam_Path, Make_Token ("bad"));
+      begin
+         Assert
+           (Rejected_Detail.Status = Query_Rejected,
+            "Loam replay detail fails closed when semantic admission fails");
+         Assert
+           (Rejected_Detail.Diagnostic_Len > 0,
+            "Rejected Loam replay detail carries diagnostic");
       end;
 
       declare
