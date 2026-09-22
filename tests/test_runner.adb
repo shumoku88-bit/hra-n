@@ -18,6 +18,7 @@ with Test_Actual_Reader_Refinement;
 with Test_Actual_Writer_Transition;
 with Test_Loam_Actual_Reader;
 with Test_Loam_Actual_Writer;
+with Test_Loam_Actual_Correction_Writer;
 with Test_Loam_Actual_Writer_Refinement;
 with Test_Validity;
 with Test_Review;
@@ -133,6 +134,11 @@ begin
    if Selected ("Test_Loam_Actual_Writer") then
       Announce ("Test_Loam_Actual_Writer");
       Test_Loam_Actual_Writer.Run;
+   end if;
+
+   if Selected ("Test_Loam_Actual_Correction_Writer") then
+      Announce ("Test_Loam_Actual_Correction_Writer");
+      Test_Loam_Actual_Correction_Writer.Run;
    end if;
 
    if Selected ("Test_Loam_Actual_Writer_Refinement") then

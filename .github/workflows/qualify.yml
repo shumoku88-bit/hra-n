@@ -65,6 +65,9 @@ jobs:
       - name: Test LOAM Actual Writer
         run: ./tests/bin/test_runner Test_Loam_Actual_Writer
 
+      - name: Test LOAM Actual Correction Writer
+        run: ./tests/bin/test_runner Test_Loam_Actual_Correction_Writer
+
       - name: Test LOAM Actual Writer Refinement
         run: ./tests/bin/test_runner Test_Loam_Actual_Writer_Refinement
 
