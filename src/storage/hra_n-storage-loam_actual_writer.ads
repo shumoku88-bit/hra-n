@@ -3,9 +3,9 @@
 --  Package: HRA_N.Storage.Loam_Actual_Writer
 --
 --  Minimal production writer for canonical actual.loam.
---  Ordinary Movement publication and practical append-only Event correction are
---  supported. Reversal, relation, discharge, merchant and operation evidence
---  are not created here.
+--  Ordinary Movement publication, practical append-only Event correction, and
+--  practical explicit Actual reversal are supported. Relation, discharge,
+--  merchant and operation evidence are not created here.
 -------------------------------------------------------------------------------
 
 with HRA_N.Core.Description; use HRA_N.Core.Description;
@@ -48,5 +48,22 @@ package HRA_N.Storage.Loam_Actual_Writer is
       Target      : Event_Id;
       Description : Description_Text;
       Effects     : Effect_List) return Publish_Result;
+
+   --  Publish one explicit reversal of a current practical JPY Actual.
+   --
+   --  The target Event is retained unchanged.  The appended Event identity is
+   --  deterministically "actual-reversal:<target>", every Effect key is
+   --  anonymous, and each physical Effect is the exact additive inverse of the
+   --  target.  REVERSAL-OF records provenance without superseding the target.
+   --
+   --  The caller supplies the reversal occurrence date.  Publication acquires
+   --  canonical Scheduled ownership before Actual ownership, re-reads
+   --  scheduled.loam as guard evidence, and refuses Scheduled-completion Actuals.
+   --  Canonical Actual row families not yet represented by the HRA-N bridge,
+   --  including Relation/Discharge evidence, remain fail-closed.
+   function Publish_Reversal
+     (Root_Path : String;
+      Target    : Event_Id;
+      Valid_On  : Date_Type) return Publish_Result;
 
 end HRA_N.Storage.Loam_Actual_Writer;

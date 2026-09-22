@@ -71,6 +71,9 @@ jobs:
       - name: Test LOAM Actual Correction Writer
         run: ./tests/bin/test_runner Test_Loam_Actual_Correction_Writer
 
+      - name: Test LOAM Actual Reversal Writer
+        run: ./tests/bin/test_runner Test_Loam_Actual_Reversal_Writer
+
       - name: Test LOAM Actual Correction Refinement
         run: ./tests/bin/test_runner Test_Loam_Actual_Correction_Refinement
 

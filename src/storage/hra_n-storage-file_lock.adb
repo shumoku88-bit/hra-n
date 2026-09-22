@@ -35,6 +35,51 @@ package body HRA_N.Storage.File_Lock is
       end Leave;
    end Process_Gate;
 
+   function Acquire_Without_Gate
+     (Path : String;
+      Lock : in out Lock_Handle) return Boolean
+   is
+      Status : Interfaces.C.int;
+   begin
+      if Lock.Held then
+         return True;
+      end if;
+
+      Lock.FD := GNAT.OS_Lib.Open_Read_Write (Path, GNAT.OS_Lib.Binary);
+      if Lock.FD = GNAT.OS_Lib.Invalid_FD then
+         Lock.FD := GNAT.OS_Lib.Create_File (Path, GNAT.OS_Lib.Binary);
+      end if;
+      if Lock.FD = GNAT.OS_Lib.Invalid_FD then
+         return False;
+      end if;
+
+      Status := POSIX_Flock (Interfaces.C.int (Lock.FD), LOCK_EX);
+      if Status /= 0 then
+         declare
+            Closed : Boolean;
+         begin
+            GNAT.OS_Lib.Close (Lock.FD, Closed);
+         end;
+         Lock.FD := GNAT.OS_Lib.Invalid_FD;
+         return False;
+      end if;
+
+      Lock.Held := True;
+      return True;
+   exception
+      when others =>
+         if Lock.FD /= GNAT.OS_Lib.Invalid_FD then
+            declare
+               Closed : Boolean;
+            begin
+               GNAT.OS_Lib.Close (Lock.FD, Closed);
+            end;
+         end if;
+         Lock.FD := GNAT.OS_Lib.Invalid_FD;
+         Lock.Held := False;
+         return False;
+   end Acquire_Without_Gate;
+
    function Acquire
      (Path : String;
       Lock : in out Lock_Handle) return Boolean
@@ -117,5 +162,71 @@ package body HRA_N.Storage.File_Lock is
 
    function Is_Held (Lock : Lock_Handle) return Boolean is
      (Lock.Held);
+
+
+   function Acquire_Ordered_Pair
+     (First_Path  : String;
+      Second_Path : String;
+      Pair        : in out Ordered_Lock_Pair) return Boolean
+   is
+   begin
+      if Pair.Held then
+         return True;
+      elsif First_Path = Second_Path then
+         return False;
+      end if;
+
+      Process_Gate.Enter;
+      Pair.Gate_Held := True;
+
+      if not Acquire_Without_Gate (First_Path, Pair.First) then
+         Process_Gate.Leave;
+         Pair.Gate_Held := False;
+         return False;
+      end if;
+
+      if not Acquire_Without_Gate (Second_Path, Pair.Second) then
+         Release (Pair.First);
+         Process_Gate.Leave;
+         Pair.Gate_Held := False;
+         return False;
+      end if;
+
+      Pair.Held := True;
+      return True;
+   exception
+      when others =>
+         Release (Pair.Second);
+         Release (Pair.First);
+         Pair.Held := False;
+         if Pair.Gate_Held then
+            Process_Gate.Leave;
+            Pair.Gate_Held := False;
+         end if;
+         return False;
+   end Acquire_Ordered_Pair;
+
+   procedure Release (Pair : in out Ordered_Lock_Pair) is
+   begin
+      --  Reverse the acquisition order while the single process gate remains
+      --  held, then make another Ada task eligible to acquire ownership.
+      Release (Pair.Second);
+      Release (Pair.First);
+      Pair.Held := False;
+      if Pair.Gate_Held then
+         Process_Gate.Leave;
+         Pair.Gate_Held := False;
+      end if;
+   exception
+      when others =>
+         Pair.Held := False;
+         if Pair.Gate_Held then
+            Process_Gate.Leave;
+            Pair.Gate_Held := False;
+         end if;
+   end Release;
+
+   function Is_Held (Pair : Ordered_Lock_Pair) return Boolean is
+     (Pair.Held and then Pair.First.Held and then Pair.Second.Held);
 
 end HRA_N.Storage.File_Lock;
