@@ -4,6 +4,7 @@
 -------------------------------------------------------------------------------
 
 with Ada.Strings.Unbounded;
+with HRA_N.Core.Admission; use HRA_N.Core.Admission;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Storage.Exact_File;
 
