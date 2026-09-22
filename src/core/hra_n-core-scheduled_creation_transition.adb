@@ -45,7 +45,7 @@ is
        and then Target.Sched_Items (Target.Sched_Count) = Added,
      Post => Occurrence_Ids_Are_Unique (Target);
 
-   procedure Prove_Target_Occurrence_Admission
+   procedure Prove_Target_Identity_Admission
      (Source : Scheduled_Lifecycle;
       Added  : Scheduled_Occurrence;
       Target : Scheduled_Lifecycle)
