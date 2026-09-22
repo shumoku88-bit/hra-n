@@ -59,6 +59,9 @@ jobs:
       - name: Test Actual Writer Transition
         run: ./tests/bin/test_runner Test_Actual_Writer_Transition
 
+      - name: Test Actual Correction Transition
+        run: ./tests/bin/test_runner Test_Actual_Correction_Transition
+
       - name: Test LOAM Actual Reader
         run: ./tests/bin/test_runner Test_Loam_Actual_Reader
 
@@ -67,6 +70,9 @@ jobs:
 
       - name: Test LOAM Actual Correction Writer
         run: ./tests/bin/test_runner Test_Loam_Actual_Correction_Writer
+
+      - name: Test LOAM Actual Correction Refinement
+        run: ./tests/bin/test_runner Test_Loam_Actual_Correction_Refinement
 
       - name: Test LOAM Actual Writer Refinement
         run: ./tests/bin/test_runner Test_Loam_Actual_Writer_Refinement

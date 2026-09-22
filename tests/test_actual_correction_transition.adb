@@ -54,7 +54,9 @@ package body Test_Actual_Correction_Transition is
            [1 =>
               (Target      => E_Id ("record-1"),
                Replacement => E_Id ("replacement-1")),
-            others => Empty_Edge]);
+            others =>
+              (Target      => E_Id ("unused-target"),
+               Replacement => E_Id ("unused-replacement"))]);
       Target : Correction_Image;
       Status : Correction_Transition_Status;
    begin

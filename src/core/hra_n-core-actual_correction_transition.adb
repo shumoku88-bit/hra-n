@@ -6,6 +6,7 @@
 package body HRA_N.Core.Actual_Correction_Transition with
   SPARK_Mode => On
 is
+   use type HRA_N.Core.Event.Event;
 
    procedure Prove_Same_Id_Transitive
      (Left, Middle, Right : Event_Id)

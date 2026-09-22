@@ -30,19 +30,13 @@ is
       Replacement : Event_Id;
    end record;
 
-   Empty_Event_Id : constant Event_Id :=
-     (Token => (Length => 0, Value => [others => ' ']));
-
-   Empty_Edge : constant Correction_Edge :=
-     (Target => Empty_Event_Id, Replacement => Empty_Event_Id);
-
    type Correction_Edge_Array is
      array (Correction_Edge_Position) of Correction_Edge;
 
    type Correction_Image is record
       Events     : Semantic_Image;
       Edge_Count : Correction_Edge_Count := 0;
-      Edges      : Correction_Edge_Array := [others => Empty_Edge];
+      Edges      : Correction_Edge_Array;
    end record;
 
    function Event_Present
