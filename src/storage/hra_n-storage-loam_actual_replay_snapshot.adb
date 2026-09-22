@@ -6,8 +6,12 @@
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with HRA_N.Core.Event;
 with HRA_N.Storage.Exact_File;
+with HRA_N.Storage.Loam_Actual_Reader;
+use HRA_N.Storage.Loam_Actual_Reader;
 
 package body HRA_N.Storage.Loam_Actual_Replay_Snapshot is
+
+   use type HRA_N.Core.Event.Event;
 
    function Empty_Decoded return Event_Block_Result is
      (Decode_Event_Block (""));
@@ -23,6 +27,8 @@ package body HRA_N.Storage.Loam_Actual_Replay_Snapshot is
          end;
       end if;
       Snapshot.Count := 0;
+      Snapshot.Admitted.Success := False;
+      Snapshot.Admitted.Events.Clear;
    end Close_Quietly;
 
    procedure Open
@@ -56,11 +62,17 @@ package body HRA_N.Storage.Loam_Actual_Replay_Snapshot is
          end if;
 
          declare
-            Bytes   : constant String := To_String (Exact.Content);
-            Located : constant Locate_Result :=
+            Bytes    : constant String := To_String (Exact.Content);
+            Admitted : constant Loam_Actual_Result :=
+              Read_Loam_Actual_Content (Bytes);
+            Located  : constant Locate_Result :=
               Locate_Event_Byte_Spans (Bytes);
          begin
-            if not Located.Success then
+            if not Admitted.Success then
+               Close_Quietly (Snapshot);
+               Status := Snapshot_Admission_Failed;
+               return;
+            elsif not Located.Success then
                Close_Quietly (Snapshot);
                Status := Snapshot_Locate_Failed;
                return;
@@ -81,6 +93,25 @@ package body HRA_N.Storage.Loam_Actual_Replay_Snapshot is
                end loop;
             end if;
 
+            if Natural (Admitted.Events.Length) /= Natural (Located.Count) then
+               Close_Quietly (Snapshot);
+               Status := Snapshot_Correspondence_Failed;
+               return;
+            end if;
+
+            for I in 1 .. Located.Count loop
+               if not Equal_Token
+                 (Located.Spans (I).Key.Token,
+                  HRA_N.Core.Event.Id
+                    (Admitted.Events.Element (Positive (I))).Token)
+               then
+                  Close_Quietly (Snapshot);
+                  Status := Snapshot_Correspondence_Failed;
+                  return;
+               end if;
+            end loop;
+
+            Snapshot.Admitted := Admitted;
             Snapshot.Count := Located.Count;
             for I in 1 .. Located.Count loop
                Snapshot.Spans (I) := Located.Spans (I);
@@ -149,6 +180,14 @@ package body HRA_N.Storage.Loam_Actual_Replay_Snapshot is
                   then
                      return
                        (Status  => Replay_Identity_Mismatch,
+                        Decoded => Decoded);
+                  elsif I > Natural (Snapshot.Admitted.Events.Length)
+                    or else
+                      Decoded.Value /=
+                        Snapshot.Admitted.Events.Element (Positive (I))
+                  then
+                     return
+                       (Status  => Replay_Semantic_Mismatch,
                         Decoded => Decoded);
                   end if;
 
