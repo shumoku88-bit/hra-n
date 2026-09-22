@@ -429,6 +429,33 @@ package body Test_Actual_Byte_Spans is
          end;
 
          Bound_Replay.Close (Bound);
+
+         --  Structural TX/ENDTX location alone is not sufficient.  A snapshot
+         --  is not opened unless the exact same bytes also pass global semantic
+         --  admission.
+         declare
+            Unsupported_Document : constant String :=
+              Header & ASCII.LF &
+              "TX" & ASCII.HT & "e-unsupported" & ASCII.HT &
+              "2026-09-25" & ASCII.HT & "NODESC" & ASCII.LF &
+              "DATE-REV" & ASCII.HT & "rev-1" & ASCII.HT &
+              "2026-09-26" & ASCII.HT & "REPLACES" & ASCII.HT &
+              "ROOT" & ASCII.LF &
+              "ENDTX" & ASCII.LF;
+            Unsupported_Status : Bound_Replay.Snapshot_Open_Status;
+         begin
+            Write_Text (Path, Unsupported_Document);
+            Bound_Replay.Open (Bound, Path, Unsupported_Status);
+            Assert
+              (Unsupported_Status = Bound_Replay.Snapshot_Admission_Failed,
+               "structurally locatable but semantically unsupported snapshot fails closed");
+            Assert
+              (not Bound_Replay.Is_Open (Bound),
+               "failed semantic admission does not leave a replay handle open");
+            Assert
+              (Bound_Replay.Event_Count (Bound) = 0,
+               "failed semantic admission exposes no replay locators");
+         end;
       end;
 
       Cleanup;

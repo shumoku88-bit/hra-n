@@ -16,19 +16,6 @@ package body Test_Loam_Actual_Reader is
 
    Path : constant String := "/tmp/hra_n_loam_actual_reader.loam";
 
-   procedure Write_File
-     (Content : String)
-   is
-      File : Ada.Text_IO.File_Type;
-   begin
-      if Ada.Directories.Exists (Path) then
-         Ada.Directories.Delete_File (Path);
-      end if;
-      Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Path);
-      Ada.Text_IO.Put (File, Content);
-      Ada.Text_IO.Close (File);
-   end Write_File;
-
    procedure Write_Synthetic_Fixture
      (Count     : Positive;
       With_Desc : Boolean := True)
@@ -175,7 +162,7 @@ package body Test_Loam_Actual_Reader is
    begin
       --  1. The supported normalized slice preserves anonymous/keyed Effects,
       --  base occurrence dates, descriptions, correction and exact reversal.
-      Write_File
+      Write_Exact_File
         (Header
          & "TX" & HT & "ev-root" & HT & "2026-09-01" & HT & "DESC" & HT & "Root" & NL
          & "EFFECT" & HT & "wallet" & HT & "jpy" & HT & "-100" & NL
@@ -201,7 +188,11 @@ package body Test_Loam_Actual_Reader is
            (R.Success,
             "normalized LOAM Actual supported slice reads"
             & (if R.Success or else R.Error_Len = 0 then ""
-               else " (" & R.Error_Reason (1 .. R.Error_Len) & ")"));
+               else " (line"
+                 & Natural'Image (R.Error_Line)
+                 & ": "
+                 & R.Error_Reason (1 .. R.Error_Len)
+                 & ")"));
          if R.Success then
             Assert_Equal_Int
               (4, Long_Long_Integer (R.Events.Length),
@@ -259,8 +250,37 @@ package body Test_Loam_Actual_Reader is
          end if;
       end;
 
+      --  1b. The same semantic admission is available directly from an
+      --  already captured exact byte image, with no pathname reopen.
+      declare
+         Content : constant String :=
+           Header
+           & "TX" & HT & "ev-content" & HT & "2026-09-05" & HT & "NODESC" & NL
+           & "EFFECT" & HT & "cash" & HT & "jpy" & HT & "-7" & NL
+           & "EFFECT" & HT & "food" & HT & "jpy" & HT & "7" & NL
+           & "ENDTX" & NL;
+         R : constant Loam_Actual_Result :=
+           Read_Loam_Actual_Content (Content);
+      begin
+         Assert
+           (R.Success,
+            "exact-content admission succeeds without pathname reopen");
+         Assert_Equal_Int
+           (1, Long_Long_Integer (R.Events.Length),
+            "exact-content admission retains the Event");
+         Assert
+           (Equal_Token
+              (Id (R.Events.Element (1)).Token, Make_Token ("ev-content")),
+            "exact-content admission preserves Event identity");
+      end;
+
+      Assert
+        (not Read_Loam_Actual_Content
+          ("LOAM-NORMALIZED-ACTUAL" & HT & "1").Success,
+         "exact-content admission still requires canonical final newline");
+
       --  2. Retained Effect identity may not collide within one Event.
-      Write_File
+      Write_Exact_File
         (Header
          & "TX" & HT & "ev-dup-key" & HT & "2026-09-01" & HT & "NODESC" & NL
          & "KEYED-EFFECT" & HT & "same" & HT & "wallet" & HT & "jpy" & HT & "-100" & NL
@@ -271,7 +291,7 @@ package body Test_Loam_Actual_Reader is
          "duplicate retained Effect key fails closed");
 
       --  3. Unsupported normalized semantics are never silently discarded.
-      Write_File
+      Write_Exact_File
         (Header
          & "TX" & HT & "ev-date-rev" & HT & "2026-09-01" & HT & "NODESC" & NL
          & "DATE-REV" & HT & "rev-1" & HT & "2026-09-02" & HT
@@ -284,7 +304,7 @@ package body Test_Loam_Actual_Reader is
          "unsupported DATE-REV fails closed rather than losing provenance");
 
       --  4. A reversal must be the exact physical inverse of its target.
-      Write_File
+      Write_Exact_File
         (Header
          & "TX" & HT & "ev-target" & HT & "2026-09-01" & HT & "NODESC" & NL
          & "EFFECT" & HT & "wallet" & HT & "jpy" & HT & "-100" & NL

@@ -14,6 +14,7 @@ with HRA_N.Storage.Loam_Actual_Byte_Spans;
 use HRA_N.Storage.Loam_Actual_Byte_Spans;
 with HRA_N.Storage.Loam_Actual_Event_Block;
 use HRA_N.Storage.Loam_Actual_Event_Block;
+with HRA_N.Storage.Loam_Actual_Reader;
 
 package HRA_N.Storage.Loam_Actual_Replay_Snapshot is
 
@@ -24,8 +25,10 @@ package HRA_N.Storage.Loam_Actual_Replay_Snapshot is
       Snapshot_Already_Open,
       Snapshot_Open_Failed,
       Snapshot_Read_Failed,
+      Snapshot_Admission_Failed,
       Snapshot_Locate_Failed,
-      Snapshot_Duplicate_Event_Id);
+      Snapshot_Duplicate_Event_Id,
+      Snapshot_Correspondence_Failed);
 
    procedure Open
      (Snapshot : in out Replay_Snapshot;
@@ -45,6 +48,7 @@ package HRA_N.Storage.Loam_Actual_Replay_Snapshot is
       Replay_Range_Read_Failed,
       Replay_Decode_Failed,
       Replay_Identity_Mismatch,
+      Replay_Semantic_Mismatch,
       Replay_Succeeded);
 
    type Replay_Result is record
@@ -61,8 +65,9 @@ package HRA_N.Storage.Loam_Actual_Replay_Snapshot is
 
 private
    type Replay_Snapshot is limited record
-      Handle : HRA_N.Storage.Exact_File.Snapshot_Handle;
-      Count  : Located_Event_Count := 0;
-      Spans  : Event_Byte_Span_Array;
+      Handle   : HRA_N.Storage.Exact_File.Snapshot_Handle;
+      Count    : Located_Event_Count := 0;
+      Spans    : Event_Byte_Span_Array;
+      Admitted : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
    end record;
 end HRA_N.Storage.Loam_Actual_Replay_Snapshot;
