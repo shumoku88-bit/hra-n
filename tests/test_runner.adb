@@ -22,6 +22,7 @@ with Test_Loam_Actual_Writer;
 with Test_Loam_Actual_Correction_Writer;
 with Test_Loam_Actual_Correction_Refinement;
 with Test_Loam_Actual_Writer_Refinement;
+with Test_Loam_Scheduled_Lifecycle_Reader;
 with Test_Validity;
 with Test_Review;
 with Test_Initializer;
@@ -157,6 +158,11 @@ begin
    if Selected ("Test_Loam_Actual_Writer_Refinement") then
       Announce ("Test_Loam_Actual_Writer_Refinement");
       Test_Loam_Actual_Writer_Refinement.Run;
+   end if;
+
+   if Selected ("Test_Loam_Scheduled_Lifecycle_Reader") then
+      Announce ("Test_Loam_Scheduled_Lifecycle_Reader");
+      Test_Loam_Scheduled_Lifecycle_Reader.Run;
    end if;
 
    if Selected ("Test_Validity") then
