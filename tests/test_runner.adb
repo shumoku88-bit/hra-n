@@ -22,6 +22,7 @@ with Test_Scheduled_Creation_Transition;
 with Test_Scheduled_Completion_Transition;
 with Test_Scheduled_Completion_Protocol;
 with Test_Scheduled_Retirement_Transition;
+with Test_Scheduled_Replacement_Transition;
 with Test_Loam_Actual_Reader;
 with Test_Loam_Actual_Writer;
 with Test_Loam_Actual_Correction_Writer;
@@ -175,6 +176,11 @@ begin
    if Selected ("Test_Scheduled_Retirement_Transition") then
       Announce ("Test_Scheduled_Retirement_Transition");
       Test_Scheduled_Retirement_Transition.Run;
+   end if;
+
+   if Selected ("Test_Scheduled_Replacement_Transition") then
+      Announce ("Test_Scheduled_Replacement_Transition");
+      Test_Scheduled_Replacement_Transition.Run;
    end if;
 
    if Selected ("Test_Loam_Actual_Reader") then

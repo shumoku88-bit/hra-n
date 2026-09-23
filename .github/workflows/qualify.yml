@@ -82,6 +82,9 @@ jobs:
       - name: Test Scheduled Retirement Transition
         run: ./tests/bin/test_runner Test_Scheduled_Retirement_Transition
 
+      - name: Test Scheduled Replacement Transition
+        run: ./tests/bin/test_runner Test_Scheduled_Replacement_Transition
+
       - name: Test LOAM Actual Reader
         run: ./tests/bin/test_runner Test_Loam_Actual_Reader
 
