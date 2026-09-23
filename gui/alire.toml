@@ -1,0 +1,9 @@
+name = "hra_n_gui"
+description = "Optional GtkAda/Cairo graphical experiment for HRA-N"
+version = "0.0.1-dev"
+authors = ["shumoku88-bit"]
+licenses = "MIT"
+executables = ["hra-n-gui"]
+
+[[depends-on]]
+gtkada = "~26.0.0"
