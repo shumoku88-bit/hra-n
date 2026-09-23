@@ -21,6 +21,7 @@ with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 with HRA_N.Application.Movement_Command; use HRA_N.Application.Movement_Command;
 with HRA_N.Application.Scheduled_Command; use HRA_N.Application.Scheduled_Command;
+with HRA_N.Application.Canonical_Authority;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Proposal;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
@@ -170,7 +171,7 @@ package body HRA_N.UI.Record_TUI is
       Use_Canonical_Scheduled : constant Boolean :=
         Op in Op_Create_Scheduled | Op_Complete_Scheduled
         and then
-          HRA_N.Application.Scheduled_Command.Canonical_Authority_Present
+          HRA_N.Application.Canonical_Authority.Canonical_Authority_Present
             (Data_Dir_Str (Paths));
       Canonical_Preview : Boolean := False;
       Pending_Create : Create_Intent :=

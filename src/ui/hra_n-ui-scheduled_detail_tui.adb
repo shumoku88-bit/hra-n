@@ -4,6 +4,7 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Scheduled_Query; use HRA_N.Application.Scheduled_Query;
 with HRA_N.Application.Scheduled_Detail_Query; use HRA_N.Application.Scheduled_Detail_Query;
 with HRA_N.Application.Scheduled_Command; use HRA_N.Application.Scheduled_Command;
+with HRA_N.Application.Canonical_Authority; use HRA_N.Application.Canonical_Authority;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.UI.Snapshot_Label;

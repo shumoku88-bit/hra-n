@@ -1,5 +1,5 @@
 with Ada.Directories;
-with HRA_N.Application.Movement_Command; use HRA_N.Application.Movement_Command;
+with HRA_N.Application.Canonical_Authority; use HRA_N.Application.Canonical_Authority;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Loam_Actual_Replay_Snapshot;

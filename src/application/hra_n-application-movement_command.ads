@@ -93,11 +93,6 @@ package HRA_N.Application.Movement_Command is
       Diagnostic_Len     : Natural := 0;
    end record;
 
-   --  True when any Loam canonical Actual authority marker exists in Root_Path.
-   --  Partial presence intentionally selects the canonical route so HRA-N will
-   --  fail closed rather than silently writing the transitional journal.
-   function Canonical_Authority_Present
-     (Root_Path : String) return Boolean;
 
    --  Publish one ordinary Movement directly to Loam canonical actual.loam,
    --  then resolve the new identity through the snapshot-bound Actual detail
