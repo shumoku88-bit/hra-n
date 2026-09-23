@@ -11,6 +11,7 @@ with Gtk.Enums;            use Gtk.Enums;
 with Gtk.Label;            use Gtk.Label;
 with Gtk.List_Store;       use Gtk.List_Store;
 with Gtk.Scrolled_Window;  use Gtk.Scrolled_Window;
+with Gtk.Tree_Model;       use Gtk.Tree_Model;
 with Gtk.Tree_View;        use Gtk.Tree_View;
 with Gtk.Tree_View_Column; use Gtk.Tree_View_Column;
 
@@ -105,7 +106,7 @@ package body HRA_N_GUI_Event_Detail is
    end Clear;
 
    procedure Show (Detail : Event_Detail_View) is
-      Iter : Gtk.Tree_Model.Gtk_Tree_Iter;
+      Iter : Gtk_Tree_Iter;
       Description : constant String :=
         (if Detail.Has_Description
          then HRA_N.Core.Description.To_String (Detail.Description)
