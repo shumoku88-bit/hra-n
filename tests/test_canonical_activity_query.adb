@@ -83,6 +83,9 @@ package body Test_Canonical_Activity_Query is
                 (Source,
                  (Token => Make_Token ("food")),
                  (Token => Make_Token ("jpy")));
+            Detail : constant Event_Detail_View :=
+              Event_Detail_For
+                (Source, (Token => Make_Token ("e2")));
          begin
             Assert
               (Balances.Success,
@@ -90,6 +93,9 @@ package body Test_Canonical_Activity_Query is
             Assert
               (Activity.Success,
                "coordinate activity uses retained browser snapshot");
+            Assert
+              (Detail.Success,
+               "Event detail uses retained browser snapshot");
 
          Assert_Equal_Int
            (3, Long_Long_Integer (Activity.Count),
@@ -138,6 +144,40 @@ package body Test_Canonical_Activity_Query is
             and then Equal_Token
               (Activity.Rows (3).Successor.Token, Make_Token ("e2")),
             "superseded original remains inspectable with successor evidence");
+
+         Assert
+           (Equal_Token (Detail.Event.Token, Make_Token ("e2"))
+            and then
+              HRA_N.Core.Validity.Format_Iso_Date (Detail.Valid_On)
+                = "2026-09-21"
+            and then Detail.Has_Description
+            and then HRA_N.Core.Description.To_String
+              (Detail.Description) = "corrected",
+            "Event detail preserves identity, date, and description");
+         Assert_Equal_Int
+           (2, Long_Long_Integer (Detail.Effect_Count),
+            "Event detail exposes every physical Effect");
+         Assert
+           (Equal_Token
+              (Detail.Effects (1).Locus.Token, Make_Token ("cash"))
+            and then Equal_Token
+              (Detail.Effects (1).Measure.Token, Make_Token ("jpy"))
+            and then Detail.Effects (1).Amount = -120
+            and then Equal_Token
+              (Detail.Effects (2).Locus.Token, Make_Token ("food"))
+            and then Equal_Token
+              (Detail.Effects (2).Measure.Token, Make_Token ("jpy"))
+            and then Detail.Effects (2).Amount = 120,
+            "Event detail preserves exact Effect coordinates and quantities");
+         Assert
+           (Detail.Is_Replacement
+            and then Equal_Token
+              (Detail.Replaces.Token, Make_Token ("e1"))
+            and then Detail.Has_Reverser
+            and then Equal_Token
+              (Detail.Reversed_By.Token, Make_Token ("e3"))
+            and then not Detail.Is_Superseded,
+            "Event detail preserves terminal relationship evidence");
          end;
       end;
 
