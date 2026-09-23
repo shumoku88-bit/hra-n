@@ -209,8 +209,15 @@ package body Test_Statement is
          Assert (Rep.Summary.Total_Assets = -20, "Statement and balance use same correction");
       end;
 
-      --  Canonical Actual owns transaction evidence; retained legacy events
-      --  and assertions cannot silently become canonical evidence.
+      --  Canonical Actual and Coverage own their respective evidence;
+      --  retained legacy transactions, assertions, and ZERO-ORIGIN rows cannot
+      --  silently become canonical evidence. Accounting Role remains legacy.
+      Assert (Write_File_Atomically
+                (Policy_Path_Str (Paths),
+                 "ROLE cash: ASSET" & ASCII.LF &
+                 "ROLE food: EXPENSE" & ASCII.LF &
+                 "ZERO-ORIGIN legacy-only:jpy" & ASCII.LF,
+                 Error, Error_Len), "mixed Statement legacy policy installs");
       Assert (Write_File_Atomically
                 (Journal_Path_Str (Paths),
                  "TX legacy-only 2026-09-01 cash:-999 food:999" & ASCII.LF &
@@ -253,6 +260,12 @@ package body Test_Statement is
          Assert (Write_File_Atomically
                    (Test_Dir & "/actual.loam", Canonical, Error, Error_Len),
                  "canonical Statement Actual installs");
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/zero-origin-coverage.loam",
+                    "LOAM-ZERO-ORIGIN-COVERAGE" & HT & "1" & NL &
+                    "COORDINATE" & HT & "cash" & HT & "jpy" & NL,
+                    Error, Error_Len),
+                 "canonical Statement coverage installs");
          declare
             Before : constant Statement_Report :=
               Execute_Statement_Query (Paths, (2026, 9, 15), True);
@@ -278,7 +291,12 @@ package body Test_Statement is
             Assert_Equal_Int (20, Before.Summary.Total_Expense,
                               "policy roles interpret canonical effects");
             Assert_Equal_Int (0, Long_Long_Integer (Before.Unknown_Stock_Count),
-                              "legacy policy zero-origin remains applied");
+                              "canonical cash coverage establishes stock origin");
+            Assert_Equal_Int (1, Long_Long_Integer (Before.Zero_Origin_Count),
+                              "canonical coverage excludes legacy-only coordinate");
+            Assert (Before.Coverage_Snapshot.Kind = Snapshot_Unversioned
+                    and then Before.Coverage_File_Present,
+                    "canonical coverage has independent unversioned source identity");
             Assert_Equal_Int (2, Long_Long_Integer (After.Total_Events),
                               "future canonical event enters after as-of");
             Assert_Equal_Int (-50, After.Summary.Total_Assets,
@@ -313,8 +331,61 @@ package body Test_Statement is
                     "Home classification follows canonical Statement transactions");
             Assert (Home.Statement_Actual_Snapshot.Kind = Snapshot_Unversioned,
                     "Home exposes canonical Statement source separately");
+            Assert_Equal_Int (1, Long_Long_Integer (Home.Zero_Origins),
+                              "Home counts selected canonical coverage");
          end;
 
+         --  Missing canonical coverage is empty evidence, never policy fallback.
+         Ada.Directories.Delete_File (Test_Dir & "/zero-origin-coverage.loam");
+         declare
+            Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+            Home : constant HRA_N.Application.Home_Query.Home_View :=
+              HRA_N.Application.Home_Query.Execute
+                (Paths, (Selected_Day => (2026, 9, 20)));
+         begin
+            Assert (Rep.Status = Query_Partial
+                    and then Rep.Unknown_Stock_Count = 1
+                    and then Rep.Zero_Origin_Count = 0
+                    and then not Rep.Coverage_File_Present,
+                    "missing canonical coverage yields unknown stock without fallback");
+            Assert_Equal_Int (0, Long_Long_Integer (Home.Zero_Origins),
+                              "Home does not leak legacy policy coverage when canonical file is missing");
+         end;
+
+         --  Present-empty has the same empty-set accounting semantics.
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/zero-origin-coverage.loam",
+                    "LOAM-ZERO-ORIGIN-COVERAGE" & HT & "1" & NL,
+                    Error, Error_Len), "present-empty canonical coverage installs");
+         declare
+            Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+         begin
+            Assert (Rep.Status = Query_Partial
+                    and then Rep.Unknown_Stock_Count = 1
+                    and then Rep.Zero_Origin_Count = 0
+                    and then Rep.Coverage_File_Present,
+                    "present-empty canonical coverage yields unknown stock");
+         end;
+
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/zero-origin-coverage.loam",
+                    "LOAM-ZERO-ORIGIN-COVERAGE" & HT & "1" & NL &
+                    "COORDINATE" & HT & "cash" & HT & "jpy" & NL &
+                    "COORDINATE" & HT & "cash" & HT & "jpy" & NL,
+                    Error, Error_Len), "duplicate canonical coverage installs");
+         declare
+            Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+         begin
+            Assert (Rep.Status = Query_Rejected
+                    and then Ada.Strings.Fixed.Index
+                      (Rep.Diagnostic (1 .. Rep.Diagnostic_Len), "duplicate") > 0,
+                    "malformed canonical coverage rejects without policy fallback");
+         end;
+
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/zero-origin-coverage.loam",
+                    "LOAM-ZERO-ORIGIN-COVERAGE" & HT & "1" & NL,
+                    Error, Error_Len), "valid canonical coverage restored");
          Assert (Write_File_Atomically
                    (Test_Dir & "/actual.loam", "bad canonical actual" & NL,
                     Error, Error_Len), "malformed canonical Statement fixture installs");

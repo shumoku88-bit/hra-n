@@ -2,8 +2,8 @@
 --  HRA-N: Verified Household Engine
 --  Package: HRA_N.Application.Canonical_Authority
 --
---  Canonical Loam authority discovery across Actual, Scheduled, and
---  locus admission domains.
+--  Canonical Loam authority discovery across Actual, Scheduled, locus
+--  admission, and zero-origin coverage domains.
 ------------------------------------------------------------------------------
 
 package HRA_N.Application.Canonical_Authority is
@@ -20,7 +20,8 @@ package HRA_N.Application.Canonical_Authority is
    end record;
 
    --  Probe Root_Path for canonical Loam authority markers:
-   --  scheduled.loam, actual.loam, or locus-admission.loam.
+   --  scheduled.loam, actual.loam, locus-admission.loam, or
+   --  zero-origin-coverage.loam.
    --
    --  - Canonical_Present: One or more canonical markers exist. Partial presence
    --    deliberately selects the canonical route so downstream components fail

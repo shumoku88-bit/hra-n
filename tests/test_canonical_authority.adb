@@ -18,6 +18,7 @@ package body Test_Canonical_Authority is
    Actual    : constant String := Root & "/actual.loam";
    Scheduled : constant String := Root & "/scheduled.loam";
    Policy    : constant String := Root & "/locus-admission.loam";
+   Coverage  : constant String := Root & "/zero-origin-coverage.loam";
 
    procedure Write_Fixture (Path : String; Content : String) is
       Error     : String (1 .. 192) := [others => ' '];
@@ -109,12 +110,25 @@ package body Test_Canonical_Authority is
          Authority_State'Pos (Probe (Root).State),
          "deletion of locus-admission.loam reverts to Legacy_Only");
 
+      --  zero-origin-coverage.loam is itself a canonical marker.
+      Write_Fixture
+        (Coverage,
+         "LOAM-ZERO-ORIGIN-COVERAGE" & ASCII.HT & "1" & ASCII.LF);
+      Assert_Equal_Int
+        (Authority_State'Pos (Canonical_Present),
+         Authority_State'Pos (Probe (Root).State),
+         "zero-origin coverage only must report Canonical_Present");
+      Ada.Directories.Delete_File (Coverage);
+
       --  5. All markers present: Canonical_Present
       Write_Fixture (Actual, "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1" & ASCII.LF);
       Write_Fixture (Scheduled, "LOAM-SCHEDULED-LIFECYCLE" & ASCII.HT & "1" & ASCII.LF);
       Write_Fixture
         (Policy,
          "LOAM-LOCUS-ADMISSION-VOCABULARY" & ASCII.HT & "1" & ASCII.LF);
+      Write_Fixture
+        (Coverage,
+         "LOAM-ZERO-ORIGIN-COVERAGE" & ASCII.HT & "1" & ASCII.LF);
       Assert_Equal_Int
         (Authority_State'Pos (Canonical_Present),
          Authority_State'Pos (Probe (Root).State),
@@ -122,6 +136,7 @@ package body Test_Canonical_Authority is
 
       --  6. Partial presence (pair: actual + policy): Canonical_Present
       Ada.Directories.Delete_File (Scheduled);
+      Ada.Directories.Delete_File (Coverage);
       Assert_Equal_Int
         (Authority_State'Pos (Canonical_Present),
          Authority_State'Pos (Probe (Root).State),
