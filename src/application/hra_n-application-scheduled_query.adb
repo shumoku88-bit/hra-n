@@ -2,8 +2,11 @@
 --  HRA-N: shared Scheduled record query implementation
 -------------------------------------------------------------------------------
 
+with Ada.Directories;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
+with HRA_N.Application.Scheduled_Command; use HRA_N.Application.Scheduled_Command;
 with HRA_N.Storage.Scheduled_Journal_Reader; use HRA_N.Storage.Scheduled_Journal_Reader;
+with HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader;
 
 package body HRA_N.Application.Scheduled_Query is
 
@@ -106,10 +109,11 @@ package body HRA_N.Application.Scheduled_Query is
    end Format_Flow_Summary;
 
    function Project
-     (Sched_Res : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
-      Request   : Query;
-      Snapshot  : Frontend_Types.Snapshot_Reference :=
-        (Kind => Frontend_Types.Snapshot_Unversioned)) return Scheduled_View
+     (Sched_Res    : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
+      Request      : Query;
+      Snapshot     : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned);
+      Source_Label : String := "scheduled.hra") return Scheduled_View
    is
       use HRA_N.Application.Frontend_Types;
 
@@ -151,8 +155,8 @@ package body HRA_N.Application.Scheduled_Query is
    begin
       if not Sched_Res.Success then
          Set_Diagnostic
-           ("scheduled.hra: " &
-            Sched_Res.Error_Reason (1 .. Sched_Res.Error_Len));
+           (Source_Label & ": "
+            & Sched_Res.Error_Reason (1 .. Sched_Res.Error_Len));
          return Result;
       end if;
 
@@ -253,12 +257,48 @@ package body HRA_N.Application.Scheduled_Query is
             Identity => Make_Token (Snapshot_Id_Str (Paths)));
       end if;
 
-      declare
-         SR : constant Scheduled_Journal_Result :=
-           Read_Scheduled_Journal_File (Scheduled_Path_Str (Paths));
-      begin
-         return Project (SR, Request, Snap);
-      end;
+      if Canonical_Authority_Present (Data_Dir_Str (Paths)) then
+         declare
+            Canonical_Path : constant String :=
+              Ada.Directories.Compose
+                (Data_Dir_Str (Paths), "scheduled.loam");
+            Canonical : constant
+              HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader.Read_Result :=
+                HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader.Read_File
+                  (Canonical_Path);
+            SR : Scheduled_Journal_Result;
+            Error_Len : constant Natural :=
+              Natural'Min
+                (Canonical.Error_Len, SR.Error_Reason'Length);
+         begin
+            SR.Success := Canonical.Success;
+            SR.Lifecycle := Canonical.Lifecycle;
+            SR.Error_Line := Canonical.Error_Line;
+            SR.Error_Len := Error_Len;
+            SR.Error_Reason := [others => ' '];
+            if Error_Len > 0 then
+               SR.Error_Reason (1 .. Error_Len) :=
+                 Canonical.Error_Reason (1 .. Error_Len);
+            end if;
+
+            return Project
+              (Sched_Res    => SR,
+               Request      => Request,
+               Snapshot     => (Kind => Snapshot_Unversioned),
+               Source_Label => "scheduled.loam");
+         end;
+      else
+         declare
+            SR : constant Scheduled_Journal_Result :=
+              Read_Scheduled_Journal_File (Scheduled_Path_Str (Paths));
+         begin
+            return Project
+              (Sched_Res    => SR,
+               Request      => Request,
+               Snapshot     => Snap,
+               Source_Label => "scheduled.hra");
+         end;
+      end if;
    end Execute;
 
 end HRA_N.Application.Scheduled_Query;

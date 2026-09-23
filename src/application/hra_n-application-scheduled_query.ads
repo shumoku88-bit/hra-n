@@ -78,10 +78,11 @@ package HRA_N.Application.Scheduled_Query is
    --  A selected generation carries its snapshot identity;
    --  missing files or unadmitted lifecycle evidence degrade fail-closed with diagnostics.
    function Project
-     (Sched_Res : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
-      Request   : Query;
-      Snapshot  : Frontend_Types.Snapshot_Reference :=
-        (Kind => Frontend_Types.Snapshot_Unversioned)) return Scheduled_View;
+     (Sched_Res    : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
+      Request      : Query;
+      Snapshot     : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned);
+      Source_Label : String := "scheduled.hra") return Scheduled_View;
 
    function Execute
      (Paths   : HRA_N.Application.Path_Resolver.Path_Config;
