@@ -26,7 +26,7 @@ is
      (Source : Semantic_Image;
       Added  : HRA_N.Core.Event.Event)
    is
-      Result : constant Lookup_Result :=
+      Result : constant HRA_N.Core.Actual_Bounded_History.Lookup_Result :=
         Reference_Lookup (Source, HRA_N.Core.Event.Id (Added));
    begin
       pragma Assert (Result.State /= Invalid_Index);
