@@ -58,6 +58,74 @@ package body Test_Actual_Query is
                  "Actual query retains description evidence");
       end;
 
+      declare
+         View : constant Actual_View :=
+           Execute
+             (Paths,
+              (Scope        => Scope_All,
+               Selected_Day => Focus_Day,
+               Ordering     => Order_Oldest_First));
+      begin
+         Assert_Equal_Int (3, Long_Long_Integer (View.Row_Count),
+                           "All Actual query retains every row");
+         Assert (Id_At (View, 1) = "e0001", "Oldest query starts with first day/source row");
+         Assert (Id_At (View, 2) = "e0003", "Oldest query preserves equal-date source order");
+         Assert (Id_At (View, 3) = "e0002", "Oldest query ends with later day");
+      end;
+
+      declare
+         Detail : constant HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+           HRA_N.Application.Actual_Detail_Query.Execute
+             (Paths, Make_Token ("e0003"));
+      begin
+         Assert (Detail.Status = Query_Complete, "Actual detail resolves selected identity");
+         Assert_Equal_Int (2, Long_Long_Integer (Detail.Effect_Count),
+                           "Actual detail retains every effect");
+         Assert (Detail.Effects (1).Amount = -300,
+                 "Actual detail retains exact signed amount");
+         Assert (Equal_Token (Detail.Effects (2).Locus, Make_Token ("food")),
+                 "Actual detail retains effect locus");
+         Assert (Detail.Description.Length = 5,
+                 "Actual detail retains description");
+         Assert (Detail.Has_Purpose
+                 and then Equal_Token (Detail.Purpose, Make_Token ("meal")),
+                 "Actual detail exposes purpose metadata");
+         Assert (Detail.Has_Relation
+                 and then Equal_Token (Detail.Relation, Make_Token ("r3")),
+                 "Actual detail exposes relation metadata");
+         Assert (not Detail.Is_Superseded,
+                 "Unsuperseded transaction reports Is_Superseded = False");
+      end;
+
+      Assert
+        (Write_File_Atomically
+           (Journal_Path_Str (Paths),
+            "TX e0001 2026-09-11 cash:-100 food:100 ""Breakfast""" & ASCII.LF &
+            "TX e0002 2026-09-12 cash:-200 food:200 ""Dinner""" & ASCII.LF &
+            "TX e0003 2026-09-11 cash:-300 food:300 @meal ""Lunch"" relation:r3" & ASCII.LF &
+            "TX e0004 2026-09-11 cash:-150 food:150 ""Corrected Breakfast"" replaces:e0001" & ASCII.LF,
+            Error,
+            Error_Len),
+         "Actual query replacement journal publishes");
+
+      declare
+         Old_Detail : constant HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+           HRA_N.Application.Actual_Detail_Query.Execute
+             (Paths, Make_Token ("e0001"));
+         New_Detail : constant HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+           HRA_N.Application.Actual_Detail_Query.Execute
+             (Paths, Make_Token ("e0004"));
+      begin
+         Assert (Old_Detail.Is_Superseded
+                 and then Equal_Token (Old_Detail.Superseded_By, Make_Token ("e0004")),
+                 "Superseded transaction reports Is_Superseded = True with successor id");
+         Assert (not New_Detail.Is_Superseded,
+                 "Replacement transaction reports Is_Superseded = False");
+         Assert (New_Detail.Has_Replaces
+                 and then Equal_Token (New_Detail.Replaces, Make_Token ("e0001")),
+                 "Replacement transaction reports replaced target identity");
+      end;
+
       Assert
         (Write_File_Atomically
            (Loam_Path,
@@ -227,6 +295,10 @@ package body Test_Actual_Query is
             "Loam replay detail retains REVERSAL-OF metadata from bound admission");
       end;
 
+      --  Canonical authority selection when both actual.loam and legacy journal.hra exist:
+      --  actual.loam contains e-base, e-replacement, e-reversal.
+      --  journal.hra contains e0001, e0002, e0003, e0004.
+      --  Canonical authority wins, and legacy identities are not visible.
       declare
          View : constant Actual_View :=
            Execute
@@ -234,66 +306,90 @@ package body Test_Actual_Query is
               (Scope        => Scope_All,
                Selected_Day => Focus_Day,
                Ordering     => Order_Oldest_First));
-      begin
-         Assert_Equal_Int (3, Long_Long_Integer (View.Row_Count),
-                           "All Actual query retains every row");
-         Assert (Id_At (View, 1) = "e0001", "Oldest query starts with first day/source row");
-         Assert (Id_At (View, 2) = "e0003", "Oldest query preserves equal-date source order");
-         Assert (Id_At (View, 3) = "e0002", "Oldest query ends with later day");
-      end;
-
-      declare
          Detail : constant HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
            HRA_N.Application.Actual_Detail_Query.Execute
-             (Paths, Make_Token ("e0003"));
-      begin
-         Assert (Detail.Status = Query_Complete, "Actual detail resolves selected identity");
-         Assert_Equal_Int (2, Long_Long_Integer (Detail.Effect_Count),
-                           "Actual detail retains every effect");
-         Assert (Detail.Effects (1).Amount = -300,
-                 "Actual detail retains exact signed amount");
-         Assert (Equal_Token (Detail.Effects (2).Locus, Make_Token ("food")),
-                 "Actual detail retains effect locus");
-         Assert (Detail.Description.Length = 5,
-                 "Actual detail retains description");
-         Assert (Detail.Has_Purpose
-                 and then Equal_Token (Detail.Purpose, Make_Token ("meal")),
-                 "Actual detail exposes purpose metadata");
-         Assert (Detail.Has_Relation
-                 and then Equal_Token (Detail.Relation, Make_Token ("r3")),
-                 "Actual detail exposes relation metadata");
-         Assert (not Detail.Is_Superseded,
-                 "Unsuperseded transaction reports Is_Superseded = False");
-      end;
-
-      Assert
-        (Write_File_Atomically
-           (Journal_Path_Str (Paths),
-            "TX e0001 2026-09-11 cash:-100 food:100 ""Breakfast""" & ASCII.LF &
-            "TX e0002 2026-09-12 cash:-200 food:200 ""Dinner""" & ASCII.LF &
-            "TX e0003 2026-09-11 cash:-300 food:300 @meal ""Lunch"" relation:r3" & ASCII.LF &
-            "TX e0004 2026-09-11 cash:-150 food:150 ""Corrected Breakfast"" replaces:e0001" & ASCII.LF,
-            Error,
-            Error_Len),
-         "Actual query replacement journal publishes");
-
-      declare
-         Old_Detail : constant HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+             (Paths, Make_Token ("e-replacement"));
+         Legacy_Miss : constant HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
            HRA_N.Application.Actual_Detail_Query.Execute
              (Paths, Make_Token ("e0001"));
-         New_Detail : constant HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
-           HRA_N.Application.Actual_Detail_Query.Execute
-             (Paths, Make_Token ("e0004"));
       begin
-         Assert (Old_Detail.Is_Superseded
-                 and then Equal_Token (Old_Detail.Superseded_By, Make_Token ("e0004")),
-                 "Superseded transaction reports Is_Superseded = True with successor id");
-         Assert (not New_Detail.Is_Superseded,
-                 "Replacement transaction reports Is_Superseded = False");
-         Assert (New_Detail.Has_Replaces
-                 and then Equal_Token (New_Detail.Replaces, Make_Token ("e0001")),
-                 "Replacement transaction reports replaced target identity");
+         Assert
+           (View.Status = Query_Complete,
+            "canonical Actual query is complete");
+         Assert_Equal_Int
+           (3, Long_Long_Integer (View.Row_Count),
+            "canonical authority replaces legacy Actual answer");
+         Assert
+           (Id_At (View, 1) = "e-base",
+            "first canonical Actual row is projected");
+         Assert
+           (Id_At (View, 2) = "e-replacement",
+            "second canonical Actual row is projected");
+         Assert
+           (Id_At (View, 3) = "e-reversal",
+            "third canonical Actual row is projected");
+         Assert
+           (View.Snapshot.Kind = Snapshot_Unversioned,
+            "canonical root is not mislabeled as legacy generation snapshot");
+
+         Assert
+           (Detail.Status = Query_Complete,
+            "canonical Actual detail resolves selected identity");
+         Assert_Equal_Int
+           (2, Long_Long_Integer (Detail.Effect_Count),
+            "canonical detail retains every effect");
+         Assert
+           (Detail.Effects (1).Amount = -120,
+            "canonical detail retains exact signed amount");
+         Assert
+           (Detail.Has_Replaces
+            and then Equal_Token (Detail.Replaces, Make_Token ("e-base")),
+            "canonical detail retains replacement link");
+
+         Assert
+           (Legacy_Miss.Status = Query_Rejected,
+            "detail query does not fall back to retained legacy journal");
       end;
+
+      --  Partial canonical presence fails closed instead of falling back to legacy:
+      --  Delete actual.loam and write locus-admission.loam as partial canonical marker.
+      Ada.Directories.Delete_File (Loam_Path);
+      Assert
+        (Write_File_Atomically
+           (Test_Dir & "/locus-admission.loam",
+            "LOAM-LOCUS-ADMISSION-VOCABULARY" & ASCII.HT & "1" & ASCII.LF &
+            "LOCUS" & ASCII.HT & "cash" & ASCII.LF &
+            "LOCUS" & ASCII.HT & "food" & ASCII.LF,
+            Error,
+            Error_Len),
+         "partial canonical marker publishes");
+
+      declare
+         Partial_View : constant Actual_View :=
+           Execute
+             (Paths,
+              (Scope        => Scope_All,
+               Selected_Day => Focus_Day,
+               Ordering     => Order_Oldest_First));
+         Partial_Detail : constant HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+           HRA_N.Application.Actual_Detail_Query.Execute
+             (Paths, Make_Token ("e0001"));
+      begin
+         Assert
+           (Partial_View.Status = Query_Rejected,
+            "partial canonical authority rejects Actual list");
+         Assert
+           (Partial_View.Diagnostic_Len > 0,
+            "partial canonical rejected list carries diagnostic");
+         Assert
+           (Partial_Detail.Status = Query_Rejected,
+            "partial canonical authority rejects Actual detail");
+         Assert
+           (Partial_Detail.Diagnostic_Len > 0,
+            "partial canonical rejected detail carries diagnostic");
+      end;
+
+      Ada.Directories.Delete_File (Test_Dir & "/locus-admission.loam");
 
       Assert
         (Write_File_Atomically
@@ -315,6 +411,12 @@ package body Test_Actual_Query is
               (Scope        => Scope_All,
                Selected_Day => Focus_Day,
                Ordering     => Order_Newest_First));
+         Rejected_Shared : constant Actual_View :=
+           Execute
+             (Paths,
+              (Scope        => Scope_All,
+               Selected_Day => Focus_Day,
+               Ordering     => Order_Newest_First));
       begin
          Assert
            (Rejected.Status = Query_Rejected,
@@ -322,6 +424,12 @@ package body Test_Actual_Query is
          Assert
            (Rejected.Diagnostic_Len > 0,
             "Rejected Loam canonical query carries diagnostic");
+         Assert
+           (Rejected_Shared.Status = Query_Rejected,
+            "shared Actual query fails closed on malformed canonical authority");
+         Assert
+           (Rejected_Shared.Diagnostic_Len > 0,
+            "rejected shared query carries diagnostic");
       end;
 
       declare
@@ -329,6 +437,10 @@ package body Test_Actual_Query is
            HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
              HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual
                (Loam_Path, Make_Token ("bad"));
+         Rejected_Shared_Detail : constant
+           HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+             HRA_N.Application.Actual_Detail_Query.Execute
+               (Paths, Make_Token ("bad"));
       begin
          Assert
            (Rejected_Detail.Status = Query_Rejected,
@@ -336,6 +448,12 @@ package body Test_Actual_Query is
          Assert
            (Rejected_Detail.Diagnostic_Len > 0,
             "Rejected Loam replay detail carries diagnostic");
+         Assert
+           (Rejected_Shared_Detail.Status = Query_Rejected,
+            "shared Actual detail query fails closed on malformed canonical authority");
+         Assert
+           (Rejected_Shared_Detail.Diagnostic_Len > 0,
+            "rejected shared detail carries diagnostic");
       end;
 
       declare
