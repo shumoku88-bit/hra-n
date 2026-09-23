@@ -970,7 +970,7 @@ def test_canonical_scheduled_tui() -> None:
                 replacement_state = stream.read()
             assert "REPLACEMENT\tscheduled-3\tscheduled-2\n" in replacement_state
             os.write(fd, b"b")
-            read_until(fd, output, b"scheduled-2")
+            read_until(fd, output, b"CURRENT OPEN")
 
             # Create a fresh canonical obligation through the shared Record TUI.
             os.write(fd, b"n")
@@ -1008,9 +1008,10 @@ def test_canonical_scheduled_tui() -> None:
             assert "scheduled-completion:scheduled-4" in completion_actual
 
             # A successful commit returns to detail; b then returns to the
-            # current-open list. If commit remained in preview, this times out.
+            # current-open list. The canonical file assertions above verify row
+            # identity; here we only need a stable screen-transition marker.
             os.write(fd, b"b")
-            read_until(fd, output, b"scheduled-2")
+            read_until(fd, output, b"CURRENT OPEN")
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
             os.write(fd, b"q")
