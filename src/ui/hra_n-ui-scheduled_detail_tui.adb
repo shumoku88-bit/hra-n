@@ -181,22 +181,44 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                      Confirm : constant Integer := Integer (Curses.Get_Keystroke);
                   begin
                      if Confirm = Character'Pos ('y') or else Confirm = Character'Pos ('Y') then
-                        declare
-                           Prop : constant Proposal_Result :=
-                             Propose_Retirement
-                               (Current_Paths,
-                                (Target_Id => Current_Id));
-                        begin
-                           if Prop.Success then
-                              declare
-                                 Rec : constant Scheduled_Receipt := Commit (Prop.Proposal);
-                              begin
-                                 if Rec.Success then
-                                    Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
-                                 end if;
-                              end;
-                           end if;
-                        end;
+                        if Canonical_Authority_Present
+                          (Data_Dir_Str (Current_Paths))
+                        then
+                           declare
+                              Res : constant Canonical_Retire_Result :=
+                                Retire_Loam_Scheduled
+                                  (Data_Dir_Str (Current_Paths),
+                                   (Target_Id => Current_Id));
+                           begin
+                              if Res.State /=
+                                Canonical_Retirement_Not_Published
+                              then
+                                 Current_Paths :=
+                                   Resolve_Paths
+                                     (Data_Dir_Str (Current_Paths));
+                              end if;
+                           end;
+                        else
+                           declare
+                              Prop : constant Proposal_Result :=
+                                Propose_Retirement
+                                  (Current_Paths,
+                                   (Target_Id => Current_Id));
+                           begin
+                              if Prop.Success then
+                                 declare
+                                    Rec : constant Scheduled_Receipt :=
+                                      Commit (Prop.Proposal);
+                                 begin
+                                    if Rec.Success then
+                                       Current_Paths :=
+                                         Resolve_Paths
+                                           (Data_Dir_Str (Current_Paths));
+                                    end if;
+                                 end;
+                              end if;
+                           end;
+                        end if;
                      end if;
                   end;
                elsif (Key = Character'Pos ('r') or else Key = Character'Pos ('R'))
@@ -234,24 +256,56 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                            Next_Day := Day_Type'Min (Next_Day, Days_In_Month (Next_Year, Next_Month));
 
                            declare
-                              Prop : constant Proposal_Result :=
-                                Propose_Replacement
-                                  (Current_Paths,
-                                   (Target_Id    => Current_Id,
-                                    New_Id       => (0, [others => ' ']),
-                                    Expected_Day => Make_Date (Next_Year, Next_Month, Next_Day),
-                                    From_Locus   => (Token => From_Tok),
-                                    To_Locus     => (Token => To_Tok),
-                                    Measure      => (Token => View.Measure),
-                                    Amount       => Amt));
+                              Intent : constant Replace_Intent :=
+                                (Target_Id    => Current_Id,
+                                 New_Id       => (0, [others => ' ']),
+                                 Expected_Day =>
+                                   Make_Date
+                                     (Next_Year, Next_Month, Next_Day),
+                                 From_Locus   => (Token => From_Tok),
+                                 To_Locus     => (Token => To_Tok),
+                                 Measure      => (Token => View.Measure),
+                                 Amount       => Amt);
                            begin
-                              if Prop.Success then
+                              if Canonical_Authority_Present
+                                (Data_Dir_Str (Current_Paths))
+                              then
                                  declare
-                                    Rec : constant Scheduled_Receipt := Commit (Prop.Proposal);
+                                    Res : constant Canonical_Replace_Result :=
+                                      Replace_Loam_Scheduled
+                                        (Data_Dir_Str (Current_Paths),
+                                         Intent);
                                  begin
-                                    if Rec.Success then
-                                       Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
-                                       Current_Id := Make_Token (Rec.Secondary_Id (1 .. Rec.Secondary_Len));
+                                    if Res.State /=
+                                      Canonical_Replacement_Not_Published
+                                    then
+                                       Current_Paths :=
+                                         Resolve_Paths
+                                           (Data_Dir_Str (Current_Paths));
+                                       Current_Id := Res.Replacement_Id;
+                                    end if;
+                                 end;
+                              else
+                                 declare
+                                    Prop : constant Proposal_Result :=
+                                      Propose_Replacement
+                                        (Current_Paths, Intent);
+                                 begin
+                                    if Prop.Success then
+                                       declare
+                                          Rec : constant Scheduled_Receipt :=
+                                            Commit (Prop.Proposal);
+                                       begin
+                                          if Rec.Success then
+                                             Current_Paths :=
+                                               Resolve_Paths
+                                                 (Data_Dir_Str (Current_Paths));
+                                             Current_Id :=
+                                               Make_Token
+                                                 (Rec.Secondary_Id
+                                                    (1 .. Rec.Secondary_Len));
+                                          end if;
+                                       end;
                                     end if;
                                  end;
                               end if;

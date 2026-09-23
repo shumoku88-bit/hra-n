@@ -5,7 +5,6 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Scheduled_Query; use HRA_N.Application.Scheduled_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
-with HRA_N.Storage.Scheduled_Journal_Reader; use HRA_N.Storage.Scheduled_Journal_Reader;
 with HRA_N.UI.Scheduled_Detail_TUI;
 with HRA_N.UI.Record_TUI;
 with HRA_N.UI.Output; use HRA_N.UI.Output;
@@ -151,7 +150,6 @@ package body HRA_N.UI.Scheduled_TUI is
       Scope         : Scheduled_Scope := Initial_Scope;
       Cursor        : Positive := 1;
       Running       : Boolean := True;
-      Current_Sched : Scheduled_Journal_Result;
       Current_View  : Scheduled_View;
 
       Filtered_Map   : Index_Array;
@@ -181,23 +179,15 @@ package body HRA_N.UI.Scheduled_TUI is
          end if;
       end Update_Filter;
 
-      procedure Recompute_View is
-         Snap : Snapshot_Reference := (Kind => Snapshot_Unversioned);
-      begin
-         if Current_Paths.Is_Versioned then
-            Snap := (Kind => Snapshot_Versioned, Identity => Make_Token (Snapshot_Id_Str (Current_Paths)));
-         end if;
-         Current_View := HRA_N.Application.Scheduled_Query.Project
-           (Sched_Res => Current_Sched,
-            Request   => (Scope => Scope, Selected_Day => Selected_Day, Ordering => Order_Due_Ascending),
-            Snapshot  => Snap);
-         Update_Filter;
-      end Recompute_View;
-
       procedure Reload is
       begin
-         Current_Sched := Read_Scheduled_Journal_File (Scheduled_Path_Str (Current_Paths));
-         Recompute_View;
+         Current_View :=
+           HRA_N.Application.Scheduled_Query.Execute
+             (Current_Paths,
+              (Scope        => Scope,
+               Selected_Day => Selected_Day,
+               Ordering     => Order_Due_Ascending));
+         Update_Filter;
       end Reload;
    begin
       HRA_N.UI.Terminal_Style.Initialize;
@@ -313,7 +303,7 @@ package body HRA_N.UI.Scheduled_TUI is
                                  when Scope_Selected_Day => Scope_All,
                                  when Scope_All          => Scope_Current_Open);
                            Cursor := 1;
-                           Recompute_View;
+                           Reload;
                         elsif Key = Character'Pos ('n') or else Key = Character'Pos ('N') then
                            declare
                               New_Sched_Id : Token_Text;
