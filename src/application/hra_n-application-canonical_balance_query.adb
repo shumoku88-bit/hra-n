@@ -73,7 +73,7 @@ package body HRA_N.Application.Canonical_Balance_Query is
       is
          Position : Natural :=
            Find_Row (Item.Locus.Token, Item.Measure.Token);
-         Delta : constant Long_Long_Integer :=
+         Change : constant Long_Long_Integer :=
            Long_Long_Integer (Item.Amount.Quanta);
       begin
          Ok := False;
@@ -89,21 +89,21 @@ package body HRA_N.Application.Canonical_Balance_Query is
             Result.Rows (Position).Measure := Item.Measure.Token;
          end if;
 
-         if not Can_Add (Result.Rows (Position).Net, Delta) then
+         if not Can_Add (Result.Rows (Position).Net, Change) then
             Fail ("canonical balance net accumulation overflow");
             return;
          end if;
 
-         if Delta > 0 then
-            if not Can_Add (Result.Rows (Position).Inflow, Delta) then
+         if Change > 0 then
+            if not Can_Add (Result.Rows (Position).Inflow, Change) then
                Fail ("canonical balance inflow accumulation overflow");
                return;
             end if;
             Result.Rows (Position).Inflow :=
-              Result.Rows (Position).Inflow + Delta;
-         elsif Delta < 0 then
+              Result.Rows (Position).Inflow + Change;
+         elsif Change < 0 then
             declare
-               Magnitude : constant Long_Long_Integer := -Delta;
+               Magnitude : constant Long_Long_Integer := -Change;
             begin
                if not Can_Add
                  (Result.Rows (Position).Outflow, Magnitude)
@@ -117,7 +117,7 @@ package body HRA_N.Application.Canonical_Balance_Query is
          end if;
 
          Result.Rows (Position).Net :=
-           Result.Rows (Position).Net + Delta;
+           Result.Rows (Position).Net + Change;
          Result.Rows (Position).Posting_Count :=
            Result.Rows (Position).Posting_Count + 1;
          Ok := True;
