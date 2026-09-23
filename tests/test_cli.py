@@ -1350,5 +1350,109 @@ class TestHraNCli(unittest.TestCase):
 
 
 
+    def test_canonical_scheduled_complete_routes_to_relation_first_publisher(self) -> None:
+        ht = "\t"
+        nl = "\n"
+        actual = f"LOAM-NORMALIZED-ACTUAL{ht}1{nl}"
+        policy = (
+            f"LOAM-LOCUS-ADMISSION-VOCABULARY{ht}1{nl}"
+            f"LOCUS{ht}cash{nl}"
+            f"LOCUS{ht}food{nl}"
+        )
+        scheduled = (
+            f"LOAM-SCHEDULED-LIFECYCLE{ht}1{nl}"
+            f"BEGIN{ht}Scheduled{nl}"
+            f"LOAM-SCHEDULED-MEMORY{ht}1{nl}"
+            f"SCHEDULED{ht}scheduled-1{ht}2026-09-23{ht}jpy{nl}"
+            f"CHANGE{ht}cash{ht}-75{nl}"
+            f"CHANGE{ht}food{ht}75{nl}"
+            f"SCHEDULED{ht}scheduled-2{ht}2026-09-25{ht}jpy{nl}"
+            f"CHANGE{ht}cash{ht}-20{nl}"
+            f"CHANGE{ht}food{ht}20{nl}"
+            f"END{ht}Scheduled{nl}"
+            f"BEGIN{ht}Completion{nl}"
+            f"LOAM-SCHEDULED-COMPLETION-MEMORY{ht}1{nl}"
+            f"END{ht}Completion{nl}"
+            f"BEGIN{ht}Retirement{nl}"
+            f"LOAM-SCHEDULED-RETIREMENT-MEMORY{ht}1{nl}"
+            f"END{ht}Retirement{nl}"
+            f"BEGIN{ht}Replacement{nl}"
+            f"LOAM-SCHEDULED-REPLACEMENT-MEMORY{ht}1{nl}"
+            f"END{ht}Replacement{nl}"
+        )
+        for name, text in {
+            "actual.loam": actual,
+            "locus-admission.loam": policy,
+            "scheduled.loam": scheduled,
+        }.items():
+            with open(os.path.join(self.test_dir, name), "w", encoding="utf-8") as f:
+                f.write(text)
+
+        res = self.run_cmd(
+            "scheduled", "complete", "scheduled-1", "2026-09-24", "groceries"
+        )
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn(
+            "[OK] Completed canonical Scheduled obligation: scheduled-1",
+            res.stdout,
+        )
+        self.assertIn(
+            "Recorded actual receipt: scheduled-completion:scheduled-1",
+            res.stdout,
+        )
+        self.assertIn("AUTHORITY: scheduled.loam + actual.loam", res.stdout)
+        self.assertIn(
+            "READ-BACK: proved relation-first protocol verified",
+            res.stdout,
+        )
+
+        scheduled_path = os.path.join(self.test_dir, "scheduled.loam")
+        actual_path = os.path.join(self.test_dir, "actual.loam")
+        with open(scheduled_path, "r", encoding="utf-8") as f:
+            scheduled_after = f.read()
+        with open(actual_path, "r", encoding="utf-8") as f:
+            actual_after = f.read()
+
+        self.assertIn(
+            "COMPLETION\tscheduled-1\tscheduled-completion:scheduled-1\n",
+            scheduled_after,
+        )
+        self.assertIn(
+            "TX\tscheduled-completion:scheduled-1\t2026-09-24\tDESC\tgroceries\n",
+            actual_after,
+        )
+        self.assertIn("EFFECT\tcash\tjpy\t-75\n", actual_after)
+        self.assertIn("EFFECT\tfood\tjpy\t75\n", actual_after)
+        self.assertFalse(os.path.exists(os.path.join(self.test_dir, "journal.hra")))
+        self.assertFalse(os.path.exists(os.path.join(self.test_dir, "scheduled.hra")))
+
+        before_scheduled = scheduled_after
+        before_actual = actual_after
+        duplicate = self.run_cmd(
+            "scheduled", "complete", "scheduled-1", "2026-09-24", "again"
+        )
+        self.assertNotEqual(duplicate.returncode, 0)
+        self.assertIn(
+            "canonical Scheduled completion rejected",
+            duplicate.stdout + duplicate.stderr,
+        )
+        with open(scheduled_path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), before_scheduled)
+        with open(actual_path, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), before_actual)
+
+        os.remove(os.path.join(self.test_dir, "locus-admission.loam"))
+        partial = self.run_cmd(
+            "scheduled", "complete", "scheduled-2", "2026-09-25", "partial"
+        )
+        self.assertNotEqual(partial.returncode, 0)
+        self.assertIn(
+            "canonical Scheduled completion rejected",
+            partial.stdout + partial.stderr,
+        )
+        self.assertFalse(os.path.exists(os.path.join(self.test_dir, "journal.hra")))
+        self.assertFalse(os.path.exists(os.path.join(self.test_dir, "scheduled.hra")))
+
+
 if __name__ == "__main__":
     unittest.main()

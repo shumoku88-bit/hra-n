@@ -6,6 +6,7 @@ with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with HRA_N.Core.Actual_Routing; use HRA_N.Core.Actual_Routing;
 with HRA_N.Core.Admission; use HRA_N.Core.Admission;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
+with HRA_N.Core.Description;
 with HRA_N.Core.Scheduled; use HRA_N.Core.Scheduled;
 with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
@@ -15,6 +16,9 @@ with HRA_N.Storage.Scheduled_Journal_Reader; use HRA_N.Storage.Scheduled_Journal
 with HRA_N.Storage.Loam_Scheduled_Creation_Writer;
 with HRA_N.Storage.Loam_Scheduled_Creation_Refinement;
 with HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader;
+with HRA_N.Storage.Loam_Scheduled_Completion_Publisher;
+with HRA_N.Storage.Loam_Scheduled_Completion_Protocol_Refinement;
+with HRA_N.Storage.Loam_Actual_Reader;
 
 package body HRA_N.Application.Scheduled_Command is
 
@@ -26,6 +30,16 @@ package body HRA_N.Application.Scheduled_Command is
    use type Canonical_Refinement.Qualification_Status;
    package Canonical_Reader renames
      HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader;
+
+   package Completion_Publisher renames
+     HRA_N.Storage.Loam_Scheduled_Completion_Publisher;
+   package Completion_Protocol_Refinement renames
+     HRA_N.Storage.Loam_Scheduled_Completion_Protocol_Refinement;
+   package Canonical_Actual_Reader renames
+     HRA_N.Storage.Loam_Actual_Reader;
+
+   use type Completion_Publisher.Completion_Publication_State;
+   use type Completion_Protocol_Refinement.Qualification_Status;
 
    function Canonical_Authority_Present
      (Root_Path : String) return Boolean
@@ -243,6 +257,202 @@ package body HRA_N.Application.Scheduled_Command is
       end loop;
       return True;
    end Description_Is_Encodable;
+
+   function Complete_Loam_Scheduled
+     (Root_Path : String;
+      Intent    : Complete_Intent) return Canonical_Complete_Result
+   is
+      Result : Canonical_Complete_Result;
+
+      procedure Set_Diagnostic (Message : String) is
+         Len : constant Natural :=
+           Natural'Min (Message'Length, Result.Diagnostic'Length);
+      begin
+         Result.Diagnostic := [others => ' '];
+         Result.Diagnostic_Len := Len;
+         if Len > 0 then
+            Result.Diagnostic (1 .. Len) :=
+              Message (Message'First .. Message'First + Len - 1);
+         end if;
+      end Set_Diagnostic;
+
+   begin
+      if Root_Path'Length = 0 then
+         Set_Diagnostic ("canonical data root must not be empty");
+         return Result;
+      elsif Intent.Target_Id.Length = 0 then
+         Set_Diagnostic
+           ("canonical Scheduled completion requires a target identity");
+         return Result;
+      elsif Intent.Existing_Actual_Id.Length > 0 then
+         Set_Diagnostic
+           ("canonical Scheduled completion does not link an arbitrary "
+            & "existing Actual; its endpoint is deterministic");
+         return Result;
+      elsif Intent.Has_Execution_Date
+        and then not Is_Valid_Date
+          (Intent.Execution_Date.Year,
+           Intent.Execution_Date.Month,
+           Intent.Execution_Date.Day)
+      then
+         Set_Diagnostic ("scheduled completion occurrence date is invalid");
+         return Result;
+      end if;
+
+      declare
+         Target_Str : constant String :=
+           Intent.Target_Id.Value (1 .. Intent.Target_Id.Length);
+         Description_Str : constant String :=
+           (if Intent.Description.Length > 0
+            then Intent.Description.Value (1 .. Intent.Description.Length)
+            else "Scheduled completion: " & Target_Str);
+      begin
+         if Description_Str'Length >
+           HRA_N.Core.Description.Max_Description_Length
+         then
+            Set_Diagnostic ("scheduled completion description is too long");
+            return Result;
+         end if;
+
+         declare
+            Scheduled_Path : constant String :=
+              Ada.Directories.Compose (Root_Path, "scheduled.loam");
+            Actual_Path : constant String :=
+              Ada.Directories.Compose (Root_Path, "actual.loam");
+            Before_Scheduled : constant Canonical_Reader.Read_Result :=
+              Canonical_Reader.Read_File (Scheduled_Path);
+            Before_Actual : constant Canonical_Actual_Reader.Loam_Actual_Result :=
+              Canonical_Actual_Reader.Read_Loam_Actual_File (Actual_Path);
+         begin
+            if not Before_Scheduled.Success then
+               Set_Diagnostic
+                 ("canonical Scheduled before-image is not admitted");
+               return Result;
+            elsif not Before_Actual.Success then
+               Set_Diagnostic
+                 ("canonical Actual before-image is not admitted");
+               return Result;
+            end if;
+
+            declare
+               Published : constant Completion_Publisher.Publish_Result :=
+                 Completion_Publisher.Publish_Completion
+                   (Root_Path,
+                    (Scheduled          => (Token => Intent.Target_Id),
+                     Has_Execution_Date => Intent.Has_Execution_Date,
+                     Execution_Date     => Intent.Execution_Date,
+                     Description        =>
+                       HRA_N.Core.Description.Make_Description
+                         (Description_Str)));
+            begin
+               Result.Actual_Id := Published.Actual_Id.Token;
+
+               if Published.State =
+                 Completion_Publisher.Completion_Not_Published
+               then
+                  if Published.Error_Len > 0 then
+                     Set_Diagnostic
+                       (Published.Error_Reason (1 .. Published.Error_Len));
+                  else
+                     Set_Diagnostic
+                       ("canonical Scheduled completion was rejected");
+                  end if;
+                  return Result;
+               elsif Published.State =
+                 Completion_Publisher.Completion_Claim_Inert
+               then
+                  Result.State := Canonical_Completion_Claim_Inert;
+                  if Published.Error_Len > 0 then
+                     Set_Diagnostic
+                       (Published.Error_Reason (1 .. Published.Error_Len));
+                  else
+                     Set_Diagnostic
+                       ("Scheduled completion claim is retained but its "
+                        & "Actual endpoint is not yet published");
+                  end if;
+                  return Result;
+               end if;
+
+               Result.State :=
+                 Canonical_Completion_Published_Readback_Unverified;
+               Result.Was_Resumed :=
+                 Published.State =
+                   Completion_Publisher.Completion_Published_Resumed_Claim;
+
+               declare
+                  After_Scheduled : constant Canonical_Reader.Read_Result :=
+                    Canonical_Reader.Read_File (Scheduled_Path);
+                  After_Actual :
+                    constant Canonical_Actual_Reader.Loam_Actual_Result :=
+                      Canonical_Actual_Reader.Read_Loam_Actual_File
+                        (Actual_Path);
+               begin
+                  if Result.Was_Resumed then
+                     Set_Diagnostic
+                       ("completion resumed a retained inert claim; fresh "
+                        & "before/after protocol refinement is not applicable");
+                     return Result;
+                  end if;
+
+                  declare
+                     Qualified : constant
+                       Completion_Protocol_Refinement.Qualification_Result :=
+                         Completion_Protocol_Refinement.Qualify_Fresh_Relation_First
+                             (Before_Scheduled,
+                              Before_Actual,
+                              After_Scheduled,
+                              After_Actual,
+                              1,
+                              2);
+                     Matches : constant Boolean :=
+                       Qualified.Status =
+                         Completion_Protocol_Refinement.Qualified
+                       and then Equal_Token
+                         (Qualified.Claim.Scheduled.Token, Intent.Target_Id)
+                       and then Equal_Token
+                         (Qualified.Claim.Actual.Token,
+                          Published.Actual_Id.Token)
+                       and then Equal_Token
+                         (HRA_N.Core.Event.Id
+                            (Qualified.Added_Actual).Token,
+                          Published.Actual_Id.Token);
+                  begin
+                     if Matches then
+                        Result.State :=
+                          Canonical_Completion_Published_Readback_Verified;
+                        Result.Diagnostic_Len := 0;
+                     elsif not After_Scheduled.Success
+                       or else not After_Actual.Success
+                     then
+                        Set_Diagnostic
+                          ("completion was published; canonical read-back "
+                           & "could not be admitted");
+                     else
+                        Set_Diagnostic
+                          ("completion was published; proved relation-first "
+                           & "read-back refinement did not match");
+                     end if;
+                  end;
+               end;
+
+               return Result;
+            end;
+         end;
+      end;
+
+   exception
+      when E : others =>
+         if Result.State = Canonical_Completion_Not_Published then
+            Set_Diagnostic
+              ("unexpected canonical Scheduled completion failure: "
+               & Ada.Exceptions.Exception_Message (E));
+         else
+            Set_Diagnostic
+              ("completion was published; application read-back failed: "
+               & Ada.Exceptions.Exception_Message (E));
+         end if;
+         return Result;
+   end Complete_Loam_Scheduled;
 
    function Propose_Create
      (Paths  : Path_Config;
