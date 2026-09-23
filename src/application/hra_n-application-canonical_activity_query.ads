@@ -11,6 +11,7 @@
 with Ada.Finalization;
 with HRA_N.Application.Canonical_Balance_Query;
 with HRA_N.Core.Description;
+with HRA_N.Core.Event;
 with HRA_N.Core.Types;    use HRA_N.Core.Types;
 with HRA_N.Core.Validity;
 with HRA_N.Storage.Loam_Actual_Reader;
@@ -66,6 +67,60 @@ package HRA_N.Application.Canonical_Activity_Query is
       Diagnostic_Len   : Natural := 0;
    end record;
 
+   Max_Detail_Effects : constant :=
+     HRA_N.Core.Event.Max_Effects_Per_Event;
+   subtype Detail_Effect_Count is Natural range 0 .. Max_Detail_Effects;
+   subtype Detail_Effect_Index is Positive range 1 .. Max_Detail_Effects;
+
+   type Effect_Detail_Row is record
+      Has_Key : Boolean := False;
+      Key     : Effect_Key :=
+        (Token => (Length => 0, Value => [others => ' ']));
+      Locus   : Locus_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
+      Measure : Measure_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
+      Amount  : Long_Long_Integer := 0;
+   end record;
+
+   Empty_Effect_Detail_Row : constant Effect_Detail_Row :=
+     (Has_Key => False,
+      Key     => (Token => (Length => 0, Value => [others => ' '])),
+      Locus   => (Token => (Length => 0, Value => [others => ' '])),
+      Measure => (Token => (Length => 0, Value => [others => ' '])),
+      Amount  => 0);
+
+   type Effect_Detail_Array is
+     array (Detail_Effect_Index) of Effect_Detail_Row;
+
+   type Event_Detail_View is record
+      Success          : Boolean := False;
+      Event            : Event_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
+      Valid_On         : HRA_N.Core.Validity.Date_Type :=
+        (Year => 2026, Month => 1, Day => 1);
+      Has_Description  : Boolean := False;
+      Description      : HRA_N.Core.Description.Description_Text :=
+        (Length => 0, Value => [others => ' ']);
+      Effects          : Effect_Detail_Array :=
+        [others => Empty_Effect_Detail_Row];
+      Effect_Count     : Detail_Effect_Count := 0;
+      Is_Superseded    : Boolean := False;
+      Successor        : Event_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
+      Is_Replacement   : Boolean := False;
+      Replaces         : Event_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
+      Is_Reversal      : Boolean := False;
+      Reverses         : Event_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
+      Has_Reverser     : Boolean := False;
+      Reversed_By      : Event_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
+      Diagnostic       : String (1 .. 192) := [others => ' '];
+      Diagnostic_Len   : Natural := 0;
+   end record;
+
    type Browser_Snapshot is private;
 
    function Open (Root_Path : String) return Browser_Snapshot;
@@ -82,6 +137,10 @@ package HRA_N.Application.Canonical_Activity_Query is
      (Source  : Browser_Snapshot;
       Locus   : Locus_Id;
       Measure : Measure_Id) return Activity_View;
+
+   function Event_Detail_For
+     (Source : Browser_Snapshot;
+      Target : Event_Id) return Event_Detail_View;
 
 private
 

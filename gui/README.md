@@ -182,3 +182,35 @@ What physical evidence explains how we got here?
 The browser snapshot opens `actual.loam` once. Changing the backing pathname
 after that does not cause the left balance view and right activity view to
 silently observe different snapshots.
+
+
+## Canonical Event detail
+
+The read-only browser now supports a third level of inspection:
+
+```text
+coordinate
+    |
+    +-- current projection + Recorded movement
+    |
+    +-- Related Actual physical Events
+            |
+            +-- selected Event
+                    |
+                    +-- date / description
+                    +-- replacement / reversal evidence
+                    +-- every physical Effect
+                           locus
+                           measure
+                           amount
+                           retained Effect key, when present
+```
+
+The Event detail is produced by
+`Canonical_Activity_Query.Event_Detail_For` from the same retained
+`Browser_Snapshot`. GtkAda does not reopen `actual.loam` and does not
+reconstruct Effects from display strings.
+
+Selecting a different Related Actual row changes only the Event detail panel.
+Selecting a different coordinate refreshes the coordinate projection, its
+Related Actual list, and then selects the newest related Event for detail.

@@ -110,7 +110,7 @@ begin
 
    Gtk_New (Window);
    Set_Title (Window, "HRA-N");
-   Set_Default_Size (Window, 1_280, 760);
+   Set_Default_Size (Window, 1_280, 940);
    Set_Border_Width (Window, 18);
 
    Gtk_New_Vbox (Root_Box, Homogeneous => False, Spacing => 10);
