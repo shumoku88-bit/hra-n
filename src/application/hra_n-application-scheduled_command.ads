@@ -84,6 +84,19 @@ package HRA_N.Application.Scheduled_Command is
       Diagnostic_Len : Natural := 0;
    end record;
 
+   type Canonical_Replace_State is
+     (Canonical_Replacement_Not_Published,
+      Canonical_Replacement_Published_Readback_Unverified,
+      Canonical_Replacement_Published_Readback_Verified);
+
+   type Canonical_Replace_Result is record
+      State          : Canonical_Replace_State :=
+        Canonical_Replacement_Not_Published;
+      Replacement_Id : Token_Text;
+      Diagnostic     : String (1 .. 192) := [others => ' '];
+      Diagnostic_Len : Natural := 0;
+   end record;
+
    --  True when any canonical Scheduled/Actual/Locus authority marker exists
    --  in Root_Path.  Partial presence deliberately selects the canonical route
    --  so HRA-N will fail closed instead of silently writing legacy authority.
@@ -107,6 +120,10 @@ package HRA_N.Application.Scheduled_Command is
    function Retire_Loam_Scheduled
      (Root_Path : String;
       Intent    : Retire_Intent) return Canonical_Retire_Result;
+
+   function Replace_Loam_Scheduled
+     (Root_Path : String;
+      Intent    : Replace_Intent) return Canonical_Replace_Result;
 
    function Propose_Create
      (Paths  : Path_Config;
