@@ -4,8 +4,10 @@
 
 with Ada.Directories;
 with HRA_N.Application.Canonical_Authority; use HRA_N.Application.Canonical_Authority;
+with HRA_N.Application.Scheduled_Effective_State; use HRA_N.Application.Scheduled_Effective_State;
 with HRA_N.Storage.Scheduled_Journal_Reader; use HRA_N.Storage.Scheduled_Journal_Reader;
 with HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader;
+with HRA_N.Storage.Loam_Actual_Reader;
 
 package body HRA_N.Application.Scheduled_Detail_Query is
 
@@ -47,8 +49,10 @@ package body HRA_N.Application.Scheduled_Detail_Query is
       end Rejected;
 
       function Project_Lifecycle
-        (Lifecycle : Scheduled_Lifecycle;
-         Snapshot  : Snapshot_Reference) return Scheduled_Detail_View
+        (Lifecycle           : Scheduled_Lifecycle;
+         Snapshot            : Snapshot_Reference;
+         Actual              : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
+         Canonical_Semantics : Boolean) return Scheduled_Detail_View
       is
          Result : Scheduled_Detail_View :=
            (Status           => Query_Rejected,
@@ -76,6 +80,12 @@ package body HRA_N.Application.Scheduled_Detail_Query is
             end if;
          end Set_Diagnostic;
       begin
+         if Canonical_Semantics and then not Lifecycle_Readable (Lifecycle) then
+            Set_Diagnostic
+              ("scheduled.loam: lifecycle is not application-readable");
+            return Result;
+         end if;
+
          for Index in 1 .. Lifecycle.Sched_Count loop
             if Equal_Token (Lifecycle.Sched_Items (Index).Id.Token, Id) then
                Found_Index := Index;
@@ -98,16 +108,39 @@ package body HRA_N.Application.Scheduled_Detail_Query is
             Result.Expected_Day := Occ.Expected_Day;
             Result.Measure := Occ.Measure.Token;
 
-            for I in 1 .. Lifecycle.Comp_Count loop
-               if Equal_Token
-                 (Lifecycle.Comp_Items (I).Scheduled.Token, Id)
-               then
-                  Status := Status_Completed;
-                  Term_Ref := Lifecycle.Comp_Items (I).Actual.Token;
-                  Has_Term := True;
-                  exit;
-               end if;
-            end loop;
+            if Canonical_Semantics then
+               declare
+                  Completion : constant Completion_Observation :=
+                    Observe_Completion
+                      (Lifecycle,
+                       (Token => Id),
+                       Actual);
+               begin
+                  case Completion.State is
+                     when Effective_Completion =>
+                        Status := Status_Completed;
+                        Term_Ref := Completion.Actual;
+                        Has_Term := True;
+                     when Unresolved_Completion =>
+                        Status := Status_Open;
+                        Term_Ref := Completion.Actual;
+                        Has_Term := True;
+                     when No_Retained_Completion =>
+                        null;
+                  end case;
+               end;
+            else
+               for I in 1 .. Lifecycle.Comp_Count loop
+                  if Equal_Token
+                    (Lifecycle.Comp_Items (I).Scheduled.Token, Id)
+                  then
+                     Status := Status_Completed;
+                     Term_Ref := Lifecycle.Comp_Items (I).Actual.Token;
+                     Has_Term := True;
+                     exit;
+                  end if;
+               end loop;
+            end if;
 
             if not Has_Term then
                for I in 1 .. Lifecycle.Repl_Count loop
@@ -179,8 +212,26 @@ package body HRA_N.Application.Scheduled_Detail_Query is
                         & Canonical.Error_Reason (1 .. Canonical.Error_Len));
                   end if;
 
-                  return Project_Lifecycle
-                    (Canonical.Lifecycle, (Kind => Snapshot_Unversioned));
+                  declare
+                     Actual : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
+                  begin
+                     if Canonical.Lifecycle.Comp_Count > 0 then
+                        Actual :=
+                          HRA_N.Storage.Loam_Actual_Reader.Read_Loam_Actual_File
+                            (Ada.Directories.Compose
+                               (Data_Dir_Str (Paths), "actual.loam"));
+                        if not Actual.Success then
+                           return Rejected
+                             ("completion semantics require readable actual.loam");
+                        end if;
+                     end if;
+
+                     return Project_Lifecycle
+                       (Lifecycle           => Canonical.Lifecycle,
+                        Snapshot            => (Kind => Snapshot_Unversioned),
+                        Actual              => Actual,
+                        Canonical_Semantics => True);
+                  end;
                end;
             when Probe_Failed =>
                return Rejected
@@ -209,8 +260,16 @@ package body HRA_N.Application.Scheduled_Detail_Query is
                Legacy_Snapshot);
          end if;
 
-         return Project_Lifecycle
-           (Legacy.Lifecycle, Legacy_Snapshot);
+         declare
+            Empty_Actual :
+              HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
+         begin
+            return Project_Lifecycle
+              (Lifecycle           => Legacy.Lifecycle,
+               Snapshot            => Legacy_Snapshot,
+               Actual              => Empty_Actual,
+               Canonical_Semantics => False);
+         end;
       end;
    end Execute;
 
