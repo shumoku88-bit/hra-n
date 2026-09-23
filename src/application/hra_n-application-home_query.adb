@@ -9,13 +9,15 @@ with HRA_N.Core.Attention;
 with HRA_N.Core.Coverage;        use HRA_N.Core.Coverage;
 with HRA_N.Core.Scheduled;       use HRA_N.Core.Scheduled;
 with HRA_N.Application.Statement; use HRA_N.Application.Statement;
+with HRA_N.Application.Actual_Query;
 
 package body HRA_N.Application.Home_Query is
 
-   function Project
+   function Project_With_Actual
      (JR       : HRA_N.Storage.Journal_Reader.Journal_Result;
       PR       : HRA_N.Storage.Policy_Reader.Policy_Result;
       SR       : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
+      Actual   : HRA_N.Application.Actual_Query.Actual_View;
       Query    : Home_Query;
       Snapshot : Frontend_Types.Snapshot_Reference :=
         (Kind => Frontend_Types.Snapshot_Unversioned)) return Home_View
@@ -25,6 +27,7 @@ package body HRA_N.Application.Home_Query is
       Result : Home_View :=
         (Status             => Query_Rejected,
          Snapshot           => Snapshot,
+         Actual_Snapshot    => Actual.Snapshot,
          Selected_Day       => Query.Selected_Day,
          Total_Actual       => 0,
          Selected_Actual    => 0,
@@ -58,26 +61,31 @@ package body HRA_N.Application.Home_Query is
       elsif not SR.Success then
          Set_Diagnostic ("scheduled.hra: " & SR.Error_Reason (1 .. SR.Error_Len));
          return Result;
+      elsif Actual.Status = Query_Rejected then
+         if Actual.Diagnostic_Len > 0 then
+            Set_Diagnostic
+              ("Actual observation: "
+               & Actual.Diagnostic (1 .. Actual.Diagnostic_Len));
+         else
+            Set_Diagnostic ("Actual observation rejected");
+         end if;
+         return Result;
       end if;
 
-      Result.Total_Actual    := Natural (JR.Events.Length);
+      Result.Total_Actual    := Natural (Actual.Row_Count);
       Result.Total_Scheduled := Natural (SR.Lifecycle.Sched_Count);
       Result.Role_Assignments := Natural (Entry_Count (PR.Roles));
       Result.Zero_Origins     := Natural (Coordinate_Count (PR.Coverage));
       Result.Open_Attentions  :=
         Natural (HRA_N.Core.Attention.Open_Count (PR.Attention));
 
-      for Index in 1 .. Natural (JR.Events.Length) loop
-         declare
-            Item      : constant Event := JR.Events.Element (Positive (Index));
-            Item_Date : Date_Type;
-            Has_Date  : Boolean;
-         begin
-            Find_Occurrence_Date (JR.Validities, Id (Item), Item_Date, Has_Date);
-            if Has_Date and then Equal_Date (Item_Date, Query.Selected_Day) then
-               Result.Selected_Actual := Result.Selected_Actual + 1;
-            end if;
-         end;
+      for Index in 1 .. Natural (Actual.Row_Count) loop
+         if Actual.Rows (Index).Has_Date
+           and then Equal_Date
+             (Actual.Rows (Index).Valid_On, Query.Selected_Day)
+         then
+            Result.Selected_Actual := Result.Selected_Actual + 1;
+         end if;
       end loop;
 
       for Index in 1 .. SR.Lifecycle.Sched_Count loop
@@ -112,7 +120,46 @@ package body HRA_N.Application.Home_Query is
          end if;
       end;
 
+      if Actual.Status = Query_Partial
+        and then Result.Status = Query_Complete
+      then
+         Result.Status := Query_Partial;
+         if Actual.Diagnostic_Len > 0 then
+            Set_Diagnostic
+              ("Actual observation partial: "
+               & Actual.Diagnostic (1 .. Actual.Diagnostic_Len));
+         else
+            Set_Diagnostic ("Actual observation is partial");
+         end if;
+      end if;
+
       return Result;
+   end Project_With_Actual;
+
+   function Project
+     (JR       : HRA_N.Storage.Journal_Reader.Journal_Result;
+      PR       : HRA_N.Storage.Policy_Reader.Policy_Result;
+      SR       : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
+      Query    : Home_Query;
+      Snapshot : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned)) return Home_View
+   is
+      Actual : constant HRA_N.Application.Actual_Query.Actual_View :=
+        HRA_N.Application.Actual_Query.Project
+          (Journal  => JR,
+           Request  =>
+             (Scope        => HRA_N.Application.Actual_Query.Scope_All,
+              Selected_Day => Query.Selected_Day,
+              Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First),
+           Snapshot => Snapshot);
+   begin
+      return Project_With_Actual
+        (JR       => JR,
+         PR       => PR,
+         SR       => SR,
+         Actual   => Actual,
+         Query    => Query,
+         Snapshot => Snapshot);
    end Project;
 
    function Execute
@@ -128,6 +175,7 @@ package body HRA_N.Application.Home_Query is
          return
            (Status             => Query_Rejected,
             Snapshot           => (Kind => Snapshot_Unversioned),
+            Actual_Snapshot    => (Kind => Snapshot_Unversioned),
             Selected_Day       => Query.Selected_Day,
             Total_Actual       => 0,
             Selected_Actual    => 0,
@@ -147,6 +195,12 @@ package body HRA_N.Application.Home_Query is
       end if;
 
       declare
+         Actual : constant HRA_N.Application.Actual_Query.Actual_View :=
+           HRA_N.Application.Actual_Query.Execute
+             (Paths,
+              (Scope        => HRA_N.Application.Actual_Query.Scope_All,
+               Selected_Day => Query.Selected_Day,
+               Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First));
          JR : constant HRA_N.Storage.Journal_Reader.Journal_Result :=
            HRA_N.Storage.Journal_Reader.Read_Journal_File (Journal_Path_Str (Paths));
          PR : constant HRA_N.Storage.Policy_Reader.Policy_Result :=
@@ -155,7 +209,13 @@ package body HRA_N.Application.Home_Query is
            HRA_N.Storage.Scheduled_Journal_Reader.Read_Scheduled_Journal_File
              (Scheduled_Path_Str (Paths));
       begin
-         return Project (JR, PR, SR, Query, Snap);
+         return Project_With_Actual
+           (JR       => JR,
+            PR       => PR,
+            SR       => SR,
+            Actual   => Actual,
+            Query    => Query,
+            Snapshot => Snap);
       end;
    end Execute;
 
