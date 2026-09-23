@@ -57,6 +57,7 @@ with Test_Scheduled_Query;
 with Test_Scheduled_Command;
 with Test_Balance_Query;
 with Test_Canonical_Balance_Query;
+with Test_Canonical_Activity_Query;
 with Test_Assertion;
 with Test_Attention_Command;
 with Test_Capacity_Command;
@@ -352,6 +353,11 @@ begin
    if Selected ("Test_Canonical_Balance_Query") then
       Announce ("Test_Canonical_Balance_Query");
       Test_Canonical_Balance_Query.Run;
+   end if;
+
+   if Selected ("Test_Canonical_Activity_Query") then
+      Announce ("Test_Canonical_Activity_Query");
+      Test_Canonical_Activity_Query.Run;
    end if;
 
    if Selected ("Test_Assertion") then

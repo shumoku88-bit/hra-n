@@ -20,6 +20,8 @@ with Gtk.Main;
 with Gtk.Widget;    use Gtk.Widget;
 with Gtk.Window;    use Gtk.Window;
 
+with HRA_N.Application.Canonical_Activity_Query;
+use HRA_N.Application.Canonical_Activity_Query;
 with HRA_N.Application.Canonical_Balance_Query;
 use HRA_N.Application.Canonical_Balance_Query;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
@@ -90,15 +92,15 @@ procedure HRA_N_GUI is
    end Print_Summary;
 
    Data_Root : constant String := Resolve_Root;
-   View      : constant Balance_View := Execute (Data_Root);
+   Source    : constant Browser_Snapshot := Open (Data_Root);
+   View      : constant Balance_View := Balance (Source);
 
 begin
-   if not View.Success then
-      if View.Diagnostic_Len > 0 then
-         raise Program_Error with
-           View.Diagnostic (1 .. View.Diagnostic_Len);
+   if not Ready (Source) then
+      if Diagnostic (Source)'Length > 0 then
+         raise Program_Error with Diagnostic (Source);
       else
-         raise Program_Error with "canonical Actual projection failed";
+         raise Program_Error with "canonical Actual browser snapshot failed";
       end if;
    end if;
 
@@ -136,7 +138,7 @@ begin
      (Root_Box, Status_Label,
       Expand => False, Fill => False, Padding => 0);
 
-   HRA_N_GUI_Coordinate_Browser.Gtk_New (Browser, View);
+   HRA_N_GUI_Coordinate_Browser.Gtk_New (Browser, Source);
    Pack_Start
      (Root_Box, Browser,
       Expand => True, Fill => True, Padding => 0);
