@@ -127,7 +127,7 @@ package body HRA_N_GUI_Coordinate_Browser is
    begin
       Set_Source_Rgb (Cr, R, G, B);
       Rectangle (Cr, X, Top, Width, Height);
-      Fill (Cr);
+      Cairo.Fill (Cr);
 
       Set_Source_Rgb (Cr, 0.12, 0.12, 0.12);
       Draw_Label (Cr, Value_Text, X + 8.0, Top - 12.0, 17.0, Bold => True);
@@ -306,11 +306,11 @@ package body HRA_N_GUI_Coordinate_Browser is
 
       Gtk_New
         (Model,
-         (Index_Column      => GType_Int,
-          Coordinate_Column => GType_String,
-          Net_Column        => GType_String,
-          In_Column         => GType_String,
-          Out_Column        => GType_String));
+         [0 => GType_Int,
+          1 => GType_String,
+          2 => GType_String,
+          3 => GType_String,
+          4 => GType_String]);
 
       for I in 1 .. View.Count loop
          declare
