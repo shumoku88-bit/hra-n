@@ -101,6 +101,12 @@ jobs:
       - name: Test LOAM Scheduled Creation Refinement
         run: ./tests/bin/test_runner Test_Loam_Scheduled_Creation_Refinement
 
+      - name: Test LOAM Scheduled Completion Writer
+        run: ./tests/bin/test_runner Test_Loam_Scheduled_Completion_Writer
+
+      - name: Test LOAM Scheduled Completion Refinement
+        run: ./tests/bin/test_runner Test_Loam_Scheduled_Completion_Refinement
+
       - name: Test Validity
         run: ./tests/bin/test_runner Test_Validity
 
