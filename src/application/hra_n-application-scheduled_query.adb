@@ -349,7 +349,10 @@ package body HRA_N.Application.Scheduled_Query is
                   declare
                      Actual : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
                   begin
-                     if SR.Success and then SR.Lifecycle.Comp_Count > 0 then
+                     if SR.Success
+                       and then Lifecycle_Readable (SR.Lifecycle)
+                       and then SR.Lifecycle.Comp_Count > 0
+                     then
                         Actual :=
                           HRA_N.Storage.Loam_Actual_Reader.Read_Loam_Actual_File
                             (Ada.Directories.Compose
