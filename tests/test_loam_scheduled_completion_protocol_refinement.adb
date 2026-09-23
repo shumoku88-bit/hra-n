@@ -1,6 +1,7 @@
 with Ada.Directories;
 with HRA_N.Core.Actual_Bounded_History; use HRA_N.Core.Actual_Bounded_History;
 with HRA_N.Core.Description; use HRA_N.Core.Description;
+with HRA_N.Core.Event;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Storage.Atomic_Writer; use HRA_N.Storage.Atomic_Writer;
 with HRA_N.Storage.Loam_Actual_Reader; use HRA_N.Storage.Loam_Actual_Reader;
