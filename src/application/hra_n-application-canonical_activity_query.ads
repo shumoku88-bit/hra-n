@@ -74,9 +74,12 @@ package HRA_N.Application.Canonical_Activity_Query is
 
    type Effect_Detail_Row is record
       Has_Key : Boolean := False;
-      Key     : Effect_Key;
-      Locus   : Locus_Id;
-      Measure : Measure_Id;
+      Key     : Effect_Key :=
+        (Token => (Length => 0, Value => [others => ' ']));
+      Locus   : Locus_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
+      Measure : Measure_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
       Amount  : Long_Long_Integer := 0;
    end record;
 
@@ -92,21 +95,28 @@ package HRA_N.Application.Canonical_Activity_Query is
 
    type Event_Detail_View is record
       Success          : Boolean := False;
-      Event            : Event_Id;
-      Valid_On         : HRA_N.Core.Validity.Date_Type;
+      Event            : Event_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
+      Valid_On         : HRA_N.Core.Validity.Date_Type :=
+        (Year => 2026, Month => 1, Day => 1);
       Has_Description  : Boolean := False;
-      Description      : HRA_N.Core.Description.Description_Text;
+      Description      : HRA_N.Core.Description.Description_Text :=
+        (Length => 0, Value => [others => ' ']);
       Effects          : Effect_Detail_Array :=
         [others => Empty_Effect_Detail_Row];
       Effect_Count     : Detail_Effect_Count := 0;
       Is_Superseded    : Boolean := False;
-      Successor        : Event_Id;
+      Successor        : Event_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
       Is_Replacement   : Boolean := False;
-      Replaces         : Event_Id;
+      Replaces         : Event_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
       Is_Reversal      : Boolean := False;
-      Reverses         : Event_Id;
+      Reverses         : Event_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
       Has_Reverser     : Boolean := False;
-      Reversed_By      : Event_Id;
+      Reversed_By      : Event_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
       Diagnostic       : String (1 .. 192) := [others => ' '];
       Diagnostic_Len   : Natural := 0;
    end record;
