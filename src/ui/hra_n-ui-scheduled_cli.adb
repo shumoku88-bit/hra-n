@@ -554,8 +554,14 @@ package body HRA_N.UI.Scheduled_Cli is
       Amount : Quanta_Type;
       D_Val  : Date_Type;
    begin
-      if Target_Str'Length = 0 or else From_Locus'Length = 0 or else To_Locus'Length = 0 or else Amount_Str'Length = 0 then
-         Put_Error_Line ("Usage: hra-n scheduled replace <TARGET_ID> <FROM> <TO> <AMOUNT> [YYYY-MM-DD]");
+      if Target_Str'Length = 0
+        or else From_Locus'Length = 0
+        or else To_Locus'Length = 0
+        or else Amount_Str'Length = 0
+      then
+         Put_Error_Line
+           ("Usage: hra-n scheduled replace <TARGET_ID> <FROM> <TO> "
+            & "<AMOUNT> [YYYY-MM-DD]");
          Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
          return;
       end if;
@@ -582,37 +588,103 @@ package body HRA_N.UI.Scheduled_Cli is
       declare
          Intent : constant Replace_Intent :=
            (Target_Id    => Make_Token (Target_Str),
-            New_Id       => (if New_Id_Str'Length > 0 then Make_Token (New_Id_Str) else (0, [others => ' '])),
+            New_Id       =>
+              (if New_Id_Str'Length > 0
+               then Make_Token (New_Id_Str)
+               else (0, [others => ' '])),
             Expected_Day => D_Val,
             From_Locus   => (Token => Make_Token (From_Locus)),
             To_Locus     => (Token => Make_Token (To_Locus)),
             Measure      => (Token => Make_Token (Measure_Str)),
             Amount       => Amount);
-         Prop_Res : constant Proposal_Result := Propose_Replacement (Paths, Intent);
       begin
-         if not Prop_Res.Success then
-            Put_Error_Line ("hra-n: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
-            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-            return;
+         if Canonical_Authority_Present (Data_Dir_Str (Paths)) then
+            declare
+               Canonical : constant Canonical_Replace_Result :=
+                 Replace_Loam_Scheduled (Data_Dir_Str (Paths), Intent);
+            begin
+               if Canonical.State =
+                 Canonical_Replacement_Not_Published
+               then
+                  Put_Error_Line
+                    ("hra-n: canonical Scheduled replacement rejected: "
+                     & Canonical.Diagnostic
+                       (1 .. Canonical.Diagnostic_Len));
+                  Ada.Command_Line.Set_Exit_Status
+                    (Ada.Command_Line.Failure);
+                  return;
+               end if;
+
+               Put_Line ("============================================================");
+               Put_Line
+                 (" [OK] Replaced canonical Scheduled obligation: "
+                  & Target_Str
+                  & " -> "
+                  & Canonical.Replacement_Id.Value
+                    (1 .. Canonical.Replacement_Id.Length));
+               Put_Line ("      AUTHORITY: scheduled.loam");
+               Put_Line ("      DATE:      " & Format_Iso_Date (D_Val));
+               Put_Line
+                 ("      FLOW:      " & From_Locus & " (-" & Amount_Str
+                  & " " & Measure_Str & ") -> " & To_Locus & " (+"
+                  & Amount_Str & " " & Measure_Str & ")");
+
+               if Canonical.State =
+                 Canonical_Replacement_Published_Readback_Verified
+               then
+                  Put_Line
+                    ("      READ-BACK: proved replacement refinement verified");
+               else
+                  Put_Line
+                    (" [WARN] Replacement succeeded; proved read-back "
+                     & "refinement was not verified");
+                  if Canonical.Diagnostic_Len > 0 then
+                     Put_Line
+                       ("        "
+                        & Canonical.Diagnostic
+                          (1 .. Canonical.Diagnostic_Len));
+                  end if;
+               end if;
+               Put_Line ("============================================================");
+            end;
+         else
+            declare
+               Prop_Res : constant Proposal_Result :=
+                 Propose_Replacement (Paths, Intent);
+            begin
+               if not Prop_Res.Success then
+                  Put_Error_Line
+                    ("hra-n: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
+                  Ada.Command_Line.Set_Exit_Status
+                    (Ada.Command_Line.Failure);
+                  return;
+               end if;
+
+               declare
+                  Receipt : constant Scheduled_Receipt :=
+                    Commit (Prop_Res.Proposal);
+               begin
+                  if not Receipt.Success then
+                     Put_Error_Line
+                       ("hra-n: " & Receipt.Error (1 .. Receipt.Error_Len));
+                     Ada.Command_Line.Set_Exit_Status
+                       (Ada.Command_Line.Failure);
+                     return;
+                  end if;
+
+                  Put_Line ("============================================================");
+                  Put_Line
+                    (" [OK] Replaced scheduled obligation "
+                     & Receipt.Primary_Id (1 .. Receipt.Primary_Len)
+                     & " with "
+                     & Receipt.Secondary_Id (1 .. Receipt.Secondary_Len));
+                  Put_Line
+                    ("      Activated snapshot: "
+                     & Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                  Put_Line ("============================================================");
+               end;
+            end;
          end if;
-
-         declare
-            Receipt : constant Scheduled_Receipt := Commit (Prop_Res.Proposal);
-         begin
-            if not Receipt.Success then
-               Put_Error_Line ("hra-n: " & Receipt.Error (1 .. Receipt.Error_Len));
-               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-               return;
-            end if;
-
-            Put_Line ("============================================================");
-            Put_Line (" [OK] Replaced scheduled obligation " &
-                      Receipt.Primary_Id (1 .. Receipt.Primary_Len) &
-                      " with " & Receipt.Secondary_Id (1 .. Receipt.Secondary_Len));
-            Put_Line ("      Activated snapshot: " &
-                      Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-            Put_Line ("============================================================");
-         end;
       end;
    end Replace_Scheduled;
 
