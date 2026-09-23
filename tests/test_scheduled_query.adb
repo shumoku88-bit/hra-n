@@ -343,24 +343,37 @@ package body Test_Scheduled_Query is
 
          --  Cross-kind terminal conflict is retained by the codec but refused
          --  by the application interpretation boundary.
-         Assert
-           (Write_File_Atomically
-              (Test_Dir & "/scheduled.loam",
-               Canonical_Text
-                 (Canonical_Text'First
-                  .. Canonical_Text'Last
-                     - ("END" & HT & "Retirement" & NL
-                        & "BEGIN" & HT & "Replacement" & NL
-                        & "LOAM-SCHEDULED-REPLACEMENT-MEMORY" & HT & "1" & NL
-                        & "END" & HT & "Replacement" & NL)'Length)
-               & "RETIREMENT" & HT & "scheduled-10" & NL
-               & "END" & HT & "Retirement" & NL
-               & "BEGIN" & HT & "Replacement" & NL
-               & "LOAM-SCHEDULED-REPLACEMENT-MEMORY" & HT & "1" & NL
-               & "END" & HT & "Replacement" & NL,
-               Error,
-               Error_Len),
-            "canonical conflicting terminal fixture publishes");
+         declare
+            Conflict_Text : constant String :=
+              "LOAM-SCHEDULED-LIFECYCLE" & HT & "1" & NL
+              & "BEGIN" & HT & "Scheduled" & NL
+              & "LOAM-SCHEDULED-MEMORY" & HT & "1" & NL
+              & "SCHEDULED" & HT & "scheduled-10" & HT
+              & "2026-09-15" & HT & "jpy" & NL
+              & "CHANGE" & HT & "cash" & HT & "-321" & NL
+              & "CHANGE" & HT & "food" & HT & "321" & NL
+              & "END" & HT & "Scheduled" & NL
+              & "BEGIN" & HT & "Completion" & NL
+              & "LOAM-SCHEDULED-COMPLETION-MEMORY" & HT & "1" & NL
+              & "COMPLETION" & HT & "scheduled-10" & HT
+              & "actual-missing" & NL
+              & "END" & HT & "Completion" & NL
+              & "BEGIN" & HT & "Retirement" & NL
+              & "LOAM-SCHEDULED-RETIREMENT-MEMORY" & HT & "1" & NL
+              & "RETIREMENT" & HT & "scheduled-10" & NL
+              & "END" & HT & "Retirement" & NL
+              & "BEGIN" & HT & "Replacement" & NL
+              & "LOAM-SCHEDULED-REPLACEMENT-MEMORY" & HT & "1" & NL
+              & "END" & HT & "Replacement" & NL;
+         begin
+            Assert
+              (Write_File_Atomically
+                 (Test_Dir & "/scheduled.loam",
+                  Conflict_Text,
+                  Error,
+                  Error_Len),
+               "canonical conflicting terminal fixture publishes");
+         end;
 
          declare
             View : constant Scheduled_View :=
