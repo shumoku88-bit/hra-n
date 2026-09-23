@@ -942,7 +942,9 @@ def test_canonical_scheduled_tui() -> None:
         try:
             read_until(fd, output, b"Markers:")
             os.write(fd, b"s")
-            read_until(fd, output, b"scheduled-1")
+            # Wait for the list footer so every visible canonical row has had
+            # a chance to reach the PTY before inspecting the rendered screen.
+            read_until(fd, output, b"n: create")
             scheduled_screen_at = output.rfind(b"SCHEDULED  CURRENT OPEN")
             assert scheduled_screen_at >= 0, bytes(output)
             canonical_list = bytes(output[scheduled_screen_at:])
