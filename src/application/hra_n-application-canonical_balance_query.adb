@@ -194,11 +194,12 @@ package body HRA_N.Application.Canonical_Balance_Query is
    begin
       if Root_Path'Length = 0 then
          declare
-            Result : Balance_View;
-         begin
-            Result.Diagnostic_Len := 33;
-            Result.Diagnostic (1 .. 33) :=
+            Result  : Balance_View;
+            Message : constant String :=
               "canonical data root must not be empty";
+         begin
+            Result.Diagnostic_Len := Message'Length;
+            Result.Diagnostic (1 .. Message'Length) := Message;
             return Result;
          end;
       end if;
