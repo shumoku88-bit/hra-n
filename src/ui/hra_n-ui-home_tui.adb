@@ -87,6 +87,7 @@ package body HRA_N.UI.Home_TUI is
    procedure Draw
      (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
       JR           : HRA_N.Storage.Journal_Reader.Journal_Result;
+      Actual       : HRA_N.Application.Actual_Query.Actual_View;
       PR           : HRA_N.Storage.Policy_Reader.Policy_Result;
       SR           : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
       Selected_Day : Date_Type;
@@ -104,10 +105,11 @@ package body HRA_N.UI.Home_TUI is
 
       declare
          View : constant HRA_N.Application.Home_Query.Home_View :=
-           HRA_N.Application.Home_Query.Project
+           HRA_N.Application.Home_Query.Project_With_Actual
              (JR       => JR,
               PR       => PR,
               SR       => SR,
+              Actual   => Actual,
               Query    => (Selected_Day => Selected_Day),
               Snapshot => Snap);
 
@@ -172,22 +174,22 @@ package body HRA_N.UI.Home_TUI is
                Current_Day : Natural := 1;
                Cal_Row     : Natural := 4;
             begin
-                --  Populate Actual flags
-                for Index in 1 .. Natural (JR.Events.Length) loop
-                   declare
-                      Item      : constant Event := JR.Events.Element (Positive (Index));
-                      Item_Date : Date_Type;
-                      Has_Date  : Boolean;
-                   begin
-                      Find_Occurrence_Date (JR.Validities, Id (Item), Item_Date, Has_Date);
-                      if Has_Date
-                        and then Item_Date.Year = Selected_Day.Year
-                        and then Item_Date.Month = Selected_Day.Month
-                        and then Item_Date.Day in 1 .. Days_In_Month_Val
-                      then
-                         Flags (Item_Date.Day).Has_Actual := True;
-                      end if;
-                   end;
+                --  Populate Actual flags from the same shared Actual
+                --  observation used by Home counts and day rows.
+                for Index in 1 .. Natural (Actual.Row_Count) loop
+                   if Actual.Rows (Index).Has_Date then
+                      declare
+                         Item_Date : constant Date_Type :=
+                           Actual.Rows (Index).Valid_On;
+                      begin
+                         if Item_Date.Year = Selected_Day.Year
+                           and then Item_Date.Month = Selected_Day.Month
+                           and then Item_Date.Day in 1 .. Days_In_Month_Val
+                         then
+                            Flags (Item_Date.Day).Has_Actual := True;
+                         end if;
+                      end;
+                   end if;
                 end loop;
 
                --  Populate Scheduled flags
@@ -329,51 +331,73 @@ package body HRA_N.UI.Home_TUI is
             Next_Row := Next_Row + 1;
 
             Put_Clipped
-              (Next_Row, "Snapshot   " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
+              (Next_Row,
+               "Sources    actual="
+               & HRA_N.UI.Snapshot_Label.Format (View.Actual_Snapshot)
+               & " / other="
+               & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
             Next_Row := Next_Row + 1;
 
-            --  Direct inspection of Selected Day Actual transactions if screen height allows
+            --  Direct inspection of Selected Day Actual transactions from
+            --  the same shared Scope_All observation used by Home markers.
             if Rows > Next_Row + 4 then
                Put_Clipped (Next_Row, "------------------------------------------------------------");
                Next_Row := Next_Row + 1;
 
                declare
-                  Act_View : constant HRA_N.Application.Actual_Query.Actual_View :=
-                    HRA_N.Application.Actual_Query.Project
-                      (Journal  => JR,
-                       Request  =>
-                         (Scope        => HRA_N.Application.Actual_Query.Scope_Selected_Day,
-                          Selected_Day => Selected_Day,
-                          Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First),
-                       Snapshot => Snap);
-                  Max_Act_Lines : constant Natural :=
-                    (if Rows > Next_Row + 4 then Natural'Min (Natural (Act_View.Row_Count), 3) else 0);
+                  Selected_Count : Natural := 0;
+                  Printed_Count  : Natural := 0;
                begin
-                  Put_Clipped (Next_Row, "Actual Transactions (" & Image (Natural (Act_View.Row_Count)) & "):");
+                  for I in 1 .. Natural (Actual.Row_Count) loop
+                     if Actual.Rows (I).Has_Date
+                       and then Equal_Date
+                         (Actual.Rows (I).Valid_On, Selected_Day)
+                     then
+                        Selected_Count := Selected_Count + 1;
+                     end if;
+                  end loop;
+
+                  Put_Clipped
+                    (Next_Row,
+                     "Actual Transactions (" & Image (Selected_Count) & "):");
                   Next_Row := Next_Row + 1;
 
-                  if Act_View.Row_Count = 0 then
+                  if Selected_Count = 0 then
                      Put_Clipped (Next_Row, "   (none recorded on this day)");
                      Next_Row := Next_Row + 1;
                   else
-                     for I in 1 .. Max_Act_Lines loop
-                        declare
-                           Row_Item : constant HRA_N.Application.Actual_Query.Actual_Row := Act_View.Rows (I);
-                           Id_Str   : constant String := Row_Item.Event_Id.Value (1 .. Row_Item.Event_Id.Length);
-                           Desc_Str : constant String :=
-                             (if Row_Item.Description.Length > 0
-                              then To_String (Row_Item.Description)
-                              else "(no description)");
-                        begin
-                           Put_Clipped (Next_Row, "   - " & Id_Str & "  " & Desc_Str);
-                           Next_Row := Next_Row + 1;
-                        end;
+                     for I in 1 .. Natural (Actual.Row_Count) loop
+                        exit when Printed_Count = 3;
+                        if Actual.Rows (I).Has_Date
+                          and then Equal_Date
+                            (Actual.Rows (I).Valid_On, Selected_Day)
+                        then
+                           declare
+                              Row_Item : constant
+                                HRA_N.Application.Actual_Query.Actual_Row :=
+                                  Actual.Rows (I);
+                              Id_Str : constant String :=
+                                Row_Item.Event_Id.Value
+                                  (1 .. Row_Item.Event_Id.Length);
+                              Desc_Str : constant String :=
+                                (if Row_Item.Description.Length > 0
+                                 then To_String (Row_Item.Description)
+                                 else "(no description)");
+                           begin
+                              Put_Clipped
+                                (Next_Row, "   - " & Id_Str & "  " & Desc_Str);
+                              Next_Row := Next_Row + 1;
+                              Printed_Count := Printed_Count + 1;
+                           end;
+                        end if;
                      end loop;
-                     if Natural (Act_View.Row_Count) > Max_Act_Lines then
+
+                     if Selected_Count > Printed_Count then
                         Put_Clipped
                           (Next_Row,
-                           "   ... and " & Image (Natural (Act_View.Row_Count) - Max_Act_Lines) &
-                           " more (Enter: open day)");
+                           "   ... and "
+                           & Image (Selected_Count - Printed_Count)
+                           & " more (Enter: open day)");
                         Next_Row := Next_Row + 1;
                      end if;
                   end if;
@@ -440,12 +464,19 @@ package body HRA_N.UI.Home_TUI is
       Screen_Started : Boolean := False;
       Query_Healthy  : Boolean := False;
 
-      JR : HRA_N.Storage.Journal_Reader.Journal_Result;
-      PR : HRA_N.Storage.Policy_Reader.Policy_Result;
-      SR : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
+      JR     : HRA_N.Storage.Journal_Reader.Journal_Result;
+      Actual : HRA_N.Application.Actual_Query.Actual_View;
+      PR     : HRA_N.Storage.Policy_Reader.Policy_Result;
+      SR     : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
 
       procedure Reload is
       begin
+         Actual :=
+           HRA_N.Application.Actual_Query.Execute
+             (Current_Paths,
+              (Scope        => HRA_N.Application.Actual_Query.Scope_All,
+               Selected_Day => Selected,
+               Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First));
          JR := HRA_N.Storage.Journal_Reader.Read_Journal_File
                  (HRA_N.Application.Path_Resolver.Journal_Path_Str (Current_Paths));
          PR := HRA_N.Storage.Policy_Reader.Read_Policy_File
@@ -469,7 +500,7 @@ package body HRA_N.UI.Home_TUI is
       Reload;
 
       while Running loop
-         Draw (Current_Paths, JR, PR, SR, Selected, Query_Healthy);
+         Draw (Current_Paths, JR, Actual, PR, SR, Selected, Query_Healthy);
          declare
             Evt : constant HRA_N.UI.TUI_Input.Event := HRA_N.UI.TUI_Input.Read;
          begin

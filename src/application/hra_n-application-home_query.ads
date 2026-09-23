@@ -5,6 +5,7 @@
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;
+with HRA_N.Application.Actual_Query;
 
 with HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Policy_Reader;
@@ -21,6 +22,8 @@ package HRA_N.Application.Home_Query is
         Frontend_Types.Query_Rejected;
       Snapshot            : Frontend_Types.Snapshot_Reference :=
         (Kind => Frontend_Types.Snapshot_Unversioned);
+      Actual_Snapshot     : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned);
       Selected_Day        : Date_Type;
       Total_Actual        : Natural := 0;
       Selected_Actual     : Natural := 0;
@@ -35,6 +38,19 @@ package HRA_N.Application.Home_Query is
       Diagnostic_Len      : Frontend_Types.Diagnostic_Length := 0;
    end record;
 
+   --  Project one already-admitted Actual observation together with the
+   --  transitional policy/Scheduled/Statement streams.  Actual_Snapshot is
+   --  kept separate because canonical Actual may not share the legacy
+   --  generation identity used by the remaining Home evidence.
+   function Project_With_Actual
+     (JR       : HRA_N.Storage.Journal_Reader.Journal_Result;
+      PR       : HRA_N.Storage.Policy_Reader.Policy_Result;
+      SR       : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
+      Actual   : HRA_N.Application.Actual_Query.Actual_View;
+      Query    : Home_Query;
+      Snapshot : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned)) return Home_View;
+
    --  Project in-memory streams directly to Home_View without disk I/O.
    function Project
      (JR       : HRA_N.Storage.Journal_Reader.Journal_Result;
@@ -44,9 +60,9 @@ package HRA_N.Application.Home_Query is
       Snapshot : Frontend_Types.Snapshot_Reference :=
         (Kind => Frontend_Types.Snapshot_Unversioned)) return Home_View;
 
-   --  Acquire all three logical streams once and derive a presentation-neutral
-   --  Home projection. A selected generation carries its snapshot identity;
-   --  legacy root files remain explicitly unversioned.
+   --  Acquire the transitional Home streams plus one shared Actual_Query
+   --  observation. Snapshot identifies the remaining legacy Home evidence;
+   --  Actual_Snapshot identifies the Actual authority independently.
    function Execute
      (Paths : HRA_N.Application.Path_Resolver.Path_Config;
       Query : Home_Query) return Home_View;

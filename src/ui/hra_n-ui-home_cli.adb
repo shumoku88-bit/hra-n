@@ -58,7 +58,11 @@ package body HRA_N.UI.Home_CLI is
       else
          Put_Line ("Attention   none from this projection");
       end if;
-      Put_Line ("Snapshot    " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
+      Put_Line
+        ("Sources     actual="
+         & HRA_N.UI.Snapshot_Label.Format (View.Actual_Snapshot)
+         & " / other="
+         & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
       Put_Line ("------------------------------------------------------------");
       Put_Line ("Use explicit commands for current write operations.");
 
