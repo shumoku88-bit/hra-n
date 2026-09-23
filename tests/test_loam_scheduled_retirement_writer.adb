@@ -1,4 +1,5 @@
 with Ada.Directories;
+with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Storage.Atomic_Writer; use HRA_N.Storage.Atomic_Writer;
