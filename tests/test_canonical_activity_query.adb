@@ -1,4 +1,6 @@
 with Ada.Directories;
+with Ada.Strings;
+with Ada.Strings.Unbounded;
 with HRA_N.Application.Canonical_Activity_Query;
 use HRA_N.Application.Canonical_Activity_Query;
 with HRA_N.Application.Canonical_Balance_Query;
@@ -9,6 +11,8 @@ with HRA_N.Storage.Atomic_Writer; use HRA_N.Storage.Atomic_Writer;
 with Test_Support; use Test_Support;
 
 package body Test_Canonical_Activity_Query is
+
+   package US renames Ada.Strings.Unbounded;
 
    Root   : constant String := "/tmp/hra_n_canonical_activity_query";
    Actual : constant String := Root & "/actual.loam";
@@ -134,6 +138,58 @@ package body Test_Canonical_Activity_Query is
               (Activity.Rows (3).Successor.Token, Make_Token ("e2")),
             "superseded original remains inspectable with successor evidence");
          end;
+      end;
+
+
+      --  Regression for the GUI browser snapshot: retain a production-scale
+      --  admitted image without placing the full 1024-entry evidence memories
+      --  in the caller's stack frame.
+      Ada.Directories.Create_Path (Root);
+      declare
+         Large : US.Unbounded_String :=
+           US.To_Unbounded_String
+             ("LOAM-NORMALIZED-ACTUAL" & HT & "1" & NL);
+      begin
+         for I in 1 .. 650 loop
+            declare
+               Id_Text : constant String :=
+                 "bulk-" & Trim (Natural'Image (I), Ada.Strings.Both);
+            begin
+               US.Append
+                 (Large,
+                  "TX" & HT & Id_Text & HT & "2026-09-23" & HT
+                  & "NODESC" & NL
+                  & "EFFECT" & HT & "cash" & HT & "jpy" & HT & "-1" & NL
+                  & "EFFECT" & HT & "food" & HT & "jpy" & HT & "1" & NL
+                  & "ENDTX" & NL);
+            end;
+         end loop;
+
+         Write_Atomically (Actual, US.To_String (Large));
+      end;
+
+      declare
+         Large_Source : constant Browser_Snapshot := Open (Root);
+         Large_Balance :
+           constant HRA_N.Application.Canonical_Balance_Query.Balance_View :=
+             Balance (Large_Source);
+         Large_Activity : constant Activity_View :=
+           Activity_For
+             (Large_Source,
+              (Token => Make_Token ("cash")),
+              (Token => Make_Token ("jpy")));
+      begin
+         Assert
+           (Ready (Large_Source),
+            "650-Event canonical browser snapshot opens");
+         Assert
+           (Large_Balance.Success
+            and then Large_Balance.Physical_Event_Count = 650,
+            "large snapshot retains all physical Events");
+         Assert
+           (Large_Activity.Success
+            and then Large_Activity.Count = 650,
+            "large snapshot supports coordinate activity without reopening");
       end;
 
       if Ada.Directories.Exists (Root) then
