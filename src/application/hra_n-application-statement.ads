@@ -8,6 +8,7 @@
 -------------------------------------------------------------------------------
 
 with HRA_N.Application.Balance_Query;
+with HRA_N.Storage.Loam_Actual_Reader;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;  use HRA_N.Application.Path_Resolver;
 with HRA_N.Core.Types;                 use HRA_N.Core.Types;
@@ -44,7 +45,9 @@ package HRA_N.Application.Statement is
 
    type Statement_Report is record
       Snapshot         : Token_Text        := (Length => 0, Value => [others => ' ']);
-      Is_Versioned     : Boolean           := False;
+      Is_Versioned     : Boolean           := False; --  Policy snapshot only
+      Actual_Snapshot  : Snapshot_Reference := (Kind => Snapshot_Unversioned);
+      Assertion_Evidence_Available : Boolean := True;
       Has_As_Of        : Boolean           := False;
       As_Of_Date       : Date_Type         := (Year => 2026, Month => 1, Day => 1);
       Status           : Query_Status      := Query_Complete;
@@ -64,7 +67,8 @@ package HRA_N.Application.Statement is
    --  Financial_Summary completeness is classification only. A report also
    --  requires known stock origins and no balance assertion conflicts.
    function Is_Complete (Report : Statement_Report) return Boolean is
-     (Report.Status /= Query_Rejected
+     (Report.Status = Query_Complete
+      and then Report.Assertion_Evidence_Available
       and then HRA_N.Core.Accounting_Role.Is_Complete (Report.Summary)
       and then Report.Unknown_Stock_Count = 0
       and then Report.Conflict_Count = 0);
@@ -84,7 +88,24 @@ package HRA_N.Application.Statement is
       Snapshot     : Token_Text := (Length => 0, Value => [others => ' ']);
       Is_Versioned : Boolean := False) return Statement_Report;
 
-   --  V2 snapshot-bound Financial Statement query over selected versioned authority
+   --  Canonical Actual image uses the same Statement/Balance projection with
+   --  no fabricated assertion evidence. Policy remains transitional.
+   function Project_Canonical
+     (Actual       : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
+      Policy       : Policy_Result;
+      As_Of        : Date_Type := (Year => 2026, Month => 1, Day => 1);
+      Has_As_Of    : Boolean := False;
+      Policy_Snapshot : Snapshot_Reference := (Kind => Snapshot_Unversioned))
+      return Statement_Report;
+
+   --  Select Actual authority while consuming an already loaded legacy Policy.
+   function Execute_With_Policy
+     (Paths     : Path_Config;
+      Policy    : Policy_Result;
+      As_Of     : Date_Type := (Year => 2026, Month => 1, Day => 1);
+      Has_As_Of : Boolean := False) return Statement_Report;
+
+   --  Statement query: canonical Actual if present, otherwise legacy journal.
    function Execute_Statement_Query
      (Paths     : Path_Config;
       As_Of     : Date_Type := (Year => 2026, Month => 1, Day => 1);

@@ -1,11 +1,13 @@
 with Ada.Directories;
 with Ada.Text_IO;
+with Ada.Strings.Fixed;
 with Test_Support; use Test_Support;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Statement; use HRA_N.Application.Statement;
+with HRA_N.Application.Home_Query;
 with HRA_N.Storage.Atomic_Writer; use HRA_N.Storage.Atomic_Writer;
 
 package body Test_Statement is
@@ -205,6 +207,131 @@ package body Test_Statement is
       begin
          Assert (Is_Complete (Rep), "Assertion evaluates corrected frontier");
          Assert (Rep.Summary.Total_Assets = -20, "Statement and balance use same correction");
+      end;
+
+      --  Canonical Actual owns transaction evidence; retained legacy events
+      --  and assertions cannot silently become canonical evidence.
+      Assert (Write_File_Atomically
+                (Journal_Path_Str (Paths),
+                 "TX legacy-only 2026-09-01 cash:-999 food:999" & ASCII.LF &
+                 "ASSERT a0001 2026-09-20 cash:jpy 0" & ASCII.LF,
+                 Error, Error_Len), "mixed Statement legacy journal installs");
+      Assert (Write_File_Atomically
+                (Test_Dir & "/locus-admission.loam",
+                 "LOAM-LOCUS-ADMISSION-VOCABULARY" & ASCII.HT & "1" & ASCII.LF &
+                 "LOCUS" & ASCII.HT & "cash" & ASCII.LF,
+                 Error, Error_Len), "partial canonical marker installs");
+      declare
+         Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+      begin
+         Assert (Rep.Status = Query_Rejected and then Rep.Total_Events = 0,
+                 "partial canonical presence does not fall back to legacy Statement");
+      end;
+
+      declare
+         HT : constant String := [1 => ASCII.HT];
+         NL : constant String := [1 => ASCII.LF];
+         Canonical : constant String :=
+           "LOAM-NORMALIZED-ACTUAL" & HT & "1" & NL &
+           "TX" & HT & "canonical-old" & HT & "2026-09-01" & HT &
+             "DESC" & HT & "Old" & NL &
+           "EFFECT" & HT & "cash" & HT & "jpy" & HT & "-10" & NL &
+           "EFFECT" & HT & "food" & HT & "jpy" & HT & "10" & NL &
+           "ENDTX" & NL &
+           "TX" & HT & "canonical-new" & HT & "2026-09-01" & HT &
+             "DESC" & HT & "New" & NL &
+           "REPLACES" & HT & "canonical-old" & NL &
+           "EFFECT" & HT & "cash" & HT & "jpy" & HT & "-20" & NL &
+           "EFFECT" & HT & "food" & HT & "jpy" & HT & "20" & NL &
+           "ENDTX" & NL &
+           "TX" & HT & "canonical-future" & HT & "2026-09-20" & HT &
+             "DESC" & HT & "Future" & NL &
+           "EFFECT" & HT & "cash" & HT & "jpy" & HT & "-30" & NL &
+           "EFFECT" & HT & "mystery" & HT & "jpy" & HT & "30" & NL &
+           "ENDTX" & NL;
+      begin
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/actual.loam", Canonical, Error, Error_Len),
+                 "canonical Statement Actual installs");
+         declare
+            Before : constant Statement_Report :=
+              Execute_Statement_Query (Paths, (2026, 9, 15), True);
+            After : constant Statement_Report :=
+              Execute_Statement_Query (Paths, (2026, 9, 20), True);
+         begin
+            Assert (Before.Status = Query_Partial and then not Is_Complete (Before),
+                    "canonical assertion gap prevents complete financial statement");
+            Assert (not Before.Assertion_Evidence_Available
+                    and then Before.Conflict_Count = 0
+                    and then Ada.Strings.Fixed.Index
+                      (Before.Diagnostic (1 .. Before.Diagnostic_Len),
+                       "balance assertion evidence unavailable") > 0,
+                    "zero conflicts is not affirmative canonical assertion evidence");
+            Assert (Before.Actual_Snapshot.Kind = Snapshot_Unversioned,
+                    "canonical transaction source has independent identity");
+            Assert (Before.Is_Versioned = False,
+                    "unversioned fixture retains separate policy source");
+            Assert_Equal_Int (1, Long_Long_Integer (Before.Total_Events),
+                              "superseded and future Actual excluded as-of");
+            Assert_Equal_Int (-20, Before.Summary.Total_Assets,
+                              "canonical corrected amount replaces legacy and old event");
+            Assert_Equal_Int (20, Before.Summary.Total_Expense,
+                              "policy roles interpret canonical effects");
+            Assert_Equal_Int (0, Long_Long_Integer (Before.Unknown_Stock_Count),
+                              "legacy policy zero-origin remains applied");
+            Assert_Equal_Int (2, Long_Long_Integer (After.Total_Events),
+                              "future canonical event enters after as-of");
+            Assert_Equal_Int (-50, After.Summary.Total_Assets,
+                              "after as-of includes canonical future amount only");
+            Assert_Equal_Int (1, Long_Long_Integer (After.Unresolved_Count),
+                              "canonical unclassified locus is visible");
+         end;
+         --  Home uses the same Statement authority, not a second legacy
+         --  transaction stream. Scheduled is present to complete probe selection.
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/scheduled.loam",
+                    "LOAM-SCHEDULED-LIFECYCLE" & HT & "1" & NL &
+                    "BEGIN" & HT & "Scheduled" & NL &
+                    "LOAM-SCHEDULED-MEMORY" & HT & "1" & NL &
+                    "END" & HT & "Scheduled" & NL &
+                    "BEGIN" & HT & "Completion" & NL &
+                    "LOAM-SCHEDULED-COMPLETION-MEMORY" & HT & "1" & NL &
+                    "END" & HT & "Completion" & NL &
+                    "BEGIN" & HT & "Retirement" & NL &
+                    "LOAM-SCHEDULED-RETIREMENT-MEMORY" & HT & "1" & NL &
+                    "END" & HT & "Retirement" & NL &
+                    "BEGIN" & HT & "Replacement" & NL &
+                    "LOAM-SCHEDULED-REPLACEMENT-MEMORY" & HT & "1" & NL &
+                    "END" & HT & "Replacement" & NL,
+                    Error, Error_Len), "Home canonical Scheduled fixture installs");
+         declare
+            Home : constant HRA_N.Application.Home_Query.Home_View :=
+              HRA_N.Application.Home_Query.Execute
+                (Paths, (Selected_Day => (2026, 9, 20)));
+         begin
+            Assert (Home.Status = Query_Partial and then Home.Unresolved_Loci = 1,
+                    "Home classification follows canonical Statement transactions");
+            Assert (Home.Statement_Actual_Snapshot.Kind = Snapshot_Unversioned,
+                    "Home exposes canonical Statement source separately");
+         end;
+
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/actual.loam", "bad canonical actual" & NL,
+                    Error, Error_Len), "malformed canonical Statement fixture installs");
+         declare
+            Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+         begin
+            Assert (Rep.Status = Query_Rejected and then Rep.Total_Events = 0,
+                    "malformed canonical Actual rejects without legacy fallback");
+         end;
+      end;
+
+      declare
+         Rep : constant Statement_Report :=
+           Execute_Statement_Query (Resolve_Paths (Test_Dir & "/missing"));
+      begin
+         Assert (Rep.Status = Query_Rejected and then Rep.Total_Events = 0,
+                 "unresolvable authority cannot fall back to legacy");
       end;
 
       --  Cleanup

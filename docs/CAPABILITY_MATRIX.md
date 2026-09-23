@@ -150,11 +150,20 @@ proof that adjacent counterexamples are covered:
 - Home Scheduled totals/open/selected and calendar/day rows consume one
   `Scheduled_Query` observation per reload. Canonical `scheduled.loam` wins over
   retained legacy `scheduled.hra`; unresolved completion targets remain open
-  until the named Actual endpoint is retained. Home carries independent Actual
-  and Scheduled source identities alongside transitional Statement/Policy
-  generation evidence; `UNVERSIONED` does not prove cross-source atomicity.
-  Home still reads legacy journal for Statement and policy for roles, coverage,
-  attention and classification; this slice does not qualify those authorities.
+  until the named Actual endpoint is retained.
+- Statement transaction evidence now follows canonical `actual.loam` when any
+  canonical marker exists; the legacy-only `journal.hra` path retains its
+  prior assertion/role/as-of semantics. One Statement/Balance projection is
+  shared across both by adapting the admitted canonical semantic image, not
+  legacy journal bytes. Canonical Actual has no qualified balance assertion
+  authority: its Statement is always partial (or rejects on unreadable data),
+  even when zero conflicts are counted. Statement labels Actual and transitional
+  Policy sources independently; Home carries a separate Statement Actual source
+  alongside Actual/Scheduled and transitional Policy identity. `UNVERSIONED`
+  does not prove cross-source atomicity. Home no longer reads `journal.hra`
+  directly; Statement still reads it on the legacy-only path. Home still reads
+  `policy.hra` for roles, coverage, attention and classification. Report tabs
+  remain transitional and are not qualified by this slice.
 - Full three-stream admission, overflow propagation through all report tabs,
   and snapshot/completeness propagation need dedicated cross-surface evidence.
 

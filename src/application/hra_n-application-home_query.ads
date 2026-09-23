@@ -7,8 +7,8 @@ with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Actual_Query;
 with HRA_N.Application.Scheduled_Query;
+with HRA_N.Application.Statement;
 
-with HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Policy_Reader;
 
 package HRA_N.Application.Home_Query is
@@ -25,6 +25,8 @@ package HRA_N.Application.Home_Query is
       Actual_Snapshot     : Frontend_Types.Snapshot_Reference :=
         (Kind => Frontend_Types.Snapshot_Unversioned);
       Scheduled_Snapshot  : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned);
+      Statement_Actual_Snapshot : Frontend_Types.Snapshot_Reference :=
         (Kind => Frontend_Types.Snapshot_Unversioned);
       Selected_Day        : Date_Type;
       Total_Actual        : Natural := 0;
@@ -43,7 +45,7 @@ package HRA_N.Application.Home_Query is
    --  Project independently acquired shared observations with the remaining
    --  transitional Statement/Policy evidence. No Scheduled storage reads.
    function Project_With_Views
-     (JR        : HRA_N.Storage.Journal_Reader.Journal_Result;
+     (Statement : HRA_N.Application.Statement.Statement_Report;
       PR        : HRA_N.Storage.Policy_Reader.Policy_Result;
       Actual    : HRA_N.Application.Actual_Query.Actual_View;
       Scheduled : HRA_N.Application.Scheduled_Query.Scheduled_View;

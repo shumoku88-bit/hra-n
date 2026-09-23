@@ -1073,7 +1073,7 @@ def test_canonical_actual_tui() -> None:
 
         legacy_path = os.path.join(gen_dir, "journal.hra")
         with open(legacy_path, "w", encoding="utf-8") as stream:
-            stream.write(f'TX e-legacy {today} cash:-999 food:999 "Legacy Breakfast"\n')
+            stream.write(f'TX e-legacy {today} cash:-999 legacy-only:999 "Legacy Breakfast"\n')
 
         with open(os.path.join(gen_dir, "policy.hra"), "w", encoding="utf-8") as stream:
             stream.write(
@@ -1141,7 +1141,9 @@ def test_canonical_actual_tui() -> None:
             assert b"Canonical Coffee" in home_screen, home_screen
             assert b"Canonical Bento" in home_screen, home_screen
             assert b"Actual     2 selected / 2 total" in home_screen, home_screen
-            assert b"Sources    actual=UNVERSIONED / scheduled=UNVERSIONED / other=g00000001" in home_screen, home_screen
+            assert b"Evidence   PARTIAL" in home_screen, home_screen
+            assert b"Attention  none from this projection" in home_screen, home_screen
+            assert b"Sources    actual=UNVERSIONED / scheduled=UNVERSIONED / statement=UNVERSIONED / other=g00000001" in home_screen, home_screen
 
             # 'a' opens Actual TUI in Scope_All
             os.write(fd, b"a")
@@ -1278,7 +1280,7 @@ def test_scheduled_unresolved_completion_tui() -> None:
             assert b"Scheduled  1 selected / 1 open / 1 retained" in home_screen, home_screen
             assert b"Planned Payments (1):" in home_screen, home_screen
             assert b"legacy-only" not in home_screen, home_screen
-            assert b"Sources    actual=UNVERSIONED / scheduled=UNVERSIONED / other=g00000001" in home_screen, home_screen
+            assert b"Sources    actual=UNVERSIONED / scheduled=UNVERSIONED / statement=UNVERSIONED / other=g00000001" in home_screen, home_screen
             assert f"[{datetime.date.today().day:2d}*]".encode() in home_screen, home_screen
             os.write(fd, b"s")
             read_until(fd, output, b"n: create")
