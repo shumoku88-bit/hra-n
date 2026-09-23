@@ -31,6 +31,34 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
       Current_Paths : Path_Config := Paths;
       Current_Id    : Token_Text := Scheduled_Id;
       Running       : Boolean := True;
+      Notice        : String (1 .. 160) := [others => ' '];
+      Notice_Len    : Natural := 0;
+
+      procedure Set_Notice (Msg : String) is
+         Len : constant Natural :=
+           Natural'Min (Msg'Length, Notice'Length);
+      begin
+         Notice_Len := Len;
+         Notice := [others => ' '];
+         if Len > 0 then
+            Notice (1 .. Len) := Msg (Msg'First .. Msg'First + Len - 1);
+         end if;
+      end Set_Notice;
+
+      procedure Show_Probe_Failure (Probe_Result : Authority_Probe) is
+         Msg : constant String :=
+           (if Probe_Result.Diagnostic_Len > 0
+            then Probe_Result.Diagnostic (1 .. Probe_Result.Diagnostic_Len)
+            else "Authority probe failed");
+      begin
+         Set_Notice (Msg);
+         if Rows > 1 then
+            HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Error_Style);
+            Put_Clipped (Rows - 1, Msg);
+            HRA_N.UI.Terminal_Style.Reset;
+            Curses.Refresh;
+         end if;
+      end Show_Probe_Failure;
    begin
       HRA_N.UI.Terminal_Style.Initialize;
       HRA_N.UI.TUI_Input.Start_Mouse_Scroll;
@@ -95,6 +123,13 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                   Put_Clipped (Rows - 2, "r/L: reload   b/Esc: Scheduled");
                end if;
             end if;
+
+            if Notice_Len > 0 and then Rows > 1 then
+               HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Error_Style);
+               Put_Clipped (Rows - 1, Notice (1 .. Notice_Len));
+               HRA_N.UI.Terminal_Style.Reset;
+            end if;
+
             Curses.Refresh;
 
             declare
@@ -108,6 +143,7 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                      declare
                         Key : constant Integer := Evt.Key_Code;
                      begin
+                        Notice_Len := 0;
                         if HRA_N.UI.TUI_Input.Is_Quit (Key)
                           or else Key = Character'Pos ('b')
                           or else Key = Character'Pos ('B')
@@ -182,10 +218,13 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                      Confirm : constant Integer := Integer (Curses.Get_Keystroke);
                   begin
                      if Confirm = Character'Pos ('y') or else Confirm = Character'Pos ('Y') then
-                        if Canonical_Authority_Present
-                          (Data_Dir_Str (Current_Paths))
-                        then
-                           declare
+                        declare
+                           Probe_Result : constant Authority_Probe :=
+                             Probe (Data_Dir_Str (Current_Paths));
+                        begin
+                           case Probe_Result.State is
+                              when Canonical_Present =>
+                                 declare
                               Res : constant Canonical_Retire_Result :=
                                 Retire_Loam_Scheduled
                                   (Data_Dir_Str (Current_Paths),
@@ -199,8 +238,8 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                                      (Data_Dir_Str (Current_Paths));
                               end if;
                            end;
-                        else
-                           declare
+                              when Legacy_Only =>
+                                 declare
                               Prop : constant Proposal_Result :=
                                 Propose_Retirement
                                   (Current_Paths,
@@ -219,7 +258,10 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                                  end;
                               end if;
                            end;
-                        end if;
+                              when Probe_Failed =>
+                                 Show_Probe_Failure (Probe_Result);
+                           end case;
+                        end;
                      end if;
                   end;
                elsif (Key = Character'Pos ('r') or else Key = Character'Pos ('R'))
@@ -268,10 +310,13 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                                  Measure      => (Token => View.Measure),
                                  Amount       => Amt);
                            begin
-                              if Canonical_Authority_Present
-                                (Data_Dir_Str (Current_Paths))
-                              then
-                                 declare
+                              declare
+                                 Probe_Result : constant Authority_Probe :=
+                                   Probe (Data_Dir_Str (Current_Paths));
+                              begin
+                                 case Probe_Result.State is
+                                    when Canonical_Present =>
+                                       declare
                                     Res : constant Canonical_Replace_Result :=
                                       Replace_Loam_Scheduled
                                         (Data_Dir_Str (Current_Paths),
@@ -286,8 +331,8 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                                        Current_Id := Res.Replacement_Id;
                                     end if;
                                  end;
-                              else
-                                 declare
+                                    when Legacy_Only =>
+                                       declare
                                     Prop : constant Proposal_Result :=
                                       Propose_Replacement
                                         (Current_Paths, Intent);
@@ -309,7 +354,10 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                                        end;
                                     end if;
                                  end;
-                              end if;
+                                    when Probe_Failed =>
+                                       Show_Probe_Failure (Probe_Result);
+                                 end case;
+                              end;
                            end;
                         end;
                      end if;

@@ -257,48 +257,80 @@ package body HRA_N.Application.Scheduled_Query is
             Identity => Make_Token (Snapshot_Id_Str (Paths)));
       end if;
 
-      if Canonical_Authority_Present (Data_Dir_Str (Paths)) then
-         declare
-            Canonical_Path : constant String :=
-              Ada.Directories.Compose
-                (Data_Dir_Str (Paths), "scheduled.loam");
-            Canonical : constant
-              HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader.Read_Result :=
-                HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader.Read_File
-                  (Canonical_Path);
-            SR : Scheduled_Journal_Result;
-            Error_Len : constant Natural :=
-              Natural'Min
-                (Canonical.Error_Len, SR.Error_Reason'Length);
-         begin
-            SR.Success := Canonical.Success;
-            SR.Lifecycle := Canonical.Lifecycle;
-            SR.Error_Line := Canonical.Error_Line;
-            SR.Error_Len := Error_Len;
-            SR.Error_Reason := [others => ' '];
-            if Error_Len > 0 then
-               SR.Error_Reason (1 .. Error_Len) :=
-                 Canonical.Error_Reason (1 .. Error_Len);
-            end if;
+      declare
+         Probe_Result : constant Authority_Probe :=
+           Probe (Data_Dir_Str (Paths));
+      begin
+         case Probe_Result.State is
+            when Canonical_Present =>
+               declare
+                  Canonical_Path : constant String :=
+                    Ada.Directories.Compose
+                      (Data_Dir_Str (Paths), "scheduled.loam");
+                  Canonical : constant
+                    HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader.Read_Result :=
+                      HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader.Read_File
+                        (Canonical_Path);
+                  SR : Scheduled_Journal_Result;
+                  Error_Len : constant Natural :=
+                    Natural'Min
+                      (Canonical.Error_Len, SR.Error_Reason'Length);
+               begin
+                  SR.Success := Canonical.Success;
+                  SR.Lifecycle := Canonical.Lifecycle;
+                  SR.Error_Line := Canonical.Error_Line;
+                  SR.Error_Len := Error_Len;
+                  SR.Error_Reason := [others => ' '];
+                  if Error_Len > 0 then
+                     SR.Error_Reason (1 .. Error_Len) :=
+                       Canonical.Error_Reason (1 .. Error_Len);
+                  end if;
 
-            return Project
-              (Sched_Res    => SR,
-               Request      => Request,
-               Snapshot     => (Kind => Snapshot_Unversioned),
-               Source_Label => "scheduled.loam");
-         end;
-      else
-         declare
-            SR : constant Scheduled_Journal_Result :=
-              Read_Scheduled_Journal_File (Scheduled_Path_Str (Paths));
-         begin
-            return Project
-              (Sched_Res    => SR,
-               Request      => Request,
-               Snapshot     => Snap,
-               Source_Label => "scheduled.hra");
-         end;
-      end if;
+                  return Project
+                    (Sched_Res    => SR,
+                     Request      => Request,
+                     Snapshot     => (Kind => Snapshot_Unversioned),
+                     Source_Label => "scheduled.loam");
+               end;
+            when Legacy_Only =>
+               declare
+                  SR : constant Scheduled_Journal_Result :=
+                    Read_Scheduled_Journal_File (Scheduled_Path_Str (Paths));
+               begin
+                  return Project
+                    (Sched_Res    => SR,
+                     Request      => Request,
+                     Snapshot     => Snap,
+                     Source_Label => "scheduled.hra");
+               end;
+            when Probe_Failed =>
+               declare
+                  Diag : String (1 .. 160) := [others => ' '];
+                  Msg  : constant String :=
+                    "Authority probe failed: "
+                    & Probe_Result.Diagnostic
+                        (1 .. Probe_Result.Diagnostic_Len);
+                  Len  : constant Natural :=
+                    Natural'Min (Msg'Length, Diag'Length);
+               begin
+                  if Len > 0 then
+                     Diag (1 .. Len) := Msg (Msg'First .. Msg'First + Len - 1);
+                  end if;
+                  return
+                    (Status                  => Query_Rejected,
+                     Snapshot                => Snap,
+                     Scope                   => Request.Scope,
+                     Selected_Day            => Request.Selected_Day,
+                     Total_Count             => 0,
+                     Open_Count              => 0,
+                     Selected_Day_Open_Count => 0,
+                     Row_Count               => 0,
+                     Rows                    => [others => Empty_Scheduled_Row],
+                     Diagnostic              => Diag,
+                     Diagnostic_Len          => Len);
+               end;
+         end case;
+      end;
    end Execute;
 
 end HRA_N.Application.Scheduled_Query;

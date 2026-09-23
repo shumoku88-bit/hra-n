@@ -158,26 +158,39 @@ package body HRA_N.Application.Scheduled_Detail_Query is
            (Paths.Error_Reason (1 .. Paths.Error_Len));
       end if;
 
-      if Canonical_Authority_Present (Data_Dir_Str (Paths)) then
-         declare
-            Canonical_Path : constant String :=
-              Ada.Directories.Compose
-                (Data_Dir_Str (Paths), "scheduled.loam");
-            Canonical : constant
-              HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader.Read_Result :=
-                HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader.Read_File
-                  (Canonical_Path);
-         begin
-            if not Canonical.Success then
-               return Rejected
-                 ("scheduled.loam: "
-                  & Canonical.Error_Reason (1 .. Canonical.Error_Len));
-            end if;
+      declare
+         Probe_Result : constant Authority_Probe :=
+           Probe (Data_Dir_Str (Paths));
+      begin
+         case Probe_Result.State is
+            when Canonical_Present =>
+               declare
+                  Canonical_Path : constant String :=
+                    Ada.Directories.Compose
+                      (Data_Dir_Str (Paths), "scheduled.loam");
+                  Canonical : constant
+                    HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader.Read_Result :=
+                      HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader.Read_File
+                        (Canonical_Path);
+               begin
+                  if not Canonical.Success then
+                     return Rejected
+                       ("scheduled.loam: "
+                        & Canonical.Error_Reason (1 .. Canonical.Error_Len));
+                  end if;
 
-            return Project_Lifecycle
-              (Canonical.Lifecycle, (Kind => Snapshot_Unversioned));
-         end;
-      end if;
+                  return Project_Lifecycle
+                    (Canonical.Lifecycle, (Kind => Snapshot_Unversioned));
+               end;
+            when Probe_Failed =>
+               return Rejected
+                 ("Authority probe failed: "
+                  & Probe_Result.Diagnostic
+                      (1 .. Probe_Result.Diagnostic_Len));
+            when Legacy_Only =>
+               null;
+         end case;
+      end;
 
       if Paths.Is_Versioned then
          Legacy_Snapshot :=

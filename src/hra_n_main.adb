@@ -233,9 +233,14 @@ begin
                          then Desc_Val (1 .. Desc_Len)
                          else "")));
                begin
-                  if Canonical_Authority_Present (Data_Dir) then
-                     declare
-                        Canonical : constant Canonical_Record_Result :=
+                  declare
+                     Probe_Result : constant Authority_Probe :=
+                       Probe (Data_Dir);
+                  begin
+                     case Probe_Result.State is
+                        when Canonical_Present =>
+                           declare
+                              Canonical : constant Canonical_Record_Result :=
                           Reverse_Loam_Actual (Data_Dir, Intent);
                      begin
                         if Canonical.State = Canonical_Not_Published then
@@ -278,8 +283,8 @@ begin
                         Put_Line
                           ("============================================================");
                      end;
-                  else
-                     declare
+                        when Legacy_Only =>
+                           declare
                         Prop_Res : constant Proposal_Result :=
                           Propose_Reversal (Paths, Intent);
                      begin
@@ -322,7 +327,16 @@ begin
                            end if;
                         end;
                      end;
-                  end if;
+                        when Probe_Failed =>
+                           Put_Line
+                             ("[ERROR] Authority probe failed: "
+                              & Probe_Result.Diagnostic
+                                  (1 .. Probe_Result.Diagnostic_Len));
+                           Ada.Command_Line.Set_Exit_Status
+                             (Ada.Command_Line.Failure);
+                           return;
+                     end case;
+                  end;
                end;
             end;
          end;
@@ -403,8 +417,13 @@ begin
                      Valid_On    => Date_Val,
                      Description => Make_Token (Desc_Val (1 .. Desc_Len)));
                begin
-                  if Canonical_Authority_Present (Data_Dir) then
-                     declare
+                  declare
+                     Probe_Result : constant Authority_Probe :=
+                       Probe (Data_Dir);
+                  begin
+                     case Probe_Result.State is
+                        when Canonical_Present =>
+                           declare
                         Canonical : constant Canonical_Correction_Result :=
                           Correct_Loam_Actual
                             (Root_Path              => Data_Dir,
@@ -460,8 +479,8 @@ begin
                         end if;
                         Put_Line ("============================================================");
                      end;
-                  else
-                     declare
+                        when Legacy_Only =>
+                           declare
                         Prop_Res : constant Proposal_Result :=
                           Propose_Correction (Paths, Intent);
                      begin
@@ -499,7 +518,16 @@ begin
                            end if;
                         end;
                      end;
-                  end if;
+                        when Probe_Failed =>
+                           Put_Line
+                             ("[ERROR] Authority probe failed: "
+                              & Probe_Result.Diagnostic
+                                  (1 .. Probe_Result.Diagnostic_Len));
+                           Ada.Command_Line.Set_Exit_Status
+                             (Ada.Command_Line.Failure);
+                           return;
+                     end case;
+                  end;
                end;
             end;
          end;
@@ -588,8 +616,13 @@ begin
                   Valid_On    => Date_Val,
                   Description => Make_Token (Desc_Val (1 .. Desc_Len)));
             begin
-               if Canonical_Authority_Present (Data_Dir) then
-                  declare
+               declare
+                  Probe_Result : constant Authority_Probe :=
+                    Probe (Data_Dir);
+               begin
+                  case Probe_Result.State is
+                     when Canonical_Present =>
+                        declare
                      Canonical : constant Canonical_Record_Result :=
                        Record_Loam_Actual (Data_Dir, Intent);
                   begin
@@ -636,8 +669,8 @@ begin
                      end if;
                      Put_Line ("============================================================");
                   end;
-               else
-                  declare
+                     when Legacy_Only =>
+                        declare
                      Prop_Res : constant Proposal_Result :=
                        Propose (Paths, Intent);
                   begin
@@ -671,7 +704,16 @@ begin
                         end if;
                      end;
                   end;
-               end if;
+                     when Probe_Failed =>
+                        Put_Line
+                          ("[ERROR] Authority probe failed: "
+                           & Probe_Result.Diagnostic
+                               (1 .. Probe_Result.Diagnostic_Len));
+                        Ada.Command_Line.Set_Exit_Status
+                          (Ada.Command_Line.Failure);
+                        return;
+                  end case;
+               end;
             end;
          end;
          return;

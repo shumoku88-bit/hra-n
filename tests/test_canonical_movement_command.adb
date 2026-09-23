@@ -62,13 +62,13 @@ package body Test_Canonical_Movement_Command is
       Ada.Directories.Create_Path (Root);
 
       Assert
-        (not Canonical_Authority_Present (Root),
+        (Probe (Root).State = Legacy_Only,
          "empty root does not claim canonical authority");
 
       Write_Atomically
         (Actual, "LOAM-NORMALIZED-ACTUAL" & HT & "1" & NL);
       Assert
-        (Canonical_Authority_Present (Root),
+        (Probe (Root).State = Canonical_Present,
          "partial canonical authority marker selects canonical route");
 
       Write_Atomically
@@ -131,7 +131,7 @@ package body Test_Canonical_Movement_Command is
            Record_Loam_Actual (Root, Intent ("food"));
       begin
          Assert
-           (Canonical_Authority_Present (Root),
+           (Probe (Root).State = Canonical_Present,
             "remaining actual.loam prevents transitional fallback");
          Assert
            (Rejected.State = Canonical_Not_Published,

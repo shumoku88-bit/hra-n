@@ -1178,10 +1178,130 @@ def test_canonical_actual_tui() -> None:
         shutil.rmtree(household, ignore_errors=True)
 
 
+def test_scheduled_detail_probe_failure() -> None:
+    """Scheduled Detail TUI must display diagnostic on probe failure and keep scheduled.hra intact."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    harness = os.path.join(root, "tests", "bin", "tui_harness")
+    household = tempfile.mkdtemp(prefix="hra_n_scheduled_detail_probe_")
+    try:
+        today = datetime.date.today().isoformat()
+        gen_dir = os.path.join(household, ".hra", "generations", "g00000001")
+        os.makedirs(gen_dir, exist_ok=True)
+        selector = os.path.join(household, ".hra", "CURRENT")
+        with open(selector, "w", encoding="utf-8") as stream:
+            stream.write("g00000001\n")
+
+        with open(os.path.join(gen_dir, "journal.hra"), "w", encoding="utf-8") as stream:
+            stream.write("")
+        with open(os.path.join(gen_dir, "policy.hra"), "w", encoding="utf-8") as stream:
+            stream.write(
+                "LOCUS cash\n"
+                "LOCUS food\n"
+                "ROLE cash: ASSET\n"
+                "ROLE food: EXPENSE\n"
+                "ZERO-ORIGIN cash:jpy\n"
+            )
+        legacy_scheduled = f"SCHED s0001 {today} cash:-1000 food:1000\n"
+        legacy_path = os.path.join(gen_dir, "scheduled.hra")
+        with open(legacy_path, "w", encoding="utf-8") as stream:
+            stream.write(legacy_scheduled)
+
+        pid, fd = pty.fork()
+        if pid == 0:
+            env = os.environ.copy()
+            env["TERM"] = "xterm-256color"
+            env["LANG"] = "C.UTF-8"
+            env["LC_ALL"] = "C.UTF-8"
+            env["LC_CTYPE"] = "C.UTF-8"
+            os.execve(harness, [harness, household], env)
+
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 35, 120, 0, 0))
+        output = bytearray()
+        reaped = False
+        try:
+            read_until(fd, output, b"Markers:")
+            os.write(fd, b"s")
+            read_until(fd, output, b"s0001")
+
+            # Open detail view for s0001
+            os.write(fd, b"\n")
+            read_until(fd, output, b"c: complete")
+            assert b"s0001" in output
+            assert b"OPEN" in output
+
+            # 1. Test Retire under probe failure
+            os.write(fd, b"x")
+            read_until(fd, output, b"Retire scheduled obligation?")
+            probe_fail_household = household + "_probe_fail"
+            os.rename(household, probe_fail_household)
+            try:
+                os.write(fd, b"y")
+                read_until(fd, output, b"root directory does not exist")
+            finally:
+                if os.path.exists(probe_fail_household):
+                    os.rename(probe_fail_household, household)
+
+            with open(legacy_path, encoding="utf-8") as stream:
+                assert stream.read() == legacy_scheduled, "scheduled.hra must not be modified on retire probe failure"
+
+            # Reload to restore clean detail view
+            os.write(fd, b"L")
+            read_until(fd, output, b"c: complete")
+
+            # 2. Test Replace under probe failure
+            os.write(fd, b"r")
+            read_until(fd, output, b"Replace obligation")
+            os.rename(household, probe_fail_household)
+            try:
+                os.write(fd, b"y")
+                read_until(fd, output, b"root directory does not exist")
+            finally:
+                if os.path.exists(probe_fail_household):
+                    os.rename(probe_fail_household, household)
+
+            with open(legacy_path, encoding="utf-8") as stream:
+                assert stream.read() == legacy_scheduled, "scheduled.hra must not be modified on replace probe failure"
+
+            # Reload, then return to list and quit
+            os.write(fd, b"L")
+            read_until(fd, output, b"c: complete")
+            os.write(fd, b"b")
+            read_until(fd, output, b"s0001")
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
+            os.write(fd, b"q")
+
+            deadline = time.monotonic() + 8.0
+            while time.monotonic() < deadline:
+                exited, status = os.waitpid(pid, os.WNOHANG)
+                if exited == pid:
+                    reaped = True
+                    assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+                    break
+                ready, _, _ = select.select([fd], [], [], 0.1)
+                if ready:
+                    try:
+                        output.extend(os.read(fd, 4096))
+                    except OSError:
+                        pass
+            assert reaped, "Scheduled Detail probe failure PTY did not quit"
+        finally:
+            if not reaped:
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+            os.close(fd)
+
+        print("Scheduled Detail probe failure PTY: retire and replace showed diagnostic and left scheduled.hra untouched")
+    finally:
+        shutil.rmtree(household, ignore_errors=True)
+        shutil.rmtree(household + "_probe_fail", ignore_errors=True)
+
+
 if __name__ == "__main__":
     main()
     test_canonical_actual_tui()
     test_canonical_scheduled_tui()
+    test_scheduled_detail_probe_failure()
     test_statement_evidence()
     test_month_end_budget()
     test_month_end_budget(foreign_capacity=True)

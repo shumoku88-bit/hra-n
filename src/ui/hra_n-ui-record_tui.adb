@@ -21,7 +21,7 @@ with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 with HRA_N.Application.Movement_Command; use HRA_N.Application.Movement_Command;
 with HRA_N.Application.Scheduled_Command; use HRA_N.Application.Scheduled_Command;
-with HRA_N.Application.Canonical_Authority;
+with HRA_N.Application.Canonical_Authority; use HRA_N.Application.Canonical_Authority;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Proposal;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
@@ -168,10 +168,9 @@ package body HRA_N.UI.Record_TUI is
 
       Proposal_Obj : HRA_N.Application.Proposal.Authority_Proposal;
 
-      Use_Canonical_Scheduled : constant Boolean :=
-        Op in Op_Create_Scheduled | Op_Complete_Scheduled
-        and then
-          HRA_N.Application.Canonical_Authority.Canonical_Authority_Present
+      Scheduled_Probe : constant
+        HRA_N.Application.Canonical_Authority.Authority_Probe :=
+          HRA_N.Application.Canonical_Authority.Probe
             (Data_Dir_Str (Paths));
       Canonical_Preview : Boolean := False;
       Pending_Create : Create_Intent :=
@@ -564,14 +563,21 @@ package body HRA_N.UI.Record_TUI is
                               Measure      => (Token => Make_Token ("jpy")),
                               Amount       => Amt);
                         begin
-                           if Use_Canonical_Scheduled then
-                              Pending_Create := Intent;
-                              Canonical_Preview := True;
-                              Mode := Mode_Preview;
-                              return;
-                           else
-                              Res := Propose_Create (Paths, Intent);
-                           end if;
+                           case Scheduled_Probe.State is
+                              when Canonical_Present =>
+                                 Pending_Create := Intent;
+                                 Canonical_Preview := True;
+                                 Mode := Mode_Preview;
+                                 return;
+                              when Probe_Failed =>
+                                 Set_Notice
+                                   ("Authority probe failed: "
+                                    & Scheduled_Probe.Diagnostic
+                                        (1 .. Scheduled_Probe.Diagnostic_Len));
+                                 return;
+                              when Legacy_Only =>
+                                 Res := Propose_Create (Paths, Intent);
+                           end case;
                         end;
                      else
                         Set_Notice ("Scheduled obligation must have one outflow and one inflow.");
@@ -596,14 +602,21 @@ package body HRA_N.UI.Record_TUI is
                      Description        => Desc_Tok,
                      Existing_Actual_Id => (0, [others => ' ']));
                begin
-                  if Use_Canonical_Scheduled then
-                     Pending_Complete := Intent;
-                     Canonical_Preview := True;
-                     Mode := Mode_Preview;
-                     return;
-                  else
-                     Res := Propose_Completion (Paths, Intent);
-                  end if;
+                  case Scheduled_Probe.State is
+                     when Canonical_Present =>
+                        Pending_Complete := Intent;
+                        Canonical_Preview := True;
+                        Mode := Mode_Preview;
+                        return;
+                     when Probe_Failed =>
+                        Set_Notice
+                          ("Authority probe failed: "
+                           & Scheduled_Probe.Diagnostic
+                               (1 .. Scheduled_Probe.Diagnostic_Len));
+                        return;
+                     when Legacy_Only =>
+                        Res := Propose_Completion (Paths, Intent);
+                  end case;
                end;
 
             when Op_Correct_Actual =>
