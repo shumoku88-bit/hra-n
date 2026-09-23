@@ -114,7 +114,10 @@ is
    function Replacement_History_Is_Acyclic
      (Lifecycle : Scheduled_Lifecycle) return Boolean;
 
-   --  Check if a ScheduledId has a recorded completion
+   --  Raw retained-terminal predicate: True when a ScheduledId has a recorded
+   --  completion relation.  This does not establish that the named Actual
+   --  endpoint currently exists; cross-authority effective completion is an
+   --  Application-level interpretation.
    function Is_Completed
      (Lifecycle : Scheduled_Lifecycle;
       Target    : Scheduled_Id) return Boolean is
@@ -135,7 +138,10 @@ is
      (for some I in 1 .. Lifecycle.Repl_Count =>
         Equal_Token (Lifecycle.Repl_Items (I).Original.Token, Target.Token));
 
-   --  Core open-world invariant: current-open requires no terminal evidence
+   --  Raw lifecycle predicate: current-open here means no retained terminal
+   --  evidence of any kind.  Canonical Loam inspection is intentionally
+   --  different for interrupted completion: a retained completion whose Actual
+   --  endpoint is absent remains effectively open above this Core boundary.
    function Is_Current_Open
      (Lifecycle : Scheduled_Lifecycle;
       Target    : Scheduled_Id) return Boolean is
