@@ -34,6 +34,7 @@ with Test_Loam_Scheduled_Creation_Refinement;
 with Test_Loam_Scheduled_Completion_Writer;
 with Test_Loam_Scheduled_Completion_Refinement;
 with Test_Loam_Scheduled_Completion_Publisher;
+with Test_Loam_Scheduled_Completion_Protocol_Refinement;
 with Test_Validity;
 with Test_Review;
 with Test_Initializer;
@@ -229,6 +230,11 @@ begin
    if Selected ("Test_Loam_Scheduled_Completion_Publisher") then
       Announce ("Test_Loam_Scheduled_Completion_Publisher");
       Test_Loam_Scheduled_Completion_Publisher.Run;
+   end if;
+
+   if Selected ("Test_Loam_Scheduled_Completion_Protocol_Refinement") then
+      Announce ("Test_Loam_Scheduled_Completion_Protocol_Refinement");
+      Test_Loam_Scheduled_Completion_Protocol_Refinement.Run;
    end if;
 
    if Selected ("Test_Validity") then
