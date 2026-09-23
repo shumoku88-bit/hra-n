@@ -3,13 +3,10 @@
 -------------------------------------------------------------------------------
 
 with HRA_N.Core.Types;           use HRA_N.Core.Types;
-with HRA_N.Core.Event;           use HRA_N.Core.Event;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Attention;
 with HRA_N.Core.Coverage;        use HRA_N.Core.Coverage;
-with HRA_N.Core.Scheduled;       use HRA_N.Core.Scheduled;
 with HRA_N.Application.Statement; use HRA_N.Application.Statement;
-with HRA_N.Application.Actual_Query;
 
 package body HRA_N.Application.Home_Query is
 
@@ -29,13 +26,13 @@ package body HRA_N.Application.Home_Query is
       end if;
    end Same_Snapshot;
 
-   function Project_With_Actual
-     (JR       : HRA_N.Storage.Journal_Reader.Journal_Result;
-      PR       : HRA_N.Storage.Policy_Reader.Policy_Result;
-      SR       : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
-      Actual   : HRA_N.Application.Actual_Query.Actual_View;
-      Query    : Home_Query;
-      Snapshot : Frontend_Types.Snapshot_Reference :=
+   function Project_With_Views
+     (JR        : HRA_N.Storage.Journal_Reader.Journal_Result;
+      PR        : HRA_N.Storage.Policy_Reader.Policy_Result;
+      Actual    : HRA_N.Application.Actual_Query.Actual_View;
+      Scheduled : HRA_N.Application.Scheduled_Query.Scheduled_View;
+      Query     : Home_Query;
+      Snapshot  : Frontend_Types.Snapshot_Reference :=
         (Kind => Frontend_Types.Snapshot_Unversioned)) return Home_View
    is
       use HRA_N.Application.Frontend_Types;
@@ -44,6 +41,7 @@ package body HRA_N.Application.Home_Query is
         (Status             => Query_Rejected,
          Snapshot           => Snapshot,
          Actual_Snapshot    => Actual.Snapshot,
+         Scheduled_Snapshot => Scheduled.Snapshot,
          Selected_Day       => Query.Selected_Day,
          Total_Actual       => 0,
          Selected_Actual    => 0,
@@ -74,8 +72,10 @@ package body HRA_N.Application.Home_Query is
       elsif not PR.Success then
          Set_Diagnostic ("policy.hra: " & PR.Error_Reason (1 .. PR.Error_Len));
          return Result;
-      elsif not SR.Success then
-         Set_Diagnostic ("scheduled.hra: " & SR.Error_Reason (1 .. SR.Error_Len));
+      elsif Scheduled.Status = Query_Rejected then
+         Set_Diagnostic
+           ("Scheduled observation rejected: "
+            & Scheduled.Diagnostic (1 .. Scheduled.Diagnostic_Len));
          return Result;
       elsif Actual.Status = Query_Rejected then
          if Actual.Diagnostic_Len > 0 then
@@ -89,7 +89,9 @@ package body HRA_N.Application.Home_Query is
       end if;
 
       Result.Total_Actual    := Natural (Actual.Row_Count);
-      Result.Total_Scheduled := Natural (SR.Lifecycle.Sched_Count);
+      Result.Total_Scheduled := Scheduled.Total_Count;
+      Result.Open_Scheduled := Scheduled.Open_Count;
+      Result.Selected_Scheduled := Scheduled.Selected_Day_Open_Count;
       Result.Role_Assignments := Natural (Entry_Count (PR.Roles));
       Result.Zero_Origins     := Natural (Coordinate_Count (PR.Coverage));
       Result.Open_Attentions  :=
@@ -102,20 +104,6 @@ package body HRA_N.Application.Home_Query is
          then
             Result.Selected_Actual := Result.Selected_Actual + 1;
          end if;
-      end loop;
-
-      for Index in 1 .. SR.Lifecycle.Sched_Count loop
-         declare
-            Item : constant Scheduled_Occurrence :=
-              SR.Lifecycle.Sched_Items (Index);
-         begin
-            if Is_Current_Open (SR.Lifecycle, Item.Id) then
-               Result.Open_Scheduled := Result.Open_Scheduled + 1;
-               if Equal_Date (Item.Expected_Day, Query.Selected_Day) then
-                  Result.Selected_Scheduled := Result.Selected_Scheduled + 1;
-               end if;
-            end if;
-         end;
       end loop;
 
       declare
@@ -136,6 +124,20 @@ package body HRA_N.Application.Home_Query is
          end if;
       end;
 
+      if Scheduled.Status = Query_Partial then
+         Result.Status := Query_Partial;
+         if Result.Diagnostic_Len > 0 then
+            Set_Diagnostic
+              (Result.Diagnostic (1 .. Result.Diagnostic_Len)
+               & "; Scheduled observation partial: "
+               & Scheduled.Diagnostic (1 .. Scheduled.Diagnostic_Len));
+         else
+            Set_Diagnostic
+              ("Scheduled observation partial: "
+               & Scheduled.Diagnostic (1 .. Scheduled.Diagnostic_Len));
+         end if;
+      end if;
+
       if Actual.Status = Query_Partial
         and then Result.Status = Query_Complete
       then
@@ -147,45 +149,20 @@ package body HRA_N.Application.Home_Query is
          else
             Set_Diagnostic ("Actual observation is partial");
          end if;
-      elsif Result.Status = Query_Complete
-        and then not Same_Snapshot (Actual.Snapshot, Snapshot)
+      end if;
+
+      if Result.Status = Query_Complete
+        and then (not Same_Snapshot (Actual.Snapshot, Snapshot)
+                  or else not Same_Snapshot (Scheduled.Snapshot, Snapshot))
       then
-         --  The two observations are individually admitted, but HRA-N has not
-         --  established an atomic correspondence between canonical Actual and
-         --  the transitional generation-backed Home evidence.
+         --  UNVERSIONED never proves correspondence between authorities.
          Result.Status := Query_Partial;
          Set_Diagnostic
-           ("Home combines canonical Actual with transitional generation evidence");
+           ("Home combines independent authorities with transitional generation evidence");
       end if;
 
       return Result;
-   end Project_With_Actual;
-
-   function Project
-     (JR       : HRA_N.Storage.Journal_Reader.Journal_Result;
-      PR       : HRA_N.Storage.Policy_Reader.Policy_Result;
-      SR       : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
-      Query    : Home_Query;
-      Snapshot : Frontend_Types.Snapshot_Reference :=
-        (Kind => Frontend_Types.Snapshot_Unversioned)) return Home_View
-   is
-      Actual : constant HRA_N.Application.Actual_Query.Actual_View :=
-        HRA_N.Application.Actual_Query.Project
-          (Journal  => JR,
-           Request  =>
-             (Scope        => HRA_N.Application.Actual_Query.Scope_All,
-              Selected_Day => Query.Selected_Day,
-              Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First),
-           Snapshot => Snapshot);
-   begin
-      return Project_With_Actual
-        (JR       => JR,
-         PR       => PR,
-         SR       => SR,
-         Actual   => Actual,
-         Query    => Query,
-         Snapshot => Snapshot);
-   end Project;
+   end Project_With_Views;
 
    function Execute
      (Paths : HRA_N.Application.Path_Resolver.Path_Config;
@@ -201,6 +178,7 @@ package body HRA_N.Application.Home_Query is
            (Status             => Query_Rejected,
             Snapshot           => (Kind => Snapshot_Unversioned),
             Actual_Snapshot    => (Kind => Snapshot_Unversioned),
+            Scheduled_Snapshot => (Kind => Snapshot_Unversioned),
             Selected_Day       => Query.Selected_Day,
             Total_Actual       => 0,
             Selected_Actual    => 0,
@@ -230,17 +208,20 @@ package body HRA_N.Application.Home_Query is
            HRA_N.Storage.Journal_Reader.Read_Journal_File (Journal_Path_Str (Paths));
          PR : constant HRA_N.Storage.Policy_Reader.Policy_Result :=
            HRA_N.Storage.Policy_Reader.Read_Policy_File (Policy_Path_Str (Paths));
-         SR : constant HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result :=
-           HRA_N.Storage.Scheduled_Journal_Reader.Read_Scheduled_Journal_File
-             (Scheduled_Path_Str (Paths));
+         Scheduled : constant HRA_N.Application.Scheduled_Query.Scheduled_View :=
+           HRA_N.Application.Scheduled_Query.Execute
+             (Paths,
+              (Scope        => HRA_N.Application.Scheduled_Query.Scope_All,
+               Selected_Day => Query.Selected_Day,
+               Ordering     => HRA_N.Application.Scheduled_Query.Order_Due_Ascending));
       begin
-         return Project_With_Actual
-           (JR       => JR,
-            PR       => PR,
-            SR       => SR,
-            Actual   => Actual,
-            Query    => Query,
-            Snapshot => Snap);
+         return Project_With_Views
+           (JR        => JR,
+            PR        => PR,
+            Actual    => Actual,
+            Scheduled => Scheduled,
+            Query     => Query,
+            Snapshot  => Snap);
       end;
    end Execute;
 
