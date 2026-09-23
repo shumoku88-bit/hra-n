@@ -96,7 +96,7 @@ Run against a canonical data root containing `actual.loam`:
 ```sh
 cd gui
 alr build
-alr exec -- ./bin/hra-n-gui /path/to/canonical-data
+HRA_DATA_DIR=/path/to/canonical-data ./bin/hra-n-gui
 ```
 
 Alternatively set `HRA_DATA_DIR` and run without an argument.
