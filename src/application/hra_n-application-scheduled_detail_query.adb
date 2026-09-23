@@ -3,7 +3,7 @@
 -------------------------------------------------------------------------------
 
 with Ada.Directories;
-with HRA_N.Application.Scheduled_Command; use HRA_N.Application.Scheduled_Command;
+with HRA_N.Application.Canonical_Authority; use HRA_N.Application.Canonical_Authority;
 with HRA_N.Storage.Scheduled_Journal_Reader; use HRA_N.Storage.Scheduled_Journal_Reader;
 with HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader;
 

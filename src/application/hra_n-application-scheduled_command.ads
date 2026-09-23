@@ -97,11 +97,6 @@ package HRA_N.Application.Scheduled_Command is
       Diagnostic_Len : Natural := 0;
    end record;
 
-   --  True when any canonical Scheduled/Actual/Locus authority marker exists
-   --  in Root_Path.  Partial presence deliberately selects the canonical route
-   --  so HRA-N will fail closed instead of silently writing legacy authority.
-   function Canonical_Authority_Present
-     (Root_Path : String) return Boolean;
 
    --  Publish one practical Scheduled occurrence directly to canonical
    --  scheduled.loam, then qualify the observed before/after lifecycle against

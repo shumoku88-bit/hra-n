@@ -12,6 +12,7 @@ with HRA_N.Application.Review; use HRA_N.Application.Review;
 with HRA_N.Application.Scheduled_Query; use HRA_N.Application.Scheduled_Query;
 with HRA_N.Application.Scheduled_Detail_Query; use HRA_N.Application.Scheduled_Detail_Query;
 with HRA_N.Application.Scheduled_Command; use HRA_N.Application.Scheduled_Command;
+with HRA_N.Application.Canonical_Authority; use HRA_N.Application.Canonical_Authority;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.UI.Output; use HRA_N.UI.Output;
 with HRA_N.UI.Prompt; use HRA_N.UI.Prompt;

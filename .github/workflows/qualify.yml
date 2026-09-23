@@ -175,6 +175,9 @@ jobs:
       - name: Test Canonical Correction Command
         run: ./tests/bin/test_runner Test_Canonical_Correction_Command
 
+      - name: Test Canonical Authority
+        run: ./tests/bin/test_runner Test_Canonical_Authority
+
       - name: Test Transaction Metadata
         run: ./tests/bin/test_runner Test_Transaction_Metadata
 

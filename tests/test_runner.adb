@@ -54,6 +54,7 @@ with Test_Generation_Transaction;
 with Test_Movement_Command;
 with Test_Canonical_Movement_Command;
 with Test_Canonical_Correction_Command;
+with Test_Canonical_Authority;
 with Test_Transaction_Metadata;
 with Test_Scheduled_Facts;
 with Test_Scheduled_Query;
@@ -341,6 +342,11 @@ begin
    if Selected ("Test_Canonical_Correction_Command") then
       Announce ("Test_Canonical_Correction_Command");
       Test_Canonical_Correction_Command.Run;
+   end if;
+
+   if Selected ("Test_Canonical_Authority") then
+      Announce ("Test_Canonical_Authority");
+      Test_Canonical_Authority.Run;
    end if;
 
    if Selected ("Test_Transaction_Metadata") then

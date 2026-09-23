@@ -11,6 +11,7 @@ with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Initializer;   use HRA_N.Application.Initializer;
 with HRA_N.Application.Doctor;        use HRA_N.Application.Doctor;
 with HRA_N.Application.Movement_Command; use HRA_N.Application.Movement_Command;
+with HRA_N.Application.Canonical_Authority; use HRA_N.Application.Canonical_Authority;
 with HRA_N.Application.Budget_Query;
 with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Review;        use HRA_N.Application.Review;
