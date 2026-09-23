@@ -1,4 +1,5 @@
 with Ada.Directories;
+with Ada.Unchecked_Deallocation;
 with HRA_N.Core.Description;          use HRA_N.Core.Description;
 with HRA_N.Core.Event;                use HRA_N.Core.Event;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
@@ -6,30 +7,72 @@ with HRA_N.Core.Validity;             use HRA_N.Core.Validity;
 
 package body HRA_N.Application.Canonical_Activity_Query is
 
+   procedure Free is new Ada.Unchecked_Deallocation
+     (Object => Snapshot_Data,
+      Name   => Snapshot_Data_Access);
+
+   overriding procedure Adjust (Source : in out Browser_Snapshot) is
+   begin
+      if Source.Data /= null then
+         if Source.Data.References = Positive'Last then
+            raise Program_Error with "canonical browser snapshot reference overflow";
+         end if;
+         Source.Data.References := Source.Data.References + 1;
+      end if;
+   end Adjust;
+
+   overriding procedure Finalize (Source : in out Browser_Snapshot) is
+      Data : Snapshot_Data_Access := Source.Data;
+   begin
+      Source.Data := null;
+
+      if Data = null then
+         return;
+      elsif Data.References = 1 then
+         Free (Data);
+      else
+         Data.References := Data.References - 1;
+      end if;
+   end Finalize;
+
    function Ready (Source : Browser_Snapshot) return Boolean is
-     (Source.Is_Ready);
+     (Source.Data /= null and then Source.Data.Is_Ready);
 
    function Diagnostic (Source : Browser_Snapshot) return String is
-     (if Source.Msg_Len = 0
+     (if Source.Data = null or else Source.Data.Msg_Len = 0
       then ""
-      else Source.Message (1 .. Source.Msg_Len));
+      else Source.Data.Message (1 .. Source.Data.Msg_Len));
 
    function Balance
      (Source : Browser_Snapshot)
-      return HRA_N.Application.Canonical_Balance_Query.Balance_View is
-     (Source.Balances);
+      return HRA_N.Application.Canonical_Balance_Query.Balance_View
+   is
+      Result : HRA_N.Application.Canonical_Balance_Query.Balance_View;
+   begin
+      if Source.Data = null then
+         declare
+            Message : constant String := "canonical browser snapshot is absent";
+         begin
+            Result.Diagnostic_Len := Message'Length;
+            Result.Diagnostic (1 .. Message'Length) := Message;
+         end;
+         return Result;
+      end if;
+
+      return Source.Data.Balances;
+   end Balance;
 
    procedure Set_Message
-     (Source  : in out Browser_Snapshot;
+     (Data    : in out Snapshot_Data;
       Message : String)
    is
       Len : constant Natural :=
-        Natural'Min (Message'Length, Source.Message'Length);
+        Natural'Min (Message'Length, Data.Message'Length);
    begin
-      Source.Message := [others => ' '];
-      Source.Msg_Len := Len;
+      Data.Message := [others => ' '];
+      Data.Msg_Len := Len;
       if Len > 0 then
-         Source.Message (1 .. Len) :=
+         Data.Message (1 .. Len) :=
            Message (Message'First .. Message'First + Len - 1);
       end if;
    end Set_Message;
@@ -53,46 +96,50 @@ package body HRA_N.Application.Canonical_Activity_Query is
    function Open (Root_Path : String) return Browser_Snapshot is
       Source : Browser_Snapshot;
    begin
+      Source.Data := new Snapshot_Data;
+
       if Root_Path'Length = 0 then
-         Set_Message (Source, "canonical data root must not be empty");
+         Set_Message (Source.Data.all, "canonical data root must not be empty");
          return Source;
       end if;
 
-      Source.Actual :=
+      Source.Data.Actual :=
         HRA_N.Storage.Loam_Actual_Reader.Read_Loam_Actual_File
           (Ada.Directories.Compose (Root_Path, "actual.loam"));
 
-      if not Source.Actual.Success then
-         if Source.Actual.Error_Len > 0 then
+      if not Source.Data.Actual.Success then
+         if Source.Data.Actual.Error_Len > 0 then
             Set_Message
-              (Source,
+              (Source.Data.all,
                "cannot admit canonical actual.loam: "
-               & Source.Actual.Error_Reason
-                   (1 .. Source.Actual.Error_Len));
+               & Source.Data.Actual.Error_Reason
+                   (1 .. Source.Data.Actual.Error_Len));
          else
-            Set_Message (Source, "cannot admit canonical actual.loam");
+            Set_Message
+              (Source.Data.all, "cannot admit canonical actual.loam");
          end if;
          return Source;
       end if;
 
-      Source.Balances :=
-        HRA_N.Application.Canonical_Balance_Query.Project (Source.Actual);
+      Source.Data.Balances :=
+        HRA_N.Application.Canonical_Balance_Query.Project
+          (Source.Data.Actual);
 
-      if not Source.Balances.Success then
-         if Source.Balances.Diagnostic_Len > 0 then
+      if not Source.Data.Balances.Success then
+         if Source.Data.Balances.Diagnostic_Len > 0 then
             Set_Message
-              (Source,
-               Source.Balances.Diagnostic
-                 (1 .. Source.Balances.Diagnostic_Len));
+              (Source.Data.all,
+               Source.Data.Balances.Diagnostic
+                 (1 .. Source.Data.Balances.Diagnostic_Len));
          else
             Set_Message
-              (Source, "canonical balance projection failed");
+              (Source.Data.all, "canonical balance projection failed");
          end if;
          return Source;
       end if;
 
-      Source.Is_Ready := True;
-      Source.Msg_Len := 0;
+      Source.Data.Is_Ready := True;
+      Source.Data.Msg_Len := 0;
       return Source;
    end Open;
 
@@ -114,19 +161,19 @@ package body HRA_N.Application.Canonical_Activity_Query is
    is
       Result : Activity_View;
    begin
-      if not Source.Is_Ready then
+      if Source.Data = null or else not Source.Data.Is_Ready then
          Set_Diagnostic
            (Result,
-            (if Source.Msg_Len > 0
-             then Source.Message (1 .. Source.Msg_Len)
+            (if Source.Data /= null and then Source.Data.Msg_Len > 0
+             then Source.Data.Message (1 .. Source.Data.Msg_Len)
              else "canonical browser snapshot is not ready"));
          return Result;
       end if;
 
-      for Position in 1 .. Natural (Source.Actual.Events.Length) loop
+      for Position in 1 .. Natural (Source.Data.Actual.Events.Length) loop
          declare
             Ev : constant Event :=
-              Source.Actual.Events.Element (Positive (Position));
+              Source.Data.Actual.Events.Element (Positive (Position));
             Net           : Long_Long_Integer := 0;
             Postings      : Natural := 0;
             Touched       : Boolean := False;
@@ -156,7 +203,7 @@ package body HRA_N.Application.Canonical_Activity_Query is
                end if;
 
                Find_Successor
-                 (Source.Actual.Metadata,
+                 (Source.Data.Actual.Metadata,
                   Id (Ev),
                   Successor,
                   Is_Superseded);
@@ -172,22 +219,22 @@ package body HRA_N.Application.Canonical_Activity_Query is
                   Have_Reverser : Boolean;
                begin
                   Find_Occurrence_Date
-                    (Source.Actual.Validities,
+                    (Source.Data.Actual.Validities,
                      Id (Ev),
                      Occurred,
                      Have_Date);
                   Find_Description
-                    (Source.Actual.Descriptions,
+                    (Source.Data.Actual.Descriptions,
                      Id (Ev),
                      Desc,
                      Have_Desc);
                   Find_Metadata
-                    (Source.Actual.Metadata,
+                    (Source.Data.Actual.Metadata,
                      Id (Ev),
                      Metadata,
                      Have_Metadata);
                   Find_Reverser
-                    (Source.Actual.Metadata,
+                    (Source.Data.Actual.Metadata,
                      Id (Ev),
                      Reverser,
                      Have_Reverser);
