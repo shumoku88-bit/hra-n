@@ -147,3 +147,38 @@ already-computed Application result.
 The initial selection is the coordinate with the largest observed
 inflow/outflow/net magnitude so the first screen remains useful for large data
 sets.
+
+
+## Related Actual evidence
+
+The coordinate browser can now retain one admitted `actual.loam` snapshot and
+derive both the balance rows and per-coordinate Actual history from that same
+image.
+
+For the selected coordinate, the right pane can show physical Events newest
+first with:
+
+- occurrence date,
+- Event identity,
+- description evidence when present,
+- net change at the selected coordinate,
+- replacement/reversal evidence.
+
+Superseded Events are intentionally still listed. They do not contribute to the
+active balance projection, but they remain historical evidence and point to
+their replacement successor. Likewise, reversal Events remain physical inverse
+evidence and expose both their target and the target's `reversed-by` link.
+
+The screen therefore distinguishes two questions:
+
+```text
+What contributes to the current projection?
+    -> active coordinate balance
+
+What physical evidence explains how we got here?
+    -> related Actual history, including superseded evidence
+```
+
+The browser snapshot opens `actual.loam` once. Changing the backing pathname
+after that does not cause the left balance view and right activity view to
+silently observe different snapshots.
