@@ -5,7 +5,7 @@
 
 with Ada.Directories;
 with HRA_N.Application.Canonical_Authority;
-with HRA_N.Core.Coverage;             use HRA_N.Core.Coverage;
+with HRA_N.Storage.Loam_Zero_Origin_Coverage_Reader;
 with HRA_N.Core.Event;                use HRA_N.Core.Event;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 
@@ -82,9 +82,11 @@ package body HRA_N.Application.Statement is
       return True;
    end Supports_Measures;
 
-   function Project
+   function Project_With_Evidence
      (Journal      : Journal_Result;
-      Policy       : Policy_Result;
+      Roles        : Role_Map;
+      Coverage     : Zero_Origin_Coverage;
+      Loci         : Locus_Vocabulary;
       As_Of        : Date_Type := (Year => 2026, Month => 1, Day => 1);
       Has_As_Of    : Boolean   := False;
       Snapshot     : Token_Text := (Length => 0, Value => [others => ' ']);
@@ -141,16 +143,14 @@ package body HRA_N.Application.Statement is
       Result.Actual_Snapshot :=
         (if Is_Versioned then (Kind => Snapshot_Versioned, Identity => Snapshot)
          else (Kind => Snapshot_Unversioned));
+      Result.Coverage_Snapshot := Result.Actual_Snapshot;
+      Result.Zero_Origin_Count := Natural (Coordinate_Count (Coverage));
       Result.Has_As_Of := Has_As_Of;
       Result.As_Of_Date := As_Of;
 
       if not Journal.Success then
          Fail ("cannot read journal for statement: " &
                Journal.Error_Reason (1 .. Journal.Error_Len));
-         return Result;
-      elsif not Policy.Success then
-         Fail ("cannot read policy for statement: " &
-               Policy.Error_Reason (1 .. Policy.Error_Len));
          return Result;
       end if;
 
@@ -166,9 +166,9 @@ package body HRA_N.Application.Statement is
       end if;
 
       --  1. Pre-populate accounts from Role declarations
-      for I in 1 .. Entry_Count (Policy.Roles) loop
+      for I in 1 .. Entry_Count (Roles) loop
          declare
-            Assignment : constant Role_Assignment := Entry_At (Policy.Roles, I);
+            Assignment : constant Role_Assignment := Entry_At (Roles, I);
             Idx        : Natural;
          begin
             Ensure_Account (Assignment.Locus, Idx);
@@ -176,9 +176,9 @@ package body HRA_N.Application.Statement is
       end loop;
 
       --  Pre-populate from Zero-Origin coverage in policy
-      for I in 1 .. Coordinate_Count (Policy.Coverage) loop
+      for I in 1 .. Coordinate_Count (Coverage) loop
          declare
-            C   : constant Coordinate_Type := Coordinate_At (Policy.Coverage, I);
+            C   : constant Coordinate_Type := Coordinate_At (Coverage, I);
             Idx : Natural;
          begin
             Ensure_Account (C.Locus, Idx);
@@ -186,16 +186,16 @@ package body HRA_N.Application.Statement is
       end loop;
 
       --  Pre-populate from admitted Loci in policy
-      for I in 1 .. Policy.Loci.Count loop
+      for I in 1 .. Loci.Count loop
          declare
             Idx : Natural;
          begin
-            Ensure_Account (Policy.Loci.Values (I), Idx);
+            Ensure_Account (Loci.Values (I), Idx);
          end;
       end loop;
 
-      Balances := Balance_Query.Project
-        (Journal, Policy,
+      Balances := Balance_Query.Project_With_Evidence
+        (Journal, Roles, Coverage,
          (Scope => Balance_Query.Scope_All, Has_As_Of => Has_As_Of,
           As_Of_Date => As_Of),
          (if Is_Versioned then (Kind => Snapshot_Versioned, Identity => Snapshot)
@@ -279,9 +279,9 @@ package body HRA_N.Application.Statement is
          begin
             if Has_As_Of then
                Find_Role_As_Of
-                 (Policy.Roles, Acc.Locus, As_Of, Role_Val, Has_Role_Val);
+                 (Roles, Acc.Locus, As_Of, Role_Val, Has_Role_Val);
             else
-               Find_Role (Policy.Roles, Acc.Locus, Role_Val, Has_Role_Val);
+               Find_Role (Roles, Acc.Locus, Role_Val, Has_Role_Val);
             end if;
 
             Acc.Role := Role_Val;
@@ -351,11 +351,42 @@ package body HRA_N.Application.Statement is
       end if;
       Sort_Accounts (Result);
       return Result;
+   end Project_With_Evidence;
+
+   function Project
+     (Journal      : Journal_Result;
+      Policy       : Policy_Result;
+      As_Of        : Date_Type := (Year => 2026, Month => 1, Day => 1);
+      Has_As_Of    : Boolean   := False;
+      Snapshot     : Token_Text := (Length => 0, Value => [others => ' ']);
+      Is_Versioned : Boolean := False) return Statement_Report
+   is
+      Result : Statement_Report;
+   begin
+      if not Policy.Success then
+         Result.Status := Query_Rejected;
+         declare
+            Message : constant String := "cannot read policy for statement: " &
+              Policy.Error_Reason (1 .. Policy.Error_Len);
+         begin
+            Result.Diagnostic_Len :=
+              Natural'Min (Message'Length, Result.Diagnostic'Length);
+            Result.Diagnostic (1 .. Result.Diagnostic_Len) :=
+              Message (1 .. Result.Diagnostic_Len);
+         end;
+         return Result;
+      end if;
+      return Project_With_Evidence
+        (Journal, Policy.Roles, Policy.Coverage, Policy.Loci,
+         As_Of, Has_As_Of, Snapshot, Is_Versioned);
    end Project;
 
    function Project_Canonical
      (Actual       : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
-      Policy       : Policy_Result;
+      Roles        : Role_Map;
+      Coverage     : Zero_Origin_Coverage;
+      Loci         : Locus_Vocabulary;
+      Coverage_File_Present : Boolean;
       As_Of        : Date_Type := (Year => 2026, Month => 1, Day => 1);
       Has_As_Of    : Boolean := False;
       Policy_Snapshot : Snapshot_Reference := (Kind => Snapshot_Unversioned))
@@ -364,7 +395,7 @@ package body HRA_N.Application.Statement is
       Journal : Journal_Result;
       Result  : Statement_Report;
       Gap     : constant String :=
-        "balance assertion evidence unavailable; Actual/Policy snapshot unbound";
+        "balance assertion evidence unavailable; Actual/Coverage/Policy snapshots unbound";
    begin
       if not Actual.Success then
          Result.Status := Query_Rejected;
@@ -390,12 +421,14 @@ package body HRA_N.Application.Statement is
       Journal.Validities := Actual.Validities;
       Journal.Descriptions := Actual.Descriptions;
       Journal.Metadata := Actual.Metadata;
-      Result := Project
-        (Journal, Policy, As_Of, Has_As_Of,
+      Result := Project_With_Evidence
+        (Journal, Roles, Coverage, Loci, As_Of, Has_As_Of,
          (if Policy_Snapshot.Kind = Snapshot_Versioned
           then Policy_Snapshot.Identity else (Length => 0, Value => [others => ' '])),
          Policy_Snapshot.Kind = Snapshot_Versioned);
       Result.Actual_Snapshot := (Kind => Snapshot_Unversioned);
+      Result.Coverage_Snapshot := (Kind => Snapshot_Unversioned);
+      Result.Coverage_File_Present := Coverage_File_Present;
       Result.Assertion_Evidence_Available := False;
       if Result.Status /= Query_Rejected then
          declare
@@ -436,6 +469,18 @@ package body HRA_N.Application.Statement is
             Result.Diagnostic (1 .. Message'Length) := Message;
          end;
          return Result;
+      elsif not Policy.Success then
+         Result.Status := Query_Rejected;
+         declare
+            Message : constant String := "cannot read policy for statement: " &
+              Policy.Error_Reason (1 .. Policy.Error_Len);
+         begin
+            Result.Diagnostic_Len :=
+              Natural'Min (Message'Length, Result.Diagnostic'Length);
+            Result.Diagnostic (1 .. Result.Diagnostic_Len) :=
+              Message (1 .. Result.Diagnostic_Len);
+         end;
+         return Result;
       end if;
 
       declare
@@ -443,10 +488,34 @@ package body HRA_N.Application.Statement is
       begin
          case Authority.State is
             when Canonical_Present =>
-               return Project_Canonical
-                 (HRA_N.Storage.Loam_Actual_Reader.Read_Loam_Actual_File
-                    (Ada.Directories.Compose (Data_Dir_Str (Paths), "actual.loam")),
-                  Policy, As_Of, Has_As_Of, Snap);
+               declare
+                  Coverage_Result : constant
+                    HRA_N.Storage.Loam_Zero_Origin_Coverage_Reader.Read_Result :=
+                      HRA_N.Storage.Loam_Zero_Origin_Coverage_Reader.Read_File
+                        (Ada.Directories.Compose
+                           (Data_Dir_Str (Paths), "zero-origin-coverage.loam"));
+               begin
+                  if not Coverage_Result.Success then
+                     Result.Status := Query_Rejected;
+                     Result.Assertion_Evidence_Available := False;
+                     declare
+                        Message : constant String := "zero-origin-coverage.loam: " &
+                          Coverage_Result.Error_Reason
+                            (1 .. Coverage_Result.Error_Len);
+                     begin
+                        Result.Diagnostic_Len :=
+                          Natural'Min (Message'Length, Result.Diagnostic'Length);
+                        Result.Diagnostic (1 .. Result.Diagnostic_Len) :=
+                          Message (1 .. Result.Diagnostic_Len);
+                     end;
+                     return Result;
+                  end if;
+                  return Project_Canonical
+                    (HRA_N.Storage.Loam_Actual_Reader.Read_Loam_Actual_File
+                       (Ada.Directories.Compose (Data_Dir_Str (Paths), "actual.loam")),
+                     Policy.Roles, Coverage_Result.Coverage, Policy.Loci,
+                     Coverage_Result.Present, As_Of, Has_As_Of, Snap);
+               end;
             when Legacy_Only =>
                return Project
                  (Read_Journal_File (Journal_Path_Str (Paths)), Policy,

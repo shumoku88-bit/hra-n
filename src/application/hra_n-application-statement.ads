@@ -13,6 +13,8 @@ with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;  use HRA_N.Application.Path_Resolver;
 with HRA_N.Core.Types;                 use HRA_N.Core.Types;
 with HRA_N.Core.Accounting_Role;       use HRA_N.Core.Accounting_Role;
+with HRA_N.Core.Admission;             use HRA_N.Core.Admission;
+with HRA_N.Core.Coverage;              use HRA_N.Core.Coverage;
 with HRA_N.Core.Validity;              use HRA_N.Core.Validity;
 with HRA_N.Storage.Journal_Reader;     use HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Policy_Reader;      use HRA_N.Storage.Policy_Reader;
@@ -47,6 +49,9 @@ package HRA_N.Application.Statement is
       Snapshot         : Token_Text        := (Length => 0, Value => [others => ' ']);
       Is_Versioned     : Boolean           := False; --  Policy snapshot only
       Actual_Snapshot  : Snapshot_Reference := (Kind => Snapshot_Unversioned);
+      Coverage_Snapshot : Snapshot_Reference := (Kind => Snapshot_Unversioned);
+      Coverage_File_Present : Boolean := False;
+      Zero_Origin_Count : Natural := 0;
       Assertion_Evidence_Available : Boolean := True;
       Has_As_Of        : Boolean           := False;
       As_Of_Date       : Date_Type         := (Year => 2026, Month => 1, Day => 1);
@@ -79,7 +84,19 @@ package HRA_N.Application.Statement is
      "financial reports support jpy only; use balance for other measures";
    function Supports_Measures (Journal : Journal_Result) return Boolean;
 
-   --  In-memory projection of Financial Statement query from preloaded journal and policy
+   --  Projection boundary names the independently selectable accounting
+   --  evidence. Assertions, when available, remain in the Journal image.
+   function Project_With_Evidence
+     (Journal      : Journal_Result;
+      Roles        : Role_Map;
+      Coverage     : Zero_Origin_Coverage;
+      Loci         : Locus_Vocabulary;
+      As_Of        : Date_Type := (Year => 2026, Month => 1, Day => 1);
+      Has_As_Of    : Boolean   := False;
+      Snapshot     : Token_Text := (Length => 0, Value => [others => ' ']);
+      Is_Versioned : Boolean := False) return Statement_Report;
+
+   --  Legacy convenience wrapper preserving policy.hra behavior.
    function Project
      (Journal      : Journal_Result;
       Policy       : Policy_Result;
@@ -88,11 +105,15 @@ package HRA_N.Application.Statement is
       Snapshot     : Token_Text := (Length => 0, Value => [others => ' ']);
       Is_Versioned : Boolean := False) return Statement_Report;
 
-   --  Canonical Actual image uses the same Statement/Balance projection with
-   --  no fabricated assertion evidence. Policy remains transitional.
+   --  Canonical Actual and Coverage use the same projection without a fake
+   --  Policy_Result and without fabricated assertion evidence. Roles and Locus
+   --  vocabulary remain transitional legacy evidence.
    function Project_Canonical
      (Actual       : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
-      Policy       : Policy_Result;
+      Roles        : Role_Map;
+      Coverage     : Zero_Origin_Coverage;
+      Loci         : Locus_Vocabulary;
+      Coverage_File_Present : Boolean;
       As_Of        : Date_Type := (Year => 2026, Month => 1, Day => 1);
       Has_As_Of    : Boolean := False;
       Policy_Snapshot : Snapshot_Reference := (Kind => Snapshot_Unversioned))

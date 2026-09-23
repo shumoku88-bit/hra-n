@@ -3,7 +3,6 @@
 --  Package body: HRA_N.Application.Balance_Query
 -------------------------------------------------------------------------------
 
-with HRA_N.Core.Coverage; use HRA_N.Core.Coverage;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Core.Assertion; use HRA_N.Core.Assertion;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
@@ -57,9 +56,10 @@ package body HRA_N.Application.Balance_Query is
       end;
    end Row_Less;
 
-   function Project
+   function Project_With_Evidence
      (Journal  : Journal_Result;
-      Policy   : Policy_Result;
+      Roles    : Role_Map;
+      Coverage : Zero_Origin_Coverage;
       Request  : Query := (Scope => Scope_All, Has_As_Of => False, As_Of_Date => (2026, 1, 1));
       Snapshot : Frontend_Types.Snapshot_Reference := (Kind => Frontend_Types.Snapshot_Unversioned))
       return Balance_View
@@ -84,15 +84,10 @@ package body HRA_N.Application.Balance_Query is
          Fail ("cannot read journal for balance query: " &
                Journal.Error_Reason (1 .. Journal.Error_Len));
          return Result;
-      elsif not Policy.Success then
-         Fail ("cannot read policy for balance query: " &
-               Policy.Error_Reason (1 .. Policy.Error_Len));
-         return Result;
       end if;
 
       declare
          J_Res : Journal_Result renames Journal;
-         P_Res : Policy_Result renames Policy;
       begin
          --  Accumulate distinct coordinates
          declare
@@ -127,9 +122,9 @@ package body HRA_N.Application.Balance_Query is
 
          begin
             --  1. Coordinates from Zero-Origin coverage in Policy
-            for I in 1 .. Coordinate_Count (P_Res.Coverage) loop
+            for I in 1 .. Coordinate_Count (Coverage) loop
                declare
-                  C : constant Coordinate_Type := Coordinate_At (P_Res.Coverage, I);
+                  C : constant Coordinate_Type := Coordinate_At (Coverage, I);
                begin
                   Add_Coord (C.Locus.Token, C.Measure.Token);
                end;
@@ -181,7 +176,7 @@ package body HRA_N.Application.Balance_Query is
 
                   Is_Known : constant Boolean :=
                     Is_Covered
-                      (P_Res.Coverage,
+                      (Coverage,
                        (Locus => (Token => Loc), Measure => (Token => Mea)));
                begin
                   --  Compute sum of effects from active unsuperseded transactions
@@ -301,9 +296,9 @@ package body HRA_N.Application.Balance_Query is
                      --  Determine role
                      if Request.Has_As_Of then
                         Find_Role_As_Of
-                          (P_Res.Roles, (Token => Loc), Request.As_Of_Date, Role_Val, Has_Role_Val);
+                          (Roles, (Token => Loc), Request.As_Of_Date, Role_Val, Has_Role_Val);
                      else
-                        Find_Role (P_Res.Roles, (Token => Loc), Role_Val, Has_Role_Val);
+                        Find_Role (Roles, (Token => Loc), Role_Val, Has_Role_Val);
                      end if;
 
                      declare
@@ -367,6 +362,35 @@ package body HRA_N.Application.Balance_Query is
       end;
 
       return Result;
+   end Project_With_Evidence;
+
+   function Project
+     (Journal  : Journal_Result;
+      Policy   : Policy_Result;
+      Request  : Query := (Scope => Scope_All, Has_As_Of => False, As_Of_Date => (2026, 1, 1));
+      Snapshot : Frontend_Types.Snapshot_Reference := (Kind => Frontend_Types.Snapshot_Unversioned))
+      return Balance_View
+   is
+      Result : Balance_View;
+      Message : constant String :=
+        (if Policy.Error_Len > 0
+         then "cannot read policy for balance query: " &
+           Policy.Error_Reason (1 .. Policy.Error_Len)
+         else "cannot read policy for balance query");
+   begin
+      if not Policy.Success then
+         Result.Scope := Request.Scope;
+         Result.Has_As_Of := Request.Has_As_Of;
+         Result.As_Of_Date := Request.As_Of_Date;
+         Result.Snapshot := Snapshot;
+         Result.Diagnostic_Len :=
+           Natural'Min (Message'Length, Result.Diagnostic'Length);
+         Result.Diagnostic (1 .. Result.Diagnostic_Len) :=
+           Message (1 .. Result.Diagnostic_Len);
+         return Result;
+      end if;
+      return Project_With_Evidence
+        (Journal, Policy.Roles, Policy.Coverage, Request, Snapshot);
    end Project;
 
    function Execute

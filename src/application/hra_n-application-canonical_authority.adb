@@ -53,6 +53,8 @@ package body HRA_N.Application.Canonical_Authority is
            Ada.Directories.Compose (Root_Path, "actual.loam");
          Policy_Path    : constant String :=
            Ada.Directories.Compose (Root_Path, "locus-admission.loam");
+         Coverage_Path  : constant String :=
+           Ada.Directories.Compose (Root_Path, "zero-origin-coverage.loam");
 
          Has_Scheduled  : constant Boolean :=
            Ada.Directories.Exists (Scheduled_Path);
@@ -60,8 +62,12 @@ package body HRA_N.Application.Canonical_Authority is
            Ada.Directories.Exists (Actual_Path);
          Has_Policy     : constant Boolean :=
            Ada.Directories.Exists (Policy_Path);
+         Has_Coverage   : constant Boolean :=
+           Ada.Directories.Exists (Coverage_Path);
       begin
-         if Has_Scheduled or else Has_Actual or else Has_Policy then
+         if Has_Scheduled or else Has_Actual or else Has_Policy
+           or else Has_Coverage
+         then
             Result.State := Canonical_Present;
          else
             Result.State := Legacy_Only;

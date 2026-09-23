@@ -10,6 +10,7 @@
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
+with HRA_N.Core.Coverage; use HRA_N.Core.Coverage;
 with HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
@@ -75,6 +76,17 @@ package HRA_N.Application.Balance_Query is
       Diagnostic_Len       : Frontend_Types.Diagnostic_Length := 0;
    end record;
 
+   --  Explicit semantic boundary used when authorities are selected
+   --  independently. Assertions remain part of the selected Journal image.
+   function Project_With_Evidence
+     (Journal  : Journal_Result;
+      Roles    : Role_Map;
+      Coverage : Zero_Origin_Coverage;
+      Request  : Query := (Scope => Scope_All, Has_As_Of => False, As_Of_Date => (2026, 1, 1));
+      Snapshot : Frontend_Types.Snapshot_Reference := (Kind => Frontend_Types.Snapshot_Unversioned))
+      return Balance_View;
+
+   --  Legacy convenience wrapper.
    function Project
      (Journal  : Journal_Result;
       Policy   : Policy_Result;
