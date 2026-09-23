@@ -63,6 +63,11 @@ package body Test_Home_Query is
                  "Home query carries selected snapshot identity");
          Assert (Equal_Token (View.Snapshot.Identity, Make_Token ("g00000001")),
                  "Home query snapshot identity matches CURRENT");
+         Assert (View.Actual_Snapshot.Kind = Snapshot_Versioned,
+                 "legacy Home Actual observation carries selected generation snapshot");
+         Assert (Equal_Token
+                   (View.Actual_Snapshot.Identity, Make_Token ("g00000001")),
+                 "legacy Home Actual snapshot matches CURRENT");
          Assert_Equal_Int (1, Long_Long_Integer (View.Total_Actual), "Home query counts Actual");
          Assert_Equal_Int (1, Long_Long_Integer (View.Selected_Actual), "Home query counts selected-day Actual");
          Assert_Equal_Int (2, Long_Long_Integer (View.Total_Scheduled), "Home query counts Scheduled declarations");
@@ -158,6 +163,73 @@ package body Test_Home_Query is
             Long_Long_Integer (Home11.Total_Actual),
             "Home Total_Actual matches Actual_Query Scope_All");
       end;
+
+      --  Canonical Actual may coexist with the transitional Home streams.
+      --  Home Actual counts must follow Actual_Query while the remaining Home
+      --  evidence keeps its legacy generation identity explicitly separate.
+      Assert
+        (Write_File_Atomically
+           (Test_Dir & "/actual.loam",
+            "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1" & ASCII.LF &
+            "TX" & ASCII.HT & "home-canonical-1" & ASCII.HT &
+              "2026-09-11" & ASCII.HT & "DESC" & ASCII.HT &
+              "Canonical Lunch" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" & ASCII.HT &
+              "-300" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" & ASCII.HT &
+              "300" & ASCII.LF &
+            "ENDTX" & ASCII.LF &
+            "TX" & ASCII.HT & "home-canonical-2" & ASCII.HT &
+              "2026-09-11" & ASCII.HT & "DESC" & ASCII.HT &
+              "Canonical Tea" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" & ASCII.HT &
+              "-120" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" & ASCII.HT &
+              "120" & ASCII.LF &
+            "ENDTX" & ASCII.LF &
+            "TX" & ASCII.HT & "home-canonical-3" & ASCII.HT &
+              "2026-09-12" & ASCII.HT & "DESC" & ASCII.HT &
+              "Canonical Dinner" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "cash" & ASCII.HT & "jpy" & ASCII.HT &
+              "-500" & ASCII.LF &
+            "EFFECT" & ASCII.HT & "food" & ASCII.HT & "jpy" & ASCII.HT &
+              "500" & ASCII.LF &
+            "ENDTX" & ASCII.LF,
+            Error,
+            Error_Len),
+         "Canonical Home Actual fixture installs");
+      Assert
+        (Write_File_Atomically
+           (Test_Dir & "/locus-admission.loam",
+            "LOAM-LOCUS-ADMISSION-VOCABULARY" & ASCII.HT & "1" & ASCII.LF &
+            "LOCUS" & ASCII.HT & "cash" & ASCII.LF &
+            "LOCUS" & ASCII.HT & "food" & ASCII.LF,
+            Error,
+            Error_Len),
+         "Canonical Home locus marker installs");
+
+      declare
+         View : constant HRA_N.Application.Home_Query.Home_View :=
+           HRA_N.Application.Home_Query.Execute (Paths, (Selected_Day => Day));
+      begin
+         Assert_Equal_Int
+           (3, Long_Long_Integer (View.Total_Actual),
+            "Home total Actual follows canonical shared query");
+         Assert_Equal_Int
+           (2, Long_Long_Integer (View.Selected_Actual),
+            "Home selected-day Actual follows canonical shared query");
+         Assert
+           (View.Actual_Snapshot.Kind = Snapshot_Unversioned,
+            "canonical Home Actual source is explicitly unversioned");
+         Assert
+           (View.Snapshot.Kind = Snapshot_Versioned
+            and then Equal_Token
+              (View.Snapshot.Identity, Make_Token ("g00000001")),
+            "remaining Home evidence retains transitional generation snapshot");
+      end;
+
+      Ada.Directories.Delete_File (Test_Dir & "/actual.loam");
+      Ada.Directories.Delete_File (Test_Dir & "/locus-admission.loam");
 
       Assert
         (Write_File_Atomically
