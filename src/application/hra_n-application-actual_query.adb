@@ -2,6 +2,8 @@
 --  HRA-N: shared Actual record query implementation
 -------------------------------------------------------------------------------
 
+with Ada.Directories;
+with HRA_N.Application.Movement_Command; use HRA_N.Application.Movement_Command;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Loam_Actual_Reader; use HRA_N.Storage.Loam_Actual_Reader;
@@ -220,12 +222,22 @@ package body HRA_N.Application.Actual_Query is
             Identity => Make_Token (Snapshot_Id_Str (Paths)));
       end if;
 
-      declare
-         Journal : constant Journal_Result :=
-           Read_Journal_File (Journal_Path_Str (Paths));
-      begin
-         return Project (Journal, Request, Snap);
-      end;
+      if Canonical_Authority_Present (Data_Dir_Str (Paths)) then
+         declare
+            Canonical_Path : constant String :=
+              Ada.Directories.Compose
+                (Data_Dir_Str (Paths), "actual.loam");
+         begin
+            return Execute_Loam_Actual (Canonical_Path, Request);
+         end;
+      else
+         declare
+            Journal : constant Journal_Result :=
+              Read_Journal_File (Journal_Path_Str (Paths));
+         begin
+            return Project (Journal, Request, Snap);
+         end;
+      end if;
    end Execute;
 
    function Execute_Loam_Actual
