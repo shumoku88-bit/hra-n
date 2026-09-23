@@ -2,7 +2,12 @@ with "gtkada";
 
 project HRA_N_GUI is
    for Languages use ("Ada");
-   for Source_Dirs use ("src");
+   for Source_Dirs use
+     ("src",
+      "../src",
+      "../src/core",
+      "../src/storage",
+      "../src/application");
    for Object_Dir use "obj";
    for Exec_Dir use "bin";
    for Main use ("hra_n_gui.adb");
