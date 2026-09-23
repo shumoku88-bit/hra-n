@@ -96,7 +96,7 @@ Run against a canonical data root containing `actual.loam`:
 ```sh
 cd gui
 alr build
-alr exec -- ./bin/hra-n-gui /path/to/canonical-data
+HRA_DATA_DIR=/path/to/canonical-data ./bin/hra-n-gui
 ```
 
 Alternatively set `HRA_DATA_DIR` and run without an argument.
@@ -121,3 +121,29 @@ named **Recorded movement**, not Stock-Flow Bridge.
 
 That distinction is intentional: presentation must not manufacture accounting
 knowledge that the admitted authority does not contain.
+
+
+## Interactive coordinate browser
+
+The next GUI slice turns the canonical coordinate projection into a real
+master-detail browser:
+
+```text
+all canonical coordinates
+        |
+        +-- scroll/select in Gtk.TreeView
+        |
+        +-- selected typed Coordinate_Row
+                |
+                +-- detail label
+                +-- Cairo Recorded movement chart
+```
+
+The list shows every admitted coordinate rather than truncating presentation to
+the first twelve rows. Selecting a row redraws the Cairo chart for that exact
+typed row. The callback performs no accounting calculation; it only selects one
+already-computed Application result.
+
+The initial selection is the coordinate with the largest observed
+inflow/outflow/net magnitude so the first screen remains useful for large data
+sets.
