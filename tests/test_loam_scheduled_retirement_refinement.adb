@@ -61,18 +61,18 @@ package body Test_Loam_Scheduled_Retirement_Refinement is
            Publish_Retirement
              (Root, (Token => Make_Token ("scheduled-1")));
          After : constant Read_Result := Read_File (Scheduled);
-         Qualified : constant Qualification_Result :=
+         Q : constant Qualification_Result :=
            Qualify_One_Fresh_Retirement (Before, After);
       begin
          Assert
            (Published.State = Retirement_Published_Fresh,
             "production retirement publisher succeeds");
          Assert
-           (Qualified.Status = Qualified,
+           (Q.Status = Qualified,
             "production before/after image refines to proved retirement transition");
          Assert
            (Equal_Token
-              (Qualified.Added.Scheduled.Token,
+              (Q.Added.Scheduled.Token,
                Make_Token ("scheduled-1")),
             "qualified retirement preserves exact Scheduled identity");
       end;
