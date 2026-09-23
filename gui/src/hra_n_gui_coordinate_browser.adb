@@ -29,6 +29,7 @@ use HRA_N.Application.Canonical_Balance_Query;
 with HRA_N.Core.Description;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity;
+with HRA_N_GUI_Event_Detail;
 
 package body HRA_N_GUI_Coordinate_Browser is
 
@@ -43,19 +44,22 @@ package body HRA_N_GUI_Coordinate_Browser is
    In_Column         : constant Gint := 3;
    Out_Column        : constant Gint := 4;
 
-   Activity_Date_Column        : constant Gint := 0;
-   Activity_Event_Column       : constant Gint := 1;
-   Activity_Description_Column : constant Gint := 2;
-   Activity_Change_Column      : constant Gint := 3;
-   Activity_Evidence_Column    : constant Gint := 4;
+   Activity_Index_Column       : constant Gint := 0;
+   Activity_Date_Column        : constant Gint := 1;
+   Activity_Event_Column       : constant Gint := 2;
+   Activity_Description_Column : constant Gint := 3;
+   Activity_Change_Column      : constant Gint := 4;
+   Activity_Evidence_Column    : constant Gint := 5;
 
-   Current_Source : Browser_Snapshot;
-   Current_View   : Balance_View;
-   Has_Source     : Boolean := False;
-   Report_Image   : Gtk_Image;
-   Detail_Label   : Gtk_Label;
-   Activity_Label : Gtk_Label;
-   Activity_Model : Gtk_List_Store;
+   Current_Source    : Browser_Snapshot;
+   Current_View      : Balance_View;
+   Current_Activity  : Activity_View;
+   Has_Source        : Boolean := False;
+   Report_Image      : Gtk_Image;
+   Detail_Label      : Gtk_Label;
+   Activity_Label    : Gtk_Label;
+   Activity_Model    : Gtk_List_Store;
+   Activity_Selection : Gtk_Tree_Selection;
 
    function Token_String (Token : Token_Text) return String is
      (Token.Value (1 .. Token.Length));
@@ -293,7 +297,9 @@ package body HRA_N_GUI_Coordinate_Browser is
            (Token => Row.Measure));
       Iter : Gtk_Tree_Iter;
    begin
+      Current_Activity := View;
       Clear (Activity_Model);
+      HRA_N_GUI_Event_Detail.Clear ("Select a Related Actual row");
 
       if not View.Success then
          if View.Diagnostic_Len > 0 then
@@ -320,6 +326,7 @@ package body HRA_N_GUI_Coordinate_Browser is
             Item : constant Activity_Row := View.Rows (I);
          begin
             Append (Activity_Model, Iter);
+            Set (Activity_Model, Iter, Activity_Index_Column, Gint (I));
             Set
               (Activity_Model, Iter, Activity_Date_Column,
                HRA_N.Core.Validity.Format_Iso_Date (Item.Valid_On));
@@ -337,7 +344,54 @@ package body HRA_N_GUI_Coordinate_Browser is
                Activity_Evidence (Item));
          end;
       end loop;
+
+      if View.Count > 0 and then Activity_Selection /= null then
+         declare
+            First : constant Gtk_Tree_Iter :=
+              Get_Iter_First (+Activity_Model);
+         begin
+            if First /= Null_Iter then
+               Select_Iter (Activity_Selection, First);
+            end if;
+         end;
+      end if;
    end Populate_Activity;
+
+   procedure Activity_Selection_Changed
+     (Self : access Gtk_Tree_Selection_Record'Class)
+   is
+      Model : Gtk_Tree_Model;
+      Iter  : Gtk_Tree_Iter;
+   begin
+      if not Has_Source then
+         return;
+      end if;
+
+      Get_Selected (Self, Model, Iter);
+      if Iter = Null_Iter then
+         return;
+      end if;
+
+      declare
+         Raw_Index : constant Gint :=
+           Get_Int (Model, Iter, Activity_Index_Column);
+      begin
+         if Raw_Index < 1
+           or else Natural (Raw_Index) > Natural (Current_Activity.Count)
+         then
+            return;
+         end if;
+
+         declare
+            Detail : constant Event_Detail_View :=
+              Event_Detail_For
+                (Current_Source,
+                 Current_Activity.Rows (Natural (Raw_Index)).Event);
+         begin
+            HRA_N_GUI_Event_Detail.Show (Detail);
+         end;
+      end;
+   end Activity_Selection_Changed;
 
    procedure Selection_Changed
      (Self : access Gtk_Tree_Selection_Record'Class)
@@ -407,6 +461,7 @@ package body HRA_N_GUI_Coordinate_Browser is
       Right_Box         : Gtk_Box;
       Activity_Tree     : Gtk_Tree_View;
       Activity_Scrolled : Gtk_Scrolled_Window;
+      Event_Detail_Panel : Gtk_Box;
       Selection         : Gtk_Tree_Selection;
       Iter              : Gtk_Tree_Iter;
       View              : constant Balance_View := Balance (Source);
@@ -491,11 +546,12 @@ package body HRA_N_GUI_Coordinate_Browser is
 
       Gtk_New
         (Activity_Model,
-         [0 => GType_String,
+         [0 => GType_Int,
           1 => GType_String,
           2 => GType_String,
           3 => GType_String,
-          4 => GType_String]);
+          4 => GType_String,
+          5 => GType_String]);
       Gtk_New (Activity_Tree, +Activity_Model);
       Activity_Tree.Set_Headers_Visible (True);
       Add_Text_Column (Activity_Tree, "Date", Activity_Date_Column);
@@ -508,6 +564,10 @@ package body HRA_N_GUI_Coordinate_Browser is
         (Activity_Tree, "Evidence", Activity_Evidence_Column,
          Expand => True);
 
+      Activity_Selection := Get_Selection (Activity_Tree);
+      Set_Mode (Activity_Selection, Selection_Single);
+      Activity_Selection.On_Changed (Activity_Selection_Changed'Access);
+
       Gtk_New (Activity_Scrolled);
       Set_Policy
         (Activity_Scrolled, Policy_Automatic, Policy_Automatic);
@@ -516,6 +576,11 @@ package body HRA_N_GUI_Coordinate_Browser is
       Pack_Start
         (Right_Box, Activity_Scrolled,
          Expand => True, Fill => True, Padding => 0);
+
+      HRA_N_GUI_Event_Detail.Gtk_New (Event_Detail_Panel);
+      Pack_Start
+        (Right_Box, Event_Detail_Panel,
+         Expand => False, Fill => True, Padding => 0);
 
       Pack_Start
         (Browser, Right_Box,
