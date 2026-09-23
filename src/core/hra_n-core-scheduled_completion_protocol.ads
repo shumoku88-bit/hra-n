@@ -48,15 +48,20 @@ is
 
    function Actual_Endpoint_Absent
      (Image : Semantic_Image;
-      Claim : Completion_Record) return Boolean is
-     (Reference_Lookup (Image, Claim.Actual).State = Not_Found);
+      Claim : Completion_Record;
+      Added : HRA_N.Core.Event.Event) return Boolean is
+     (Endpoint_Matches (Claim, Added)
+      and then
+        Reference_Lookup
+          (Image, HRA_N.Core.Event.Id (Added)).State = Not_Found);
 
    function Inert_Middle
      (Scheduled : Scheduled_Lifecycle;
       Actual    : Semantic_Image;
-      Claim     : Completion_Record) return Boolean is
+      Claim     : Completion_Record;
+      Added     : HRA_N.Core.Event.Event) return Boolean is
      (Claim_Is_Last (Scheduled, Claim)
-      and then Actual_Endpoint_Absent (Actual, Claim));
+      and then Actual_Endpoint_Absent (Actual, Claim, Added));
 
    function Effective_Finish
      (Scheduled : Scheduled_Lifecycle;
@@ -64,8 +69,13 @@ is
       Claim     : Completion_Record;
       Added     : HRA_N.Core.Event.Event) return Boolean is
      (Claim_Is_Last (Scheduled, Claim)
-      and then Reference_Lookup (Actual, Claim.Actual).State = Found
-      and then Reference_Lookup (Actual, Claim.Actual).Value = Added);
+      and then Endpoint_Matches (Claim, Added)
+      and then
+        Reference_Lookup
+          (Actual, HRA_N.Core.Event.Id (Added)).State = Found
+      and then
+        Reference_Lookup
+          (Actual, HRA_N.Core.Event.Id (Added)).Value = Added);
 
    function Relation_First_Completion
      (Scheduled_Before : Scheduled_Lifecycle;
@@ -83,7 +93,7 @@ is
           (Scheduled_Before, Claim, Scheduled_Middle)
       and then Actual_Middle = Actual_Before
       and then Inert_Middle
-        (Scheduled_Middle, Actual_Middle, Claim)
+        (Scheduled_Middle, Actual_Middle, Claim, Added_Actual)
       and then Scheduled_After = Scheduled_Middle
       and then
         HRA_N.Core.Actual_Writer_Transition.One_Fresh_Append
