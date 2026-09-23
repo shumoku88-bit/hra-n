@@ -965,8 +965,10 @@ def test_canonical_scheduled_tui() -> None:
             os.write(fd, b"r")
             read_until(fd, output, b"Replace obligation")
             os.write(fd, b"y")
-            read_until(fd, output, b"scheduled-2")
-            read_until(fd, output, b"OPEN")
+            time.sleep(0.15)
+            with open(scheduled_path, encoding="utf-8") as stream:
+                replacement_state = stream.read()
+            assert "REPLACEMENT\tscheduled-3\tscheduled-2\n" in replacement_state
             os.write(fd, b"b")
             read_until(fd, output, b"scheduled-2")
 
@@ -997,8 +999,16 @@ def test_canonical_scheduled_tui() -> None:
             read_until(fd, output, b"Completes:    scheduled-4")
             assert b"canonical Loam" in output
             os.write(fd, b"\n")
-            read_until(fd, output, b"COMPLETED (Actual: scheduled-completion:scheduled-4)")
+            time.sleep(0.2)
+            with open(scheduled_path, encoding="utf-8") as stream:
+                completion_state = stream.read()
+            with open(os.path.join(household, "actual.loam"), encoding="utf-8") as stream:
+                completion_actual = stream.read()
+            assert "COMPLETION\tscheduled-4\tscheduled-completion:scheduled-4\n" in completion_state
+            assert "scheduled-completion:scheduled-4" in completion_actual
 
+            # A successful commit returns to detail; b then returns to the
+            # current-open list. If commit remained in preview, this times out.
             os.write(fd, b"b")
             read_until(fd, output, b"scheduled-2")
             os.write(fd, b"b")
