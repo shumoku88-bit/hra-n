@@ -20,6 +20,8 @@ with HRA_N.Storage.Loam_Scheduled_Completion_Publisher;
 with HRA_N.Storage.Loam_Scheduled_Completion_Protocol_Refinement;
 with HRA_N.Storage.Loam_Scheduled_Retirement_Writer;
 with HRA_N.Storage.Loam_Scheduled_Retirement_Refinement;
+with HRA_N.Storage.Loam_Scheduled_Replacement_Writer;
+with HRA_N.Storage.Loam_Scheduled_Replacement_Refinement;
 with HRA_N.Storage.Loam_Actual_Reader;
 
 package body HRA_N.Application.Scheduled_Command is
@@ -43,11 +45,16 @@ package body HRA_N.Application.Scheduled_Command is
      HRA_N.Storage.Loam_Scheduled_Retirement_Writer;
    package Retirement_Refinement renames
      HRA_N.Storage.Loam_Scheduled_Retirement_Refinement;
+   package Replacement_Publisher renames
+     HRA_N.Storage.Loam_Scheduled_Replacement_Writer;
+   package Replacement_Refinement renames
+     HRA_N.Storage.Loam_Scheduled_Replacement_Refinement;
 
    use type Completion_Publisher.Completion_Publication_State;
    use type Completion_Protocol_Refinement.Qualification_Status;
    use type Retirement_Publisher.Retirement_Publication_State;
    use type Retirement_Refinement.Qualification_Status;
+   use type Replacement_Refinement.Qualification_Status;
 
    function Canonical_Authority_Present
      (Root_Path : String) return Boolean
@@ -572,6 +579,169 @@ package body HRA_N.Application.Scheduled_Command is
          end if;
          return Result;
    end Retire_Loam_Scheduled;
+
+   function Replace_Loam_Scheduled
+     (Root_Path : String;
+      Intent    : Replace_Intent) return Canonical_Replace_Result
+   is
+      Result : Canonical_Replace_Result;
+
+      procedure Set_Diagnostic (Message : String) is
+         Len : constant Natural :=
+           Natural'Min (Message'Length, Result.Diagnostic'Length);
+      begin
+         Result.Diagnostic := [others => ' '];
+         Result.Diagnostic_Len := Len;
+         if Len > 0 then
+            Result.Diagnostic (1 .. Len) :=
+              Message (Message'First .. Message'First + Len - 1);
+         end if;
+      end Set_Diagnostic;
+
+   begin
+      if Root_Path'Length = 0 then
+         Set_Diagnostic ("canonical data root must not be empty");
+         return Result;
+      elsif Intent.Target_Id.Length = 0 then
+         Set_Diagnostic
+           ("canonical Scheduled replacement requires a target identity");
+         return Result;
+      elsif Intent.New_Id.Length > 0 then
+         Set_Diagnostic
+           ("canonical Scheduled replacement allocates scheduled-N identity; "
+            & "custom identity is not supported");
+         return Result;
+      elsif Intent.Amount <= 0 then
+         Set_Diagnostic ("replacement amount must be positive");
+         return Result;
+      elsif Equal_Token
+        (Intent.From_Locus.Token, Intent.To_Locus.Token)
+      then
+         Set_Diagnostic ("replacement loci must be distinct");
+         return Result;
+      elsif not Is_Valid_Date
+        (Intent.Expected_Day.Year,
+         Intent.Expected_Day.Month,
+         Intent.Expected_Day.Day)
+      then
+         Set_Diagnostic ("replacement occurrence date is invalid");
+         return Result;
+      end if;
+
+      declare
+         Scheduled_Path : constant String :=
+           Ada.Directories.Compose (Root_Path, "scheduled.loam");
+         Before : constant Canonical_Reader.Read_Result :=
+           Canonical_Reader.Read_File (Scheduled_Path);
+         Changes : Change_List;
+      begin
+         if not Before.Success then
+            if Before.Error_Len > 0 then
+               Set_Diagnostic
+                 ("canonical Scheduled before-image unavailable: "
+                  & Before.Error_Reason (1 .. Before.Error_Len));
+            else
+               Set_Diagnostic
+                 ("canonical Scheduled before-image is not admitted");
+            end if;
+            return Result;
+         end if;
+
+         Changes.Count := 2;
+         Changes.Values (1) :=
+           (Locus  => Intent.From_Locus,
+            Amount => -Intent.Amount);
+         Changes.Values (2) :=
+           (Locus  => Intent.To_Locus,
+            Amount => Intent.Amount);
+
+         declare
+            Published : constant Replacement_Publisher.Publish_Result :=
+              Replacement_Publisher.Publish_Replacement
+                (Root_Path,
+                 (Source       => (Token => Intent.Target_Id),
+                  Expected_Day => Intent.Expected_Day,
+                  Measure      => Intent.Measure,
+                  Changes      => Changes));
+         begin
+            if not Published.Success then
+               if Published.Error_Len > 0 then
+                  Set_Diagnostic
+                    (Published.Error_Reason (1 .. Published.Error_Len));
+               else
+                  Set_Diagnostic
+                    ("canonical Scheduled replacement was rejected");
+               end if;
+               return Result;
+            end if;
+
+            Result.State :=
+              Canonical_Replacement_Published_Readback_Unverified;
+            Result.Replacement_Id := Published.Replacement_Id.Token;
+
+            declare
+               After : constant Canonical_Reader.Read_Result :=
+                 Canonical_Reader.Read_File (Scheduled_Path);
+               Qualified : constant Replacement_Refinement.Qualification_Result :=
+                 Replacement_Refinement.Qualify_One_Fresh_Replacement
+                   (Before, After);
+               Matches : constant Boolean :=
+                 Qualified.Status = Replacement_Refinement.Qualified
+                 and then Equal_Token
+                   (Qualified.Original.Token, Intent.Target_Id)
+                 and then Equal_Token
+                   (Qualified.Successor.Id.Token,
+                    Published.Replacement_Id.Token)
+                 and then Equal_Date
+                   (Qualified.Successor.Expected_Day,
+                    Intent.Expected_Day)
+                 and then Equal_Token
+                   (Qualified.Successor.Measure.Token,
+                    Intent.Measure.Token)
+                 and then Qualified.Successor.Changes.Count = 2
+                 and then Equal_Token
+                   (Qualified.Successor.Changes.Values (1).Locus.Token,
+                    Intent.From_Locus.Token)
+                 and then Qualified.Successor.Changes.Values (1).Amount =
+                   -Intent.Amount
+                 and then Equal_Token
+                   (Qualified.Successor.Changes.Values (2).Locus.Token,
+                    Intent.To_Locus.Token)
+                 and then Qualified.Successor.Changes.Values (2).Amount =
+                   Intent.Amount;
+            begin
+               if Matches then
+                  Result.State :=
+                    Canonical_Replacement_Published_Readback_Verified;
+                  Result.Diagnostic_Len := 0;
+               elsif not After.Success and then After.Error_Len > 0 then
+                  Set_Diagnostic
+                    ("replacement was published; canonical read-back failed: "
+                     & After.Error_Reason (1 .. After.Error_Len));
+               else
+                  Set_Diagnostic
+                    ("replacement was published; proved before/after "
+                     & "refinement did not match");
+               end if;
+            end;
+         end;
+      end;
+
+      return Result;
+
+   exception
+      when E : others =>
+         if Result.State = Canonical_Replacement_Not_Published then
+            Set_Diagnostic
+              ("unexpected canonical Scheduled replacement failure: "
+               & Ada.Exceptions.Exception_Message (E));
+         else
+            Set_Diagnostic
+              ("replacement was published; application read-back failed: "
+               & Ada.Exceptions.Exception_Message (E));
+         end if;
+         return Result;
+   end Replace_Loam_Scheduled;
 
    function Propose_Create
      (Paths  : Path_Config;
