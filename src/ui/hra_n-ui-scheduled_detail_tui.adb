@@ -31,6 +31,34 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
       Current_Paths : Path_Config := Paths;
       Current_Id    : Token_Text := Scheduled_Id;
       Running       : Boolean := True;
+      Notice        : String (1 .. 160) := [others => ' '];
+      Notice_Len    : Natural := 0;
+
+      procedure Set_Notice (Msg : String) is
+         Len : constant Natural :=
+           Natural'Min (Msg'Length, Notice'Length);
+      begin
+         Notice_Len := Len;
+         Notice := [others => ' '];
+         if Len > 0 then
+            Notice (1 .. Len) := Msg (Msg'First .. Msg'First + Len - 1);
+         end if;
+      end Set_Notice;
+
+      procedure Show_Probe_Failure (Probe_Result : Authority_Probe) is
+         Msg : constant String :=
+           (if Probe_Result.Diagnostic_Len > 0
+            then Probe_Result.Diagnostic (1 .. Probe_Result.Diagnostic_Len)
+            else "Authority probe failed");
+      begin
+         Set_Notice (Msg);
+         if Rows > 1 then
+            HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Error_Style);
+            Put_Clipped (Rows - 1, Msg);
+            HRA_N.UI.Terminal_Style.Reset;
+            Curses.Refresh;
+         end if;
+      end Show_Probe_Failure;
    begin
       HRA_N.UI.Terminal_Style.Initialize;
       HRA_N.UI.TUI_Input.Start_Mouse_Scroll;
@@ -95,6 +123,13 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                   Put_Clipped (Rows - 2, "r/L: reload   b/Esc: Scheduled");
                end if;
             end if;
+
+            if Notice_Len > 0 and then Rows > 1 then
+               HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Error_Style);
+               Put_Clipped (Rows - 1, Notice (1 .. Notice_Len));
+               HRA_N.UI.Terminal_Style.Reset;
+            end if;
+
             Curses.Refresh;
 
             declare
@@ -108,6 +143,7 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                      declare
                         Key : constant Integer := Evt.Key_Code;
                      begin
+                        Notice_Len := 0;
                         if HRA_N.UI.TUI_Input.Is_Quit (Key)
                           or else Key = Character'Pos ('b')
                           or else Key = Character'Pos ('B')
@@ -223,7 +259,7 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                               end if;
                            end;
                               when Probe_Failed =>
-                                 null;
+                                 Show_Probe_Failure (Probe_Result);
                            end case;
                         end;
                      end if;
@@ -319,7 +355,7 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                                     end if;
                                  end;
                                     when Probe_Failed =>
-                                       null;
+                                       Show_Probe_Failure (Probe_Result);
                                  end case;
                               end;
                            end;
