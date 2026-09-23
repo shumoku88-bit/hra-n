@@ -121,8 +121,18 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
             end if;
 
             if Rows > 2 then
-               if View.Lifecycle_Status = Status_Open and then View.Status /= Query_Rejected then
-                  Put_Clipped (Rows - 2, "c: complete   x: retire   r: replace   L: reload   b/Esc: Scheduled");
+               if View.Lifecycle_Status = Status_Open
+                 and then View.Status /= Query_Rejected
+               then
+                  if View.Has_Terminal_Ref then
+                     Put_Clipped
+                       (Rows - 2,
+                        "c: retry completion   L: reload   b/Esc: Scheduled");
+                  else
+                     Put_Clipped
+                       (Rows - 2,
+                        "c: complete   x: retire   r: replace   L: reload   b/Esc: Scheduled");
+                  end if;
                else
                   Put_Clipped (Rows - 2, "r/L: reload   b/Esc: Scheduled");
                end if;
@@ -214,6 +224,7 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                             end;
                elsif (Key = Character'Pos ('x') or else Key = Character'Pos ('X'))
                  and then View.Lifecycle_Status = Status_Open
+                  and then not View.Has_Terminal_Ref
                  and then View.Status /= Query_Rejected
                then
                   Put_Clipped (Rows - 1, "Retire scheduled obligation? (y/n): ");
@@ -270,6 +281,7 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                   end;
                elsif (Key = Character'Pos ('r') or else Key = Character'Pos ('R'))
                  and then View.Lifecycle_Status = Status_Open
+                  and then not View.Has_Terminal_Ref
                  and then View.Status /= Query_Rejected
                then
                   Put_Clipped (Rows - 1, "Replace obligation (advances 1 month)? (y/n): ");
