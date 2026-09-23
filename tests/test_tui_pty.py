@@ -864,8 +864,190 @@ def main() -> None:
         shutil.rmtree(household, ignore_errors=True)
 
 
+
+def test_canonical_scheduled_tui() -> None:
+    """Scheduled TUI must observe and mutate canonical Loam authority end to end."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    harness = os.path.join(root, "tests", "bin", "tui_harness")
+    household = tempfile.mkdtemp(prefix="hra_n_canonical_scheduled_tui_")
+    try:
+        today = datetime.date.today().isoformat()
+        gen_dir = os.path.join(household, ".hra", "generations", "g00000001")
+        os.makedirs(gen_dir, exist_ok=True)
+        selector = os.path.join(household, ".hra", "CURRENT")
+        with open(selector, "w", encoding="utf-8") as stream:
+            stream.write("g00000001\n")
+
+        with open(os.path.join(gen_dir, "journal.hra"), "w", encoding="utf-8") as stream:
+            stream.write("")
+        with open(os.path.join(gen_dir, "policy.hra"), "w", encoding="utf-8") as stream:
+            stream.write(
+                "LOCUS cash\n"
+                "LOCUS food\n"
+                "ROLE cash: ASSET\n"
+                "ROLE food: EXPENSE\n"
+                "ZERO-ORIGIN cash:jpy\n"
+            )
+        legacy_scheduled = f"SCHED slegacy {today} cash:-999 food:999\n"
+        legacy_path = os.path.join(gen_dir, "scheduled.hra")
+        with open(legacy_path, "w", encoding="utf-8") as stream:
+            stream.write(legacy_scheduled)
+
+        ht = "\t"
+        nl = "\n"
+        with open(os.path.join(household, "actual.loam"), "w", encoding="utf-8") as stream:
+            stream.write(f"LOAM-NORMALIZED-ACTUAL{ht}1{nl}")
+        with open(os.path.join(household, "locus-admission.loam"), "w", encoding="utf-8") as stream:
+            stream.write(
+                f"LOAM-LOCUS-ADMISSION-VOCABULARY{ht}1{nl}"
+                f"LOCUS{ht}cash{nl}"
+                f"LOCUS{ht}food{nl}"
+            )
+        scheduled_path = os.path.join(household, "scheduled.loam")
+        with open(scheduled_path, "w", encoding="utf-8") as stream:
+            stream.write(
+                f"LOAM-SCHEDULED-LIFECYCLE{ht}1{nl}"
+                f"BEGIN{ht}Scheduled{nl}"
+                f"LOAM-SCHEDULED-MEMORY{ht}1{nl}"
+                f"SCHEDULED{ht}scheduled-1{ht}{today}{ht}jpy{nl}"
+                f"CHANGE{ht}cash{ht}-100{nl}"
+                f"CHANGE{ht}food{ht}100{nl}"
+                f"SCHEDULED{ht}scheduled-3{ht}{today}{ht}jpy{nl}"
+                f"CHANGE{ht}cash{ht}-200{nl}"
+                f"CHANGE{ht}food{ht}200{nl}"
+                f"END{ht}Scheduled{nl}"
+                f"BEGIN{ht}Completion{nl}"
+                f"LOAM-SCHEDULED-COMPLETION-MEMORY{ht}1{nl}"
+                f"END{ht}Completion{nl}"
+                f"BEGIN{ht}Retirement{nl}"
+                f"LOAM-SCHEDULED-RETIREMENT-MEMORY{ht}1{nl}"
+                f"END{ht}Retirement{nl}"
+                f"BEGIN{ht}Replacement{nl}"
+                f"LOAM-SCHEDULED-REPLACEMENT-MEMORY{ht}1{nl}"
+                f"END{ht}Replacement{nl}"
+            )
+
+        pid, fd = pty.fork()
+        if pid == 0:
+            env = os.environ.copy()
+            env["TERM"] = "xterm-256color"
+            env["LANG"] = "C.UTF-8"
+            env["LC_ALL"] = "C.UTF-8"
+            env["LC_CTYPE"] = "C.UTF-8"
+            os.execve(harness, [harness, household], env)
+
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 35, 120, 0, 0))
+        output = bytearray()
+        reaped = False
+        try:
+            read_until(fd, output, b"Markers:")
+            mark = len(output)
+            os.write(fd, b"s")
+            read_until(fd, output, b"scheduled-1")
+            canonical_list = bytes(output[mark:])
+            assert b"slegacy" not in canonical_list, canonical_list
+            assert b"scheduled-3" in canonical_list, canonical_list
+
+            # Retire the first canonical obligation from detail.
+            os.write(fd, b"\n")
+            read_until(fd, output, b"c: complete")
+            os.write(fd, b"x")
+            read_until(fd, output, b"Retire scheduled obligation?")
+            os.write(fd, b"y")
+            read_until(fd, output, b"RETIRED")
+            os.write(fd, b"b")
+            read_until(fd, output, b"scheduled-3")
+
+            # Replace scheduled-3. scheduled-2 is the first unused canonical id.
+            os.write(fd, b"\n")
+            read_until(fd, output, b"c: complete")
+            os.write(fd, b"r")
+            read_until(fd, output, b"Replace obligation")
+            os.write(fd, b"y")
+            read_until(fd, output, b"scheduled-2")
+            read_until(fd, output, b"OPEN")
+            os.write(fd, b"b")
+            read_until(fd, output, b"scheduled-2")
+
+            # Create a fresh canonical obligation through the shared Record TUI.
+            os.write(fd, b"n")
+            read_until(fd, output, b"Create Scheduled Obligation")
+            os.write(fd, b"Rent\n")
+            time.sleep(0.05)
+            os.write(fd, b"cash\n")
+            time.sleep(0.05)
+            os.write(fd, b"-500\n")
+            time.sleep(0.05)
+            os.write(fd, b"food\n")
+            time.sleep(0.05)
+            os.write(fd, b"500\n")
+            read_until(fd, output, b"ADMISSION PREVIEW")
+            assert b"canonical Loam" in output
+            os.write(fd, b"\n")
+            read_until(fd, output, b"scheduled-4")
+
+            # The newly created item is due today and sorts before scheduled-2.
+            os.write(fd, b"\n")
+            read_until(fd, output, b"scheduled-4")
+            read_until(fd, output, b"c: complete")
+            os.write(fd, b"c")
+            read_until(fd, output, b"Complete Scheduled: scheduled-4")
+            os.write(fd, b"\n\n\n\n\n")
+            read_until(fd, output, b"Completes:    scheduled-4")
+            assert b"canonical Loam" in output
+            os.write(fd, b"\n")
+            read_until(fd, output, b"COMPLETED (Actual: scheduled-completion:scheduled-4)")
+
+            os.write(fd, b"b")
+            read_until(fd, output, b"scheduled-2")
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
+            os.write(fd, b"q")
+
+            deadline = time.monotonic() + 8.0
+            while time.monotonic() < deadline:
+                exited, status = os.waitpid(pid, os.WNOHANG)
+                if exited == pid:
+                    reaped = True
+                    assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+                    break
+                ready, _, _ = select.select([fd], [], [], 0.1)
+                if ready:
+                    try:
+                        output.extend(os.read(fd, 4096))
+                    except OSError:
+                        pass
+            assert reaped, "Canonical Scheduled TUI did not quit"
+        finally:
+            if not reaped:
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+            os.close(fd)
+
+        with open(scheduled_path, encoding="utf-8") as stream:
+            scheduled_after = stream.read()
+        with open(os.path.join(household, "actual.loam"), encoding="utf-8") as stream:
+            actual_after = stream.read()
+        with open(legacy_path, encoding="utf-8") as stream:
+            legacy_after = stream.read()
+
+        assert "RETIREMENT\tscheduled-1\n" in scheduled_after
+        assert "REPLACEMENT\tscheduled-3\tscheduled-2\n" in scheduled_after
+        assert f"SCHEDULED\tscheduled-4\t{today}\tjpy\n" in scheduled_after
+        assert "COMPLETION\tscheduled-4\tscheduled-completion:scheduled-4\n" in scheduled_after
+        assert "scheduled-completion:scheduled-4" in actual_after
+        assert legacy_after == legacy_scheduled
+        with open(selector, encoding="utf-8") as stream:
+            assert stream.read() == "g00000001\n"
+
+        print("Canonical Scheduled PTY: read/create/complete/retire/replace stayed on Loam authority")
+    finally:
+        shutil.rmtree(household, ignore_errors=True)
+
+
 if __name__ == "__main__":
     main()
+    test_canonical_scheduled_tui()
     test_statement_evidence()
     test_month_end_budget()
     test_month_end_budget(foreign_capacity=True)
