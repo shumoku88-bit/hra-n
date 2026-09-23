@@ -212,6 +212,12 @@ package body Test_Home_Query is
          View : constant HRA_N.Application.Home_Query.Home_View :=
            HRA_N.Application.Home_Query.Execute (Paths, (Selected_Day => Day));
       begin
+         Assert
+           (View.Status = Query_Partial,
+            "mixed canonical Actual and transitional Home evidence stays partial");
+         Assert
+           (View.Diagnostic_Len > 0,
+            "mixed Home authority carries an explicit diagnostic");
          Assert_Equal_Int
            (3, Long_Long_Integer (View.Total_Actual),
             "Home total Actual follows canonical shared query");
