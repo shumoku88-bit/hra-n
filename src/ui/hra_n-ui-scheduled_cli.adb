@@ -211,9 +211,14 @@ package body HRA_N.UI.Scheduled_Cli is
                then Make_Token (Existing_Actual_Str)
                else (0, [others => ' '])));
       begin
-         if Canonical_Authority_Present (Data_Dir_Str (Paths)) then
-            declare
-               Canonical : constant Canonical_Complete_Result :=
+         declare
+            Probe_Result : constant Authority_Probe :=
+              Probe (Data_Dir_Str (Paths));
+         begin
+            case Probe_Result.State is
+               when Canonical_Present =>
+                  declare
+                     Canonical : constant Canonical_Complete_Result :=
                  Complete_Loam_Scheduled (Data_Dir_Str (Paths), Intent);
             begin
                if Canonical.State = Canonical_Completion_Not_Published then
@@ -268,8 +273,8 @@ package body HRA_N.UI.Scheduled_Cli is
                end if;
                Put_Line ("============================================================");
             end;
-         else
-            declare
+               when Legacy_Only =>
+                  declare
                Prop_Res : constant Proposal_Result :=
                  Propose_Completion (Paths, Intent);
             begin
@@ -303,7 +308,16 @@ package body HRA_N.UI.Scheduled_Cli is
                   Put_Line ("============================================================");
                end;
             end;
-         end if;
+               when Probe_Failed =>
+                  Put_Error_Line
+                    ("hra-n: authority probe failed: "
+                     & Probe_Result.Diagnostic
+                         (1 .. Probe_Result.Diagnostic_Len));
+                  Ada.Command_Line.Set_Exit_Status
+                    (Ada.Command_Line.Failure);
+                  return;
+            end case;
+         end;
       end;
    end Complete_Scheduled;
 
@@ -336,8 +350,13 @@ package body HRA_N.UI.Scheduled_Cli is
          Intent : constant Retire_Intent :=
            (Target_Id => Make_Token (Selected_Id_Str (1 .. Selected_Id_Len)));
       begin
-         if Canonical_Authority_Present (Data_Dir_Str (Paths)) then
-            declare
+         declare
+            Probe_Result : constant Authority_Probe :=
+              Probe (Data_Dir_Str (Paths));
+         begin
+            case Probe_Result.State is
+               when Canonical_Present =>
+                  declare
                Canonical : constant Canonical_Retire_Result :=
                  Retire_Loam_Scheduled (Data_Dir_Str (Paths), Intent);
             begin
@@ -375,8 +394,8 @@ package body HRA_N.UI.Scheduled_Cli is
                end if;
                Put_Line ("============================================================");
             end;
-         else
-            declare
+               when Legacy_Only =>
+                  declare
                Prop_Res : constant Proposal_Result :=
                  Propose_Retirement (Paths, Intent);
             begin
@@ -410,7 +429,16 @@ package body HRA_N.UI.Scheduled_Cli is
                   Put_Line ("============================================================");
                end;
             end;
-         end if;
+               when Probe_Failed =>
+                  Put_Error_Line
+                    ("hra-n: authority probe failed: "
+                     & Probe_Result.Diagnostic
+                         (1 .. Probe_Result.Diagnostic_Len));
+                  Ada.Command_Line.Set_Exit_Status
+                    (Ada.Command_Line.Failure);
+                  return;
+            end case;
+         end;
       end;
    end Retire_Scheduled;
 
@@ -460,8 +488,13 @@ package body HRA_N.UI.Scheduled_Cli is
             Measure      => (Token => Make_Token (Measure_Str)),
             Amount       => Amount);
       begin
-         if Canonical_Authority_Present (Data_Dir_Str (Paths)) then
-            declare
+         declare
+            Probe_Result : constant Authority_Probe :=
+              Probe (Data_Dir_Str (Paths));
+         begin
+            case Probe_Result.State is
+               when Canonical_Present =>
+                  declare
                Canonical : constant Canonical_Create_Result :=
                  Create_Loam_Scheduled (Data_Dir_Str (Paths), Intent);
             begin
@@ -503,8 +536,8 @@ package body HRA_N.UI.Scheduled_Cli is
                end if;
                Put_Line ("============================================================");
             end;
-         else
-            declare
+               when Legacy_Only =>
+                  declare
                Prop_Res : constant Proposal_Result :=
                  Propose_Create (Paths, Intent);
             begin
@@ -538,7 +571,16 @@ package body HRA_N.UI.Scheduled_Cli is
                   Put_Line ("============================================================");
                end;
             end;
-         end if;
+               when Probe_Failed =>
+                  Put_Error_Line
+                    ("hra-n: authority probe failed: "
+                     & Probe_Result.Diagnostic
+                         (1 .. Probe_Result.Diagnostic_Len));
+                  Ada.Command_Line.Set_Exit_Status
+                    (Ada.Command_Line.Failure);
+                  return;
+            end case;
+         end;
       end;
    end Add_Scheduled;
 
@@ -599,8 +641,13 @@ package body HRA_N.UI.Scheduled_Cli is
             Measure      => (Token => Make_Token (Measure_Str)),
             Amount       => Amount);
       begin
-         if Canonical_Authority_Present (Data_Dir_Str (Paths)) then
-            declare
+         declare
+            Probe_Result : constant Authority_Probe :=
+              Probe (Data_Dir_Str (Paths));
+         begin
+            case Probe_Result.State is
+               when Canonical_Present =>
+                  declare
                Canonical : constant Canonical_Replace_Result :=
                  Replace_Loam_Scheduled (Data_Dir_Str (Paths), Intent);
             begin
@@ -648,8 +695,8 @@ package body HRA_N.UI.Scheduled_Cli is
                end if;
                Put_Line ("============================================================");
             end;
-         else
-            declare
+               when Legacy_Only =>
+                  declare
                Prop_Res : constant Proposal_Result :=
                  Propose_Replacement (Paths, Intent);
             begin
@@ -685,7 +732,16 @@ package body HRA_N.UI.Scheduled_Cli is
                   Put_Line ("============================================================");
                end;
             end;
-         end if;
+               when Probe_Failed =>
+                  Put_Error_Line
+                    ("hra-n: authority probe failed: "
+                     & Probe_Result.Diagnostic
+                         (1 .. Probe_Result.Diagnostic_Len));
+                  Ada.Command_Line.Set_Exit_Status
+                    (Ada.Command_Line.Failure);
+                  return;
+            end case;
+         end;
       end;
    end Replace_Scheduled;
 

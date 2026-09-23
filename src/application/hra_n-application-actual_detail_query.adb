@@ -38,15 +38,29 @@ package body HRA_N.Application.Actual_Detail_Query is
          return Result;
       end if;
 
-      if Canonical_Authority_Present (Data_Dir_Str (Paths)) then
-         declare
-            Canonical_Path : constant String :=
-              Ada.Directories.Compose
-                (Data_Dir_Str (Paths), "actual.loam");
-         begin
-            return Execute_Loam_Actual (Canonical_Path, Event_Id);
-         end;
-      end if;
+      declare
+         Probe_Result : constant Authority_Probe :=
+           Probe (Data_Dir_Str (Paths));
+      begin
+         case Probe_Result.State is
+            when Canonical_Present =>
+               declare
+                  Canonical_Path : constant String :=
+                    Ada.Directories.Compose
+                      (Data_Dir_Str (Paths), "actual.loam");
+               begin
+                  return Execute_Loam_Actual (Canonical_Path, Event_Id);
+               end;
+            when Probe_Failed =>
+               Set_Diagnostic
+                 ("Authority probe failed: "
+                  & Probe_Result.Diagnostic
+                      (1 .. Probe_Result.Diagnostic_Len));
+               return Result;
+            when Legacy_Only =>
+               null;
+         end case;
+      end;
 
       if Paths.Is_Versioned then
          Result.Snapshot :=

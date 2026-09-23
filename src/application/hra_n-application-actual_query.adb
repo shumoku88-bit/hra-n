@@ -222,22 +222,39 @@ package body HRA_N.Application.Actual_Query is
             Identity => Make_Token (Snapshot_Id_Str (Paths)));
       end if;
 
-      if Canonical_Authority_Present (Data_Dir_Str (Paths)) then
-         declare
-            Canonical_Path : constant String :=
-              Ada.Directories.Compose
-                (Data_Dir_Str (Paths), "actual.loam");
-         begin
-            return Execute_Loam_Actual (Canonical_Path, Request);
-         end;
-      else
-         declare
-            Journal : constant Journal_Result :=
-              Read_Journal_File (Journal_Path_Str (Paths));
-         begin
-            return Project (Journal, Request, Snap);
-         end;
-      end if;
+      declare
+         Probe_Result : constant Authority_Probe :=
+           Probe (Data_Dir_Str (Paths));
+      begin
+         case Probe_Result.State is
+            when Canonical_Present =>
+               declare
+                  Canonical_Path : constant String :=
+                    Ada.Directories.Compose
+                      (Data_Dir_Str (Paths), "actual.loam");
+               begin
+                  return Execute_Loam_Actual (Canonical_Path, Request);
+               end;
+            when Legacy_Only =>
+               declare
+                  Journal : constant Journal_Result :=
+                    Read_Journal_File (Journal_Path_Str (Paths));
+               begin
+                  return Project (Journal, Request, Snap);
+               end;
+            when Probe_Failed =>
+               declare
+                  Result : Actual_View := Initial_View (Request, Snap);
+               begin
+                  Set_Diagnostic
+                    (Result,
+                     "Authority probe failed: "
+                     & Probe_Result.Diagnostic
+                         (1 .. Probe_Result.Diagnostic_Len));
+                  return Result;
+               end;
+         end case;
+      end;
    end Execute;
 
    function Execute_Loam_Actual

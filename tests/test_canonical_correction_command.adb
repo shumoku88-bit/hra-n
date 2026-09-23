@@ -181,7 +181,7 @@ package body Test_Canonical_Correction_Command is
              (Root, Intent ("replacement-2", 25), False);
       begin
          Assert
-           (Canonical_Authority_Present (Root),
+           (Probe (Root).State = Canonical_Present,
             "partial canonical authority still selects canonical route");
          Assert
            (Partial.State = Canonical_Not_Published,

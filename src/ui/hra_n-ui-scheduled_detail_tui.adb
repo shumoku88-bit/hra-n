@@ -182,10 +182,13 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                      Confirm : constant Integer := Integer (Curses.Get_Keystroke);
                   begin
                      if Confirm = Character'Pos ('y') or else Confirm = Character'Pos ('Y') then
-                        if Canonical_Authority_Present
-                          (Data_Dir_Str (Current_Paths))
-                        then
-                           declare
+                        declare
+                           Probe_Result : constant Authority_Probe :=
+                             Probe (Data_Dir_Str (Current_Paths));
+                        begin
+                           case Probe_Result.State is
+                              when Canonical_Present =>
+                                 declare
                               Res : constant Canonical_Retire_Result :=
                                 Retire_Loam_Scheduled
                                   (Data_Dir_Str (Current_Paths),
@@ -199,8 +202,8 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                                      (Data_Dir_Str (Current_Paths));
                               end if;
                            end;
-                        else
-                           declare
+                              when Legacy_Only =>
+                                 declare
                               Prop : constant Proposal_Result :=
                                 Propose_Retirement
                                   (Current_Paths,
@@ -219,7 +222,10 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                                  end;
                               end if;
                            end;
-                        end if;
+                              when Probe_Failed =>
+                                 null;
+                           end case;
+                        end;
                      end if;
                   end;
                elsif (Key = Character'Pos ('r') or else Key = Character'Pos ('R'))
@@ -268,10 +274,13 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                                  Measure      => (Token => View.Measure),
                                  Amount       => Amt);
                            begin
-                              if Canonical_Authority_Present
-                                (Data_Dir_Str (Current_Paths))
-                              then
-                                 declare
+                              declare
+                                 Probe_Result : constant Authority_Probe :=
+                                   Probe (Data_Dir_Str (Current_Paths));
+                              begin
+                                 case Probe_Result.State is
+                                    when Canonical_Present =>
+                                       declare
                                     Res : constant Canonical_Replace_Result :=
                                       Replace_Loam_Scheduled
                                         (Data_Dir_Str (Current_Paths),
@@ -286,8 +295,8 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                                        Current_Id := Res.Replacement_Id;
                                     end if;
                                  end;
-                              else
-                                 declare
+                                    when Legacy_Only =>
+                                       declare
                                     Prop : constant Proposal_Result :=
                                       Propose_Replacement
                                         (Current_Paths, Intent);
@@ -309,7 +318,10 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                                        end;
                                     end if;
                                  end;
-                              end if;
+                                    when Probe_Failed =>
+                                       null;
+                                 end case;
+                              end;
                            end;
                         end;
                      end if;
