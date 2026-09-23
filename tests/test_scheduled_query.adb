@@ -139,7 +139,107 @@ package body Test_Scheduled_Query is
          Assert (Det_Miss.Status = Query_Rejected, "Absent identity detail rejects");
       end;
 
-      --  5. Missing scheduled file degrades fail-closed with rejected status
+      --  5. Canonical Scheduled authority wins over retained legacy data.
+      declare
+         HT : constant String := [1 => ASCII.HT];
+         NL : constant String := [1 => ASCII.LF];
+         Canonical_Path : constant String := Test_Dir & "/scheduled.loam";
+         Canonical_Text : constant String :=
+           "LOAM-SCHEDULED-LIFECYCLE" & HT & "1" & NL
+           & "BEGIN" & HT & "Scheduled" & NL
+           & "LOAM-SCHEDULED-MEMORY" & HT & "1" & NL
+           & "SCHEDULED" & HT & "scheduled-10" & HT
+           & "2026-09-15" & HT & "jpy" & NL
+           & "CHANGE" & HT & "cash" & HT & "-321" & NL
+           & "CHANGE" & HT & "food" & HT & "321" & NL
+           & "END" & HT & "Scheduled" & NL
+           & "BEGIN" & HT & "Completion" & NL
+           & "LOAM-SCHEDULED-COMPLETION-MEMORY" & HT & "1" & NL
+           & "END" & HT & "Completion" & NL
+           & "BEGIN" & HT & "Retirement" & NL
+           & "LOAM-SCHEDULED-RETIREMENT-MEMORY" & HT & "1" & NL
+           & "END" & HT & "Retirement" & NL
+           & "BEGIN" & HT & "Replacement" & NL
+           & "LOAM-SCHEDULED-REPLACEMENT-MEMORY" & HT & "1" & NL
+           & "END" & HT & "Replacement" & NL;
+      begin
+         Assert
+           (Write_File_Atomically
+              (Canonical_Path, Canonical_Text, Error, Error_Len),
+            "canonical Scheduled query fixture publishes");
+
+         declare
+            View : constant Scheduled_View :=
+              Execute
+                (Paths,
+                 (Scope        => Scope_All,
+                  Selected_Day => Focus_Day,
+                  Ordering     => Order_Due_Ascending));
+            Detail : constant
+              HRA_N.Application.Scheduled_Detail_Query.Scheduled_Detail_View :=
+                HRA_N.Application.Scheduled_Detail_Query.Execute
+                  (Paths, Make_Token ("scheduled-10"));
+            Legacy_Miss : constant
+              HRA_N.Application.Scheduled_Detail_Query.Scheduled_Detail_View :=
+                HRA_N.Application.Scheduled_Detail_Query.Execute
+                  (Paths, Make_Token ("s1"));
+         begin
+            Assert
+              (View.Status = Query_Complete,
+               "canonical Scheduled query is complete");
+            Assert_Equal_Int
+              (1, Long_Long_Integer (View.Total_Count),
+               "canonical authority replaces legacy Scheduled answer");
+            Assert
+              (Id_At (View, 1) = "scheduled-10",
+               "canonical Scheduled identity is projected");
+            Assert
+              (View.Snapshot.Kind = Snapshot_Unversioned,
+               "canonical root is not mislabeled as legacy generation snapshot");
+
+            Assert
+              (Detail.Status = Query_Complete,
+               "canonical Scheduled detail is complete");
+            Assert_Equal_Int
+              (-321, Long_Long_Integer (Detail.Changes (1).Amount),
+               "canonical detail retains exact first change");
+            Assert
+              (Legacy_Miss.Status = Query_Rejected,
+               "detail query does not fall back to retained legacy Scheduled");
+         end;
+      end;
+
+      --  6. Partial canonical presence fails closed instead of reading legacy.
+      Ada.Directories.Delete_File (Test_Dir & "/scheduled.loam");
+      Assert
+        (Write_File_Atomically
+           (Test_Dir & "/actual.loam",
+            "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1" & ASCII.LF,
+            Error,
+            Error_Len),
+         "partial canonical marker publishes");
+
+      declare
+         View : constant Scheduled_View :=
+           Execute
+             (Paths,
+              (Scope        => Scope_All,
+               Selected_Day => Focus_Day,
+               Ordering     => Order_Due_Ascending));
+         Detail : constant
+           HRA_N.Application.Scheduled_Detail_Query.Scheduled_Detail_View :=
+             HRA_N.Application.Scheduled_Detail_Query.Execute
+               (Paths, Make_Token ("s1"));
+      begin
+         Assert
+           (View.Status = Query_Rejected,
+            "partial canonical authority rejects Scheduled list");
+         Assert
+           (Detail.Status = Query_Rejected,
+            "partial canonical authority rejects Scheduled detail");
+      end;
+
+      --  7. Missing scheduled file degrades fail-closed with rejected status
       declare
          Absent_Paths : constant Path_Config := Resolve_Paths ("/tmp/hra_n_absent_dir");
          View : constant Scheduled_View :=
