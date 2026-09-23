@@ -6,10 +6,15 @@ on:
   pull_request:
     branches: [ main ]
 
+concurrency:
+  group: hra-n-qualification-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   qualify:
     name: Formal Proof, Unit Tests & Qualification
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout Code
@@ -109,6 +114,12 @@ jobs:
 
       - name: Test LOAM Scheduled Completion Refinement
         run: ./tests/bin/test_runner Test_Loam_Scheduled_Completion_Refinement
+
+      - name: Test LOAM Scheduled Completion Publisher
+        run: ./tests/bin/test_runner Test_Loam_Scheduled_Completion_Publisher
+
+      - name: Test LOAM Scheduled Completion Protocol Refinement
+        run: ./tests/bin/test_runner Test_Loam_Scheduled_Completion_Protocol_Refinement
 
       - name: Test Validity
         run: ./tests/bin/test_runner Test_Validity
