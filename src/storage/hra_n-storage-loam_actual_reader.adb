@@ -4,13 +4,48 @@
 -------------------------------------------------------------------------------
 
 with Ada.Exceptions;
+with Ada.Finalization;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with Ada.Unchecked_Deallocation;
 with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.Loam_Actual_Event_Block;
 use HRA_N.Storage.Loam_Actual_Event_Block;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 
 package body HRA_N.Storage.Loam_Actual_Reader is
+
+   --  The admitted result and its three bounded construction lists are large:
+   --  each evidence family carries capacity for up to 1024 Events.  Keeping
+   --  all four objects in one parser stack frame leaves very little headroom
+   --  on platforms with smaller default thread stacks (notably macOS GUI
+   --  entry points).  Own the construction workspace on the heap instead.
+   --
+   --  Workspace_Owner is limited-controlled so every normal/early/error
+   --  return from the parser releases the allocation automatically.
+   type Reader_Workspace is record
+      Result              : Loam_Actual_Result;
+      Validity_Entries    : Validity_Entry_List;
+      Description_Entries : Description_Entry_List;
+      Metadata_Entries    : Metadata_List;
+   end record;
+
+   type Reader_Workspace_Access is access Reader_Workspace;
+
+   procedure Free_Workspace is new Ada.Unchecked_Deallocation
+     (Object => Reader_Workspace,
+      Name   => Reader_Workspace_Access);
+
+   type Workspace_Owner is
+     new Ada.Finalization.Limited_Controlled with record
+        Data : Reader_Workspace_Access := null;
+     end record;
+
+   overriding procedure Finalize (Owner : in out Workspace_Owner) is
+   begin
+      if Owner.Data /= null then
+         Free_Workspace (Owner.Data);
+      end if;
+   end Finalize;
 
    Header : constant String := "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1";
 
@@ -155,28 +190,31 @@ package body HRA_N.Storage.Loam_Actual_Reader is
    function Read_Loam_Actual_Content
      (Content : String) return Loam_Actual_Result
    is
-      Result : Loam_Actual_Result;
-
-      Validity_Entries    : Validity_Entry_List;
-      Description_Entries : Description_Entry_List;
-      Metadata_Entries    : Metadata_List;
-      Position            : Natural :=
+      Workspace : Workspace_Owner;
+      Position  : Natural :=
         (if Content'Length = 0 then 0 else Content'First);
-      Line_No             : Natural := 0;
+      Line_No   : Natural := 0;
+
+      --  These names preserve the parser's existing logic while moving the
+      --  backing storage out of this call frame.
+      procedure Allocate_Workspace is
+      begin
+         Workspace.Data := new Reader_Workspace;
+      end Allocate_Workspace;
 
       procedure Set_Error
         (At_Line : Natural;
          Message : String)
       is
          N : constant Natural :=
-           Natural'Min (Message'Length, Result.Error_Reason'Length);
+           Natural'Min (Message'Length, Workspace.Data.Result.Error_Reason'Length);
       begin
-         Result.Success := False;
-         Result.Error_Line := At_Line;
-         Result.Error_Reason := [others => ' '];
-         Result.Error_Len := N;
+         Workspace.Data.Result.Success := False;
+         Workspace.Data.Result.Error_Line := At_Line;
+         Workspace.Data.Result.Error_Reason := [others => ' '];
+         Workspace.Data.Result.Error_Len := N;
          if N > 0 then
-            Result.Error_Reason (1 .. N) :=
+            Workspace.Data.Result.Error_Reason (1 .. N) :=
               Message (Message'First .. Message'First + N - 1);
          end if;
       end Set_Error;
@@ -187,10 +225,12 @@ package body HRA_N.Storage.Loam_Actual_Reader is
       is
       begin
          Set_Error (At_Line, Message);
-         return Result;
+         return Workspace.Data.Result;
       end Fail;
 
    begin
+      Allocate_Workspace;
+
       if Content'Length = 0 then
          return Fail (0, "LOAM Actual document is empty");
       elsif Content (Content'Last) /= ASCII.LF then
@@ -213,8 +253,8 @@ package body HRA_N.Storage.Loam_Actual_Reader is
       end;
 
       while Position <= Content'Last loop
-         if Validity_Entries.Count = Max_Admitted_Actual_Events
-           or else Metadata_Entries.Count = Metadata_Count'Last
+         if Workspace.Data.Validity_Entries.Count = Max_Admitted_Actual_Events
+           or else Workspace.Data.Metadata_Entries.Count = Metadata_Count'Last
          then
             return Fail
               (Line_No + 1, "HRA-N Actual bridge capacity exceeded");
@@ -278,58 +318,58 @@ package body HRA_N.Storage.Loam_Actual_Reader is
                           (Error_Line,
                            Decoded.Error_Reason (1 .. Decoded.Error_Len));
                      end if;
-                  elsif Event_Exists (Result.Events, Id (Decoded.Value)) then
+                  elsif Event_Exists (Workspace.Data.Result.Events, Id (Decoded.Value)) then
                      return Fail (Block_Start, "duplicate Event identity");
                   elsif Decoded.Has_Description
                     and then
-                      Description_Entries.Count = Description_Count_Type'Last
+                      Workspace.Data.Description_Entries.Count = Description_Count_Type'Last
                   then
                      return Fail
                        (Block_Start,
                         "HRA-N description bridge capacity exceeded");
                   end if;
 
-                  Result.Events.Append (Decoded.Value);
+                  Workspace.Data.Result.Events.Append (Decoded.Value);
 
-                  Validity_Entries.Count := Validity_Entries.Count + 1;
-                  Validity_Entries.Values (Validity_Entries.Count) :=
+                  Workspace.Data.Validity_Entries.Count := Workspace.Data.Validity_Entries.Count + 1;
+                  Workspace.Data.Validity_Entries.Values (Workspace.Data.Validity_Entries.Count) :=
                     Decoded.Validity;
 
                   if Decoded.Has_Description then
-                     Description_Entries.Count :=
-                       Description_Entries.Count + 1;
-                     Description_Entries.Values
-                       (Description_Entries.Count) := Decoded.Description;
+                     Workspace.Data.Description_Entries.Count :=
+                       Workspace.Data.Description_Entries.Count + 1;
+                     Workspace.Data.Description_Entries.Values
+                       (Workspace.Data.Description_Entries.Count) := Decoded.Description;
                   end if;
 
-                  Metadata_Entries.Count := Metadata_Entries.Count + 1;
-                  Metadata_Entries.Values (Metadata_Entries.Count) :=
+                  Workspace.Data.Metadata_Entries.Count := Workspace.Data.Metadata_Entries.Count + 1;
+                  Workspace.Data.Metadata_Entries.Values (Workspace.Data.Metadata_Entries.Count) :=
                     Decoded.Metadata;
                end;
             end;
          end;
       end loop;
 
-      if not Event_Ids_Are_Unique (Validity_Entries)
-        or else not Event_Ids_Are_Unique (Description_Entries)
-        or else not Metadata_Event_Ids_Are_Unique (Metadata_Entries)
+      if not Event_Ids_Are_Unique (Workspace.Data.Validity_Entries)
+        or else not Event_Ids_Are_Unique (Workspace.Data.Description_Entries)
+        or else not Metadata_Event_Ids_Are_Unique (Workspace.Data.Metadata_Entries)
       then
          return Fail
            (Line_No, "duplicate Event identity in decoded evidence");
-      elsif not Replacement_References_Are_Closed (Metadata_Entries)
-        or else not Replacements_Are_One_To_One (Metadata_Entries)
-        or else not Replacements_Are_Acyclic (Metadata_Entries)
+      elsif not Replacement_References_Are_Closed (Workspace.Data.Metadata_Entries)
+        or else not Replacements_Are_One_To_One (Workspace.Data.Metadata_Entries)
+        or else not Replacements_Are_Acyclic (Workspace.Data.Metadata_Entries)
       then
          return Fail (Line_No, "invalid Event replacement topology");
-      elsif not Reversal_References_Are_Closed (Metadata_Entries)
-        or else not Reversals_Are_One_To_One (Metadata_Entries)
-        or else not Reversals_Have_No_Chains (Metadata_Entries)
+      elsif not Reversal_References_Are_Closed (Workspace.Data.Metadata_Entries)
+        or else not Reversals_Are_One_To_One (Workspace.Data.Metadata_Entries)
+        or else not Reversals_Have_No_Chains (Workspace.Data.Metadata_Entries)
       then
          return Fail (Line_No, "invalid reversal topology");
       end if;
 
-      for I in 1 .. Metadata_Entries.Count loop
-         if Metadata_Entries.Values (I).Reverses.Present then
+      for I in 1 .. Workspace.Data.Metadata_Entries.Count loop
+         if Workspace.Data.Metadata_Entries.Values (I).Reverses.Present then
             declare
                Reversal_Event : Event;
                Target_Event   : Event;
@@ -337,13 +377,13 @@ package body HRA_N.Storage.Loam_Actual_Reader is
                Have_Target    : Boolean;
             begin
                Find_Event
-                 (Result.Events,
-                  Metadata_Entries.Values (I).Event,
+                 (Workspace.Data.Result.Events,
+                  Workspace.Data.Metadata_Entries.Values (I).Event,
                   Reversal_Event,
                   Have_Reversal);
                Find_Event
-                 (Result.Events,
-                  Metadata_Entries.Values (I).Reverses.Value,
+                 (Workspace.Data.Result.Events,
+                  Workspace.Data.Metadata_Entries.Values (I).Reverses.Value,
                   Target_Event,
                   Have_Target);
                if not Have_Reversal or else not Have_Target then
@@ -360,11 +400,11 @@ package body HRA_N.Storage.Loam_Actual_Reader is
          end if;
       end loop;
 
-      Result.Validities := Make_Validity_Memory (Validity_Entries);
-      Result.Descriptions := Make_Description_Memory (Description_Entries);
-      Result.Metadata := Make_Metadata_Memory (Metadata_Entries);
-      Result.Success := True;
-      return Result;
+      Workspace.Data.Result.Validities := Make_Validity_Memory (Workspace.Data.Validity_Entries);
+      Workspace.Data.Result.Descriptions := Make_Description_Memory (Workspace.Data.Description_Entries);
+      Workspace.Data.Result.Metadata := Make_Metadata_Memory (Workspace.Data.Metadata_Entries);
+      Workspace.Data.Result.Success := True;
+      return Workspace.Data.Result;
 
    exception
       when E : others =>
@@ -382,37 +422,37 @@ package body HRA_N.Storage.Loam_Actual_Reader is
    is
       Exact : constant HRA_N.Storage.Exact_File.Read_Result :=
         HRA_N.Storage.Exact_File.Read_All (Path);
-      Result : Loam_Actual_Result;
       Message : constant String := "cannot read LOAM Actual file";
    begin
       if not Exact.Success then
-         Result.Error_Line := 0;
-         Result.Error_Len := Message'Length;
-         Result.Error_Reason (1 .. Message'Length) := Message;
-         return Result;
+         return Failure : Loam_Actual_Result do
+            Failure.Error_Line := 0;
+            Failure.Error_Len := Message'Length;
+            Failure.Error_Reason (1 .. Message'Length) := Message;
+         end return;
       end if;
 
       return Read_Loam_Actual_Content (To_String (Exact.Content));
    exception
       when E : others =>
          declare
-            Fallback : Loam_Actual_Result;
-            Text     : constant String :=
+            Text : constant String :=
               "unexpected LOAM Actual file-reader failure: "
               & Ada.Exceptions.Exception_Name (E)
               & (if Ada.Exceptions.Exception_Message (E)'Length = 0
                  then ""
                  else ": " & Ada.Exceptions.Exception_Message (E));
-            N        : constant Natural :=
-              Natural'Min (Text'Length, Fallback.Error_Reason'Length);
          begin
-            Fallback.Error_Line := 0;
-            Fallback.Error_Len := N;
-            if N > 0 then
-               Fallback.Error_Reason (1 .. N) :=
-                 Text (Text'First .. Text'First + N - 1);
-            end if;
-            return Fallback;
+            return Fallback : Loam_Actual_Result do
+               Fallback.Error_Line := 0;
+               Fallback.Error_Len :=
+                 Natural'Min (Text'Length, Fallback.Error_Reason'Length);
+               if Fallback.Error_Len > 0 then
+                  Fallback.Error_Reason (1 .. Fallback.Error_Len) :=
+                    Text
+                      (Text'First .. Text'First + Fallback.Error_Len - 1);
+               end if;
+            end return;
          end;
    end Read_Loam_Actual_File;
 
