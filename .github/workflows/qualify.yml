@@ -133,6 +133,12 @@ jobs:
       - name: Test LOAM Scheduled Retirement Refinement
         run: ./tests/bin/test_runner Test_Loam_Scheduled_Retirement_Refinement
 
+      - name: Test LOAM Scheduled Replacement Writer
+        run: ./tests/bin/test_runner Test_Loam_Scheduled_Replacement_Writer
+
+      - name: Test LOAM Scheduled Replacement Refinement
+        run: ./tests/bin/test_runner Test_Loam_Scheduled_Replacement_Refinement
+
       - name: Test Validity
         run: ./tests/bin/test_runner Test_Validity
 
