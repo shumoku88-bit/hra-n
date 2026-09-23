@@ -941,10 +941,11 @@ def test_canonical_scheduled_tui() -> None:
         reaped = False
         try:
             read_until(fd, output, b"Markers:")
-            mark = len(output)
             os.write(fd, b"s")
             read_until(fd, output, b"scheduled-1")
-            canonical_list = bytes(output[mark:])
+            scheduled_screen_at = output.rfind(b"SCHEDULED  CURRENT OPEN")
+            assert scheduled_screen_at >= 0, bytes(output)
+            canonical_list = bytes(output[scheduled_screen_at:])
             assert b"slegacy" not in canonical_list, canonical_list
             assert b"scheduled-3" in canonical_list, canonical_list
 
