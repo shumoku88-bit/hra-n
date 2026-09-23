@@ -18,6 +18,8 @@ with HRA_N.Storage.Loam_Scheduled_Creation_Refinement;
 with HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader;
 with HRA_N.Storage.Loam_Scheduled_Completion_Publisher;
 with HRA_N.Storage.Loam_Scheduled_Completion_Protocol_Refinement;
+with HRA_N.Storage.Loam_Scheduled_Retirement_Writer;
+with HRA_N.Storage.Loam_Scheduled_Retirement_Refinement;
 with HRA_N.Storage.Loam_Actual_Reader;
 
 package body HRA_N.Application.Scheduled_Command is
@@ -37,9 +39,15 @@ package body HRA_N.Application.Scheduled_Command is
      HRA_N.Storage.Loam_Scheduled_Completion_Protocol_Refinement;
    package Canonical_Actual_Reader renames
      HRA_N.Storage.Loam_Actual_Reader;
+   package Retirement_Publisher renames
+     HRA_N.Storage.Loam_Scheduled_Retirement_Writer;
+   package Retirement_Refinement renames
+     HRA_N.Storage.Loam_Scheduled_Retirement_Refinement;
 
    use type Completion_Publisher.Completion_Publication_State;
    use type Completion_Protocol_Refinement.Qualification_Status;
+   use type Retirement_Publisher.Retirement_Publication_State;
+   use type Retirement_Refinement.Qualification_Status;
 
    function Canonical_Authority_Present
      (Root_Path : String) return Boolean
@@ -453,6 +461,117 @@ package body HRA_N.Application.Scheduled_Command is
          end if;
          return Result;
    end Complete_Loam_Scheduled;
+
+   function Retire_Loam_Scheduled
+     (Root_Path : String;
+      Intent    : Retire_Intent) return Canonical_Retire_Result
+   is
+      Result : Canonical_Retire_Result;
+
+      procedure Set_Diagnostic (Message : String) is
+         Len : constant Natural :=
+           Natural'Min (Message'Length, Result.Diagnostic'Length);
+      begin
+         Result.Diagnostic := [others => ' '];
+         Result.Diagnostic_Len := Len;
+         if Len > 0 then
+            Result.Diagnostic (1 .. Len) :=
+              Message (Message'First .. Message'First + Len - 1);
+         end if;
+      end Set_Diagnostic;
+
+   begin
+      if Root_Path'Length = 0 then
+         Set_Diagnostic ("canonical data root must not be empty");
+         return Result;
+      elsif Intent.Target_Id.Length = 0 then
+         Set_Diagnostic
+           ("canonical Scheduled retirement requires a target identity");
+         return Result;
+      end if;
+
+      declare
+         Scheduled_Path : constant String :=
+           Ada.Directories.Compose (Root_Path, "scheduled.loam");
+         Before : constant Canonical_Reader.Read_Result :=
+           Canonical_Reader.Read_File (Scheduled_Path);
+      begin
+         if not Before.Success then
+            if Before.Error_Len > 0 then
+               Set_Diagnostic
+                 ("canonical Scheduled before-image unavailable: "
+                  & Before.Error_Reason (1 .. Before.Error_Len));
+            else
+               Set_Diagnostic
+                 ("canonical Scheduled before-image is not admitted");
+            end if;
+            return Result;
+         end if;
+
+         declare
+            Published : constant Retirement_Publisher.Publish_Result :=
+              Retirement_Publisher.Publish_Retirement
+                (Root_Path, (Token => Intent.Target_Id));
+         begin
+            if Published.State =
+              Retirement_Publisher.Retirement_Not_Published
+            then
+               if Published.Error_Len > 0 then
+                  Set_Diagnostic
+                    (Published.Error_Reason (1 .. Published.Error_Len));
+               else
+                  Set_Diagnostic
+                    ("canonical Scheduled retirement was rejected");
+               end if;
+               return Result;
+            end if;
+
+            Result.State :=
+              Canonical_Retirement_Published_Readback_Unverified;
+
+            declare
+               After : constant Canonical_Reader.Read_Result :=
+                 Canonical_Reader.Read_File (Scheduled_Path);
+               Qualified : constant Retirement_Refinement.Qualification_Result :=
+                 Retirement_Refinement.Qualify_One_Fresh_Retirement
+                   (Before, After);
+               Matches : constant Boolean :=
+                 Qualified.Status = Retirement_Refinement.Qualified
+                 and then Equal_Token
+                   (Qualified.Added.Scheduled.Token, Intent.Target_Id);
+            begin
+               if Matches then
+                  Result.State :=
+                    Canonical_Retirement_Published_Readback_Verified;
+                  Result.Diagnostic_Len := 0;
+               elsif not After.Success and then After.Error_Len > 0 then
+                  Set_Diagnostic
+                    ("retirement was published; canonical read-back failed: "
+                     & After.Error_Reason (1 .. After.Error_Len));
+               else
+                  Set_Diagnostic
+                    ("retirement was published; proved before/after "
+                     & "refinement did not match");
+               end if;
+            end;
+         end;
+      end;
+
+      return Result;
+
+   exception
+      when E : others =>
+         if Result.State = Canonical_Retirement_Not_Published then
+            Set_Diagnostic
+              ("unexpected canonical Scheduled retirement failure: "
+               & Ada.Exceptions.Exception_Message (E));
+         else
+            Set_Diagnostic
+              ("retirement was published; application read-back failed: "
+               & Ada.Exceptions.Exception_Message (E));
+         end if;
+         return Result;
+   end Retire_Loam_Scheduled;
 
    function Propose_Create
      (Paths  : Path_Config;
