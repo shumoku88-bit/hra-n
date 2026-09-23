@@ -7,6 +7,8 @@
 --  production CLI/core dependency surface.
 ------------------------------------------------------------------------------
 
+with Ada.Command_Line;
+with Ada.Exceptions;
 with Ada.Text_IO;
 
 with Cairo;               use Cairo;
@@ -174,4 +176,5 @@ exception
         (Ada.Text_IO.Standard_Error,
          "hra-n-gui: GtkAda/Cairo spike failed: "
          & Ada.Exceptions.Exception_Message (E));
+      Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
 end HRA_N_GUI;
