@@ -1,5 +1,6 @@
 with Ada.Directories;
 with Ada.Strings;
+with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 with HRA_N.Application.Canonical_Activity_Query;
 use HRA_N.Application.Canonical_Activity_Query;
