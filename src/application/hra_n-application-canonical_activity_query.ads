@@ -8,6 +8,7 @@
 --  authorities in one screen.
 -------------------------------------------------------------------------------
 
+with Ada.Finalization;
 with HRA_N.Application.Canonical_Balance_Query;
 with HRA_N.Core.Description;
 with HRA_N.Core.Types;    use HRA_N.Core.Types;
@@ -84,12 +85,23 @@ package HRA_N.Application.Canonical_Activity_Query is
 
 private
 
-   type Browser_Snapshot is record
-      Is_Ready : Boolean := False;
-      Actual   : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
-      Balances : HRA_N.Application.Canonical_Balance_Query.Balance_View;
-      Message  : String (1 .. 192) := [others => ' '];
-      Msg_Len  : Natural := 0;
+   type Snapshot_Data;
+   type Snapshot_Data_Access is access Snapshot_Data;
+
+   type Browser_Snapshot is new Ada.Finalization.Controlled with record
+      Data : Snapshot_Data_Access := null;
+   end record;
+
+   overriding procedure Adjust (Source : in out Browser_Snapshot);
+   overriding procedure Finalize (Source : in out Browser_Snapshot);
+
+   type Snapshot_Data is record
+      References : Positive := 1;
+      Is_Ready   : Boolean := False;
+      Actual     : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
+      Balances   : HRA_N.Application.Canonical_Balance_Query.Balance_View;
+      Message    : String (1 .. 192) := [others => ' '];
+      Msg_Len    : Natural := 0;
    end record;
 
 end HRA_N.Application.Canonical_Activity_Query;
