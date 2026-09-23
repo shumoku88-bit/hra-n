@@ -110,6 +110,9 @@ jobs:
       - name: Test LOAM Scheduled Completion Refinement
         run: ./tests/bin/test_runner Test_Loam_Scheduled_Completion_Refinement
 
+      - name: Test LOAM Scheduled Completion Publisher
+        run: ./tests/bin/test_runner Test_Loam_Scheduled_Completion_Publisher
+
       - name: Test Validity
         run: ./tests/bin/test_runner Test_Validity
 
