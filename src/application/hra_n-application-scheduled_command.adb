@@ -397,8 +397,7 @@ package body HRA_N.Application.Scheduled_Command is
                   declare
                      Qualified : constant
                        Completion_Protocol_Refinement.Qualification_Result :=
-                         Completion_Protocol_Refinement
-                           .Qualify_Fresh_Relation_First
+                         Completion_Protocol_Refinement.Qualify_Fresh_Relation_First
                              (Before_Scheduled,
                               Before_Actual,
                               After_Scheduled,
