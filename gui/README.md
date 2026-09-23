@@ -84,3 +84,40 @@ alr update
 alr build
 alr run
 ```
+
+
+## Canonical read-only data
+
+The next slice reads `actual.loam` directly through
+`HRA_N.Application.Canonical_Balance_Query`.
+
+Run against a canonical data root containing `actual.loam`:
+
+```sh
+cd gui
+alr build
+alr exec -- ./bin/hra-n-gui /path/to/canonical-data
+```
+
+Alternatively set `HRA_DATA_DIR` and run without an argument.
+
+The first real view deliberately shows only what canonical Actual can currently
+justify:
+
+- physical Event count,
+- active Event count after replacement projection,
+- superseded Event count,
+- per-`(Locus, Measure)` recorded inflow,
+- recorded outflow,
+- recorded net change.
+
+A replacement's superseded Event is excluded. A reversal remains an active
+physical inverse Event, matching HRA-N's retained reversal semantics.
+
+The GUI does **not** currently label coordinates as Asset, Liability, Income,
+Expense, or known opening balance. Those interpretations are not yet present in
+the canonical HRA-N evidence read by this view. The Cairo chart is therefore
+named **Recorded movement**, not Stock-Flow Bridge.
+
+That distinction is intentional: presentation must not manufacture accounting
+knowledge that the admitted authority does not contain.
