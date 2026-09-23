@@ -161,7 +161,7 @@ package body HRA_N.UI.Scheduled_Cli is
    is
       Selected_Id_Str : String (1 .. Max_Token_Length) := [others => ' '];
       Selected_Id_Len : Natural := 0;
-      Target_Date     : Date_Type;
+      Target_Date     : Date_Type := Get_System_Date;
       Has_Target_Date : Boolean := False;
    begin
       if Target_Str'Length > 0 then
