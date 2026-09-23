@@ -13,6 +13,20 @@ with HRA_N.Application.Actual_Query;
 
 package body HRA_N.Application.Home_Query is
 
+   function Same_Snapshot
+     (Left, Right : Frontend_Types.Snapshot_Reference) return Boolean
+   is
+      use HRA_N.Application.Frontend_Types;
+   begin
+      if Left.Kind /= Right.Kind then
+         return False;
+      elsif Left.Kind = Snapshot_Unversioned then
+         return True;
+      else
+         return Equal_Token (Left.Identity, Right.Identity);
+      end if;
+   end Same_Snapshot;
+
    function Project_With_Actual
      (JR       : HRA_N.Storage.Journal_Reader.Journal_Result;
       PR       : HRA_N.Storage.Policy_Reader.Policy_Result;
@@ -131,6 +145,15 @@ package body HRA_N.Application.Home_Query is
          else
             Set_Diagnostic ("Actual observation is partial");
          end if;
+      elsif Result.Status = Query_Complete
+        and then not Same_Snapshot (Actual.Snapshot, Snapshot)
+      then
+         --  The two observations are individually admitted, but HRA-N has not
+         --  established an atomic correspondence between canonical Actual and
+         --  the transitional generation-backed Home evidence.
+         Result.Status := Query_Partial;
+         Set_Diagnostic
+           ("Home combines canonical Actual with transitional generation evidence");
       end if;
 
       return Result;
