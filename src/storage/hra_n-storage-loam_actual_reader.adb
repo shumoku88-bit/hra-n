@@ -3,6 +3,7 @@
 --  Package body: HRA_N.Storage.Loam_Actual_Reader
 -------------------------------------------------------------------------------
 
+with Ada.Exceptions;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.Loam_Actual_Event_Block;
@@ -366,9 +367,14 @@ package body HRA_N.Storage.Loam_Actual_Reader is
       return Result;
 
    exception
-      when others =>
+      when E : others =>
          return Fail
-           (Line_No, "unexpected LOAM Actual reader failure");
+           (Line_No,
+            "unexpected LOAM Actual reader failure: "
+            & Ada.Exceptions.Exception_Name (E)
+            & (if Ada.Exceptions.Exception_Message (E)'Length = 0
+               then ""
+               else ": " & Ada.Exceptions.Exception_Message (E)));
    end Read_Loam_Actual_Content;
 
    function Read_Loam_Actual_File
@@ -388,15 +394,24 @@ package body HRA_N.Storage.Loam_Actual_Reader is
 
       return Read_Loam_Actual_Content (To_String (Exact.Content));
    exception
-      when others =>
+      when E : others =>
          declare
             Fallback : Loam_Actual_Result;
             Text     : constant String :=
-              "unexpected LOAM Actual reader failure";
+              "unexpected LOAM Actual file-reader failure: "
+              & Ada.Exceptions.Exception_Name (E)
+              & (if Ada.Exceptions.Exception_Message (E)'Length = 0
+                 then ""
+                 else ": " & Ada.Exceptions.Exception_Message (E));
+            N        : constant Natural :=
+              Natural'Min (Text'Length, Fallback.Error_Reason'Length);
          begin
             Fallback.Error_Line := 0;
-            Fallback.Error_Len := Text'Length;
-            Fallback.Error_Reason (1 .. Text'Length) := Text;
+            Fallback.Error_Len := N;
+            if N > 0 then
+               Fallback.Error_Reason (1 .. N) :=
+                 Text (Text'First .. Text'First + N - 1);
+            end if;
             return Fallback;
          end;
    end Read_Loam_Actual_File;
