@@ -167,7 +167,7 @@ procedure HRA_N_GUI is
       Width    : constant Gdouble := 130.0;
       Height   : constant Gdouble :=
         (if Maximum <= 0 then 0.0
-         else 190.0 * Gdouble (Magnitude) / Gdouble (Maximum));
+         else 145.0 * Gdouble (Magnitude) / Gdouble (Maximum));
       Top      : constant Gdouble := Baseline - Height;
    begin
       Set_Source_Rgb (Cr, R, G, B);
@@ -182,10 +182,10 @@ procedure HRA_N_GUI is
    procedure Render_Recorded_Movement
      (View : Balance_View)
    is
-      Surface : Cairo_Surface :=
+      Surface : constant Cairo_Surface :=
         Cairo.Image_Surface.Create
           (Cairo.Image_Surface.Cairo_Format_ARGB32, 900, 410);
-      Cr     : Cairo_Context := Create (Surface);
+      Cr     : constant Cairo_Context := Create (Surface);
       Status : Cairo_Status;
       Index  : constant Natural := Featured_Row (View);
    begin
@@ -278,6 +278,21 @@ begin
    end if;
 
    Render_Recorded_Movement (View);
+
+   Ada.Text_IO.Put_Line
+     ("HRA-N: Loaded canonical read-only view from " & Data_Root);
+   Ada.Text_IO.Put_Line
+     ("HRA-N: Events: "
+      & Trim (Natural'Image (View.Physical_Event_Count), Both)
+      & " physical / "
+      & Trim (Natural'Image (View.Active_Event_Count), Both)
+      & " active / "
+      & Trim (Natural'Image (View.Superseded_Event_Count), Both)
+      & " superseded");
+   Ada.Text_IO.Put_Line
+     ("HRA-N: Coordinates: "
+      & Trim (Natural'Image (Natural (View.Count)), Both));
+   Ada.Text_IO.Put (Balance_Text (View));
 
    Gtk.Main.Init;
 
