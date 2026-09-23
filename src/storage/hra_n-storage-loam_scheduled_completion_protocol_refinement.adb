@@ -15,6 +15,9 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Protocol_Refinement is
    package Scheduled_Refinement renames
      HRA_N.Storage.Loam_Scheduled_Completion_Refinement;
 
+   use type Actual_Refinement.Qualification_Status;
+   use type Scheduled_Refinement.Qualification_Status;
+
    Empty_Event : constant HRA_N.Core.Event.Event :=
      Make_Event
        ((Token => Make_Token ("")),
