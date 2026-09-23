@@ -19,6 +19,7 @@ with Test_Actual_Writer_Transition;
 with Test_Actual_Correction_Transition;
 with Test_Actual_Reversal_Transition;
 with Test_Scheduled_Creation_Transition;
+with Test_Scheduled_Completion_Transition;
 with Test_Loam_Actual_Reader;
 with Test_Loam_Actual_Writer;
 with Test_Loam_Actual_Correction_Writer;
@@ -149,6 +150,11 @@ begin
    if Selected ("Test_Scheduled_Creation_Transition") then
       Announce ("Test_Scheduled_Creation_Transition");
       Test_Scheduled_Creation_Transition.Run;
+   end if;
+
+   if Selected ("Test_Scheduled_Completion_Transition") then
+      Announce ("Test_Scheduled_Completion_Transition");
+      Test_Scheduled_Completion_Transition.Run;
    end if;
 
    if Selected ("Test_Loam_Actual_Reader") then
