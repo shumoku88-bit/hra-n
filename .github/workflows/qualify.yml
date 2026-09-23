@@ -91,6 +91,9 @@ jobs:
       - name: Test LOAM Zero-Origin Coverage Reader
         run: ./tests/bin/test_runner Test_Loam_Zero_Origin_Coverage_Reader
 
+      - name: Test LOAM AccountingRole Reader
+        run: ./tests/bin/test_runner Test_Loam_Accounting_Role_Reader
+
       - name: Test LOAM Actual Writer
         run: ./tests/bin/test_runner Test_Loam_Actual_Writer
 

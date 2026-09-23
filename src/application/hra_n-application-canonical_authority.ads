@@ -3,7 +3,7 @@
 --  Package: HRA_N.Application.Canonical_Authority
 --
 --  Canonical Loam authority discovery across Actual, Scheduled, locus
---  admission, and zero-origin coverage domains.
+--  admission, zero-origin coverage, and current AccountingRole domains.
 ------------------------------------------------------------------------------
 
 package HRA_N.Application.Canonical_Authority is
@@ -21,7 +21,7 @@ package HRA_N.Application.Canonical_Authority is
 
    --  Probe Root_Path for canonical Loam authority markers:
    --  scheduled.loam, actual.loam, locus-admission.loam, or
-   --  zero-origin-coverage.loam.
+   --  zero-origin-coverage.loam, or accounting-role.loam.
    --
    --  - Canonical_Present: One or more canonical markers exist. Partial presence
    --    deliberately selects the canonical route so downstream components fail

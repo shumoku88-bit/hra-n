@@ -57,6 +57,82 @@ is
       Entries : Assignment_Array      := [others => Empty_Assignment];
    end record;
 
+   --  LOAM's canonical authority is a current finite partial map. It carries
+   --  no assignment identity, effective date, or replacement history.
+   type Current_Role_Assignment is record
+      Locus : Locus_Id;
+      Role  : Accounting_Role;
+   end record;
+
+   Empty_Current_Role_Assignment : constant Current_Role_Assignment :=
+     (Locus => (Token => (Length => 0, Value => [others => ' '])),
+      Role  => Role_Asset);
+
+   type Current_Role_Array is
+     array (Assignment_Index_Type) of Current_Role_Assignment;
+
+   type Current_Role_List is record
+      Count   : Assignment_Count_Type := 0;
+      Entries : Current_Role_Array := [others => Empty_Current_Role_Assignment];
+   end record;
+
+   function Current_Loci_Are_Unique
+     (Items : Current_Role_List) return Boolean is
+     (for all I in 1 .. Items.Count =>
+        Items.Entries (I).Locus.Token.Length > 0
+        and then (for all J in I + 1 .. Items.Count =>
+          not Equal_Token
+            (Items.Entries (I).Locus.Token,
+             Items.Entries (J).Locus.Token)));
+
+   type Current_Role_Map is private;
+
+   function Make_Current_Role_Map
+     (Items : Current_Role_List) return Current_Role_Map
+   with Pre => Current_Loci_Are_Unique (Items);
+
+   function Current_Entry_Count
+     (Map : Current_Role_Map) return Assignment_Count_Type;
+
+   function Current_Entry_At
+     (Map   : Current_Role_Map;
+      Index : Assignment_Index_Type) return Current_Role_Assignment
+   with Pre => Index <= Current_Entry_Count (Map);
+
+   procedure Find_Current_Role
+     (Map   : Current_Role_Map;
+      Locus : Locus_Id;
+      Role  : out Accounting_Role;
+      Found : out Boolean);
+
+   --  Explicit lookup capability boundary. Current evidence is never applied
+   --  to an historical as-of request.
+   type Role_Evidence_Kind is (Historical_Role_Evidence, Current_Role_Evidence);
+
+   type Role_Evidence (Kind : Role_Evidence_Kind := Historical_Role_Evidence) is record
+      case Kind is
+         when Historical_Role_Evidence =>
+            Historical : Role_Map;
+         when Current_Role_Evidence =>
+            Current : Current_Role_Map;
+      end case;
+   end record;
+
+   function Evidence_Assignment_Count
+     (Evidence : Role_Evidence) return Natural;
+
+   function Role_History_Available
+     (Evidence : Role_Evidence) return Boolean is
+     (Evidence.Kind = Historical_Role_Evidence);
+
+   procedure Resolve_Role
+     (Evidence  : Role_Evidence;
+      Locus     : Locus_Id;
+      Has_As_Of : Boolean;
+      As_Of     : Date_Type;
+      Role      : out Accounting_Role;
+      Found     : out Boolean);
+
    ----------------------------------------------------------------------------
    --  Alloy Specification Laws (PolicyIsSound, IdentitiesUnique, etc.)
    ----------------------------------------------------------------------------
@@ -225,5 +301,19 @@ is
 
    function Universal_Conservation_Holds (S : Financial_Summary) return Boolean is
      (Conservation_Residual (S) = 0);
+
+private
+   type Current_Role_Map is record
+      Items : Current_Role_List;
+   end record;
+
+   function Current_Entry_Count
+     (Map : Current_Role_Map) return Assignment_Count_Type is
+     (Map.Items.Count);
+
+   function Current_Entry_At
+     (Map   : Current_Role_Map;
+      Index : Assignment_Index_Type) return Current_Role_Assignment is
+     (Map.Items.Entries (Index));
 
 end HRA_N.Core.Accounting_Role;

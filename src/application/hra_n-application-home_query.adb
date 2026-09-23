@@ -3,7 +3,6 @@
 -------------------------------------------------------------------------------
 
 with HRA_N.Core.Types;           use HRA_N.Core.Types;
-with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Attention;
 with HRA_N.Application.Statement; use HRA_N.Application.Statement;
 
@@ -89,7 +88,9 @@ package body HRA_N.Application.Home_Query is
       Result.Total_Scheduled := Scheduled.Total_Count;
       Result.Open_Scheduled := Scheduled.Open_Count;
       Result.Selected_Scheduled := Scheduled.Selected_Day_Open_Count;
-      Result.Role_Assignments := Natural (Entry_Count (PR.Roles));
+      --  Count the role authority selected by Statement, not transitional
+      --  policy.hra roles that canonical mode did not classify with.
+      Result.Role_Assignments := Statement.Role_Assignment_Count;
       --  Count the coverage authority already selected by Statement. In
       --  canonical mode this cannot leak legacy policy.hra ZERO-ORIGIN rows.
       Result.Zero_Origins     := Statement.Zero_Origin_Count;

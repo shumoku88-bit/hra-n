@@ -7,6 +7,72 @@ package body HRA_N.Core.Accounting_Role with
   SPARK_Mode => On
 is
 
+   function Make_Current_Role_Map
+     (Items : Current_Role_List) return Current_Role_Map
+   is
+   begin
+      return (Items => Items);
+   end Make_Current_Role_Map;
+
+   procedure Find_Current_Role
+     (Map   : Current_Role_Map;
+      Locus : Locus_Id;
+      Role  : out Accounting_Role;
+      Found : out Boolean)
+   is
+   begin
+      for I in 1 .. Map.Items.Count loop
+         if Equal_Token
+           (Map.Items.Entries (I).Locus.Token, Locus.Token)
+         then
+            Role := Map.Items.Entries (I).Role;
+            Found := True;
+            return;
+         end if;
+      end loop;
+      Role := Role_Asset;
+      Found := False;
+   end Find_Current_Role;
+
+   function Evidence_Assignment_Count
+     (Evidence : Role_Evidence) return Natural
+   is
+   begin
+      case Evidence.Kind is
+         when Historical_Role_Evidence =>
+            return Natural (Evidence.Historical.Count);
+         when Current_Role_Evidence =>
+            return Natural (Current_Entry_Count (Evidence.Current));
+      end case;
+   end Evidence_Assignment_Count;
+
+   procedure Resolve_Role
+     (Evidence  : Role_Evidence;
+      Locus     : Locus_Id;
+      Has_As_Of : Boolean;
+      As_Of     : Date_Type;
+      Role      : out Accounting_Role;
+      Found     : out Boolean)
+   is
+   begin
+      case Evidence.Kind is
+         when Historical_Role_Evidence =>
+            if Has_As_Of then
+               Find_Role_As_Of
+                 (Evidence.Historical, Locus, As_Of, Role, Found);
+            else
+               Find_Role (Evidence.Historical, Locus, Role, Found);
+            end if;
+         when Current_Role_Evidence =>
+            if Has_As_Of then
+               Role := Role_Asset;
+               Found := False;
+            else
+               Find_Current_Role (Evidence.Current, Locus, Role, Found);
+            end if;
+      end case;
+   end Resolve_Role;
+
    function Has_Successor
      (Map : Role_Map;
       Id  : Token_Text) return Boolean

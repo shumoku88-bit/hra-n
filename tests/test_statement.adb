@@ -60,6 +60,9 @@ package body Test_Statement is
            Execute_Statement_Query (Paths, Mid_Month, Has_As_Of => True);
       begin
          Assert (Rep.Status = Query_Partial, "Statement query preserves unclassified frontier");
+         Assert (Rep.Role_History_Available
+                 and then Rep.Role_Assignment_Count = 4,
+                 "legacy Statement retains historical role capability and assignments");
          Assert_Equal_Int (4, Long_Long_Integer (Rep.Total_Events),
                            "Statement aggregates 4 active events as-of 09-15");
          Assert_Equal_Int (300000, Rep.Summary.Total_Income,
@@ -209,13 +212,14 @@ package body Test_Statement is
          Assert (Rep.Summary.Total_Assets = -20, "Statement and balance use same correction");
       end;
 
-      --  Canonical Actual and Coverage own their respective evidence;
-      --  retained legacy transactions, assertions, and ZERO-ORIGIN rows cannot
-      --  silently become canonical evidence. Accounting Role remains legacy.
+      --  Canonical Actual, Coverage, and current AccountingRole own their
+      --  respective evidence. Legacy role history remains contradictory to
+      --  prove it cannot silently become canonical classification evidence.
       Assert (Write_File_Atomically
                 (Policy_Path_Str (Paths),
-                 "ROLE cash: ASSET" & ASCII.LF &
-                 "ROLE food: EXPENSE" & ASCII.LF &
+                 "ROLE r0001 2026-01-01 cash ASSET" & ASCII.LF &
+                 "ROLE r0002 2026-02-01 cash LIABILITY REPLACES r0001" & ASCII.LF &
+                 "ROLE r0003 2026-01-01 food INCOME" & ASCII.LF &
                  "ZERO-ORIGIN legacy-only:jpy" & ASCII.LF,
                  Error, Error_Len), "mixed Statement legacy policy installs");
       Assert (Write_File_Atomically
@@ -266,43 +270,57 @@ package body Test_Statement is
                     "COORDINATE" & HT & "cash" & HT & "jpy" & NL,
                     Error, Error_Len),
                  "canonical Statement coverage installs");
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/accounting-role.loam",
+                    "LOAM-ACCOUNTING-ROLE-MAP" & HT & "1" & NL &
+                    "ROLE" & HT & "cash" & HT & "ASSET" & NL &
+                    "ROLE" & HT & "food" & HT & "EXPENSE" & NL,
+                    Error, Error_Len),
+                 "canonical current AccountingRole installs");
          declare
-            Before : constant Statement_Report :=
+            Current : constant Statement_Report := Execute_Statement_Query (Paths);
+            Historical : constant Statement_Report :=
               Execute_Statement_Query (Paths, (2026, 9, 15), True);
-            After : constant Statement_Report :=
-              Execute_Statement_Query (Paths, (2026, 9, 20), True);
          begin
-            Assert (Before.Status = Query_Partial and then not Is_Complete (Before),
+            Assert (Current.Status = Query_Partial and then not Is_Complete (Current),
                     "canonical assertion gap prevents complete financial statement");
-            Assert (not Before.Assertion_Evidence_Available
-                    and then Before.Conflict_Count = 0
-                    and then Ada.Strings.Fixed.Index
-                      (Before.Diagnostic (1 .. Before.Diagnostic_Len),
-                       "balance assertion evidence unavailable") > 0,
+            Assert (not Current.Assertion_Evidence_Available
+                    and then Current.Conflict_Count = 0,
                     "zero conflicts is not affirmative canonical assertion evidence");
-            Assert (Before.Actual_Snapshot.Kind = Snapshot_Unversioned,
-                    "canonical transaction source has independent identity");
-            Assert (Before.Is_Versioned = False,
-                    "unversioned fixture retains separate policy source");
-            Assert_Equal_Int (1, Long_Long_Integer (Before.Total_Events),
-                              "superseded and future Actual excluded as-of");
-            Assert_Equal_Int (-20, Before.Summary.Total_Assets,
-                              "canonical corrected amount replaces legacy and old event");
-            Assert_Equal_Int (20, Before.Summary.Total_Expense,
-                              "policy roles interpret canonical effects");
-            Assert_Equal_Int (0, Long_Long_Integer (Before.Unknown_Stock_Count),
-                              "canonical cash coverage establishes stock origin");
-            Assert_Equal_Int (1, Long_Long_Integer (Before.Zero_Origin_Count),
+            Assert (Current.Actual_Snapshot.Kind = Snapshot_Unversioned
+                    and then Current.Role_Snapshot.Kind = Snapshot_Unversioned,
+                    "canonical transaction and role sources have independent identities");
+            Assert (not Current.Role_History_Available
+                    and then Current.Role_Assignment_Count = 2,
+                    "canonical role evidence is current-only with exact count");
+            Assert_Equal_Int (-50, Current.Summary.Total_Assets,
+                              "canonical cash role wins over legacy liability");
+            Assert_Equal_Int (20, Current.Summary.Total_Expense,
+                              "canonical food role wins over legacy income");
+            Assert_Equal_Int (0, Current.Summary.Total_Liabilities,
+                              "legacy liability role does not leak");
+            Assert_Equal_Int (0, Current.Summary.Total_Income,
+                              "legacy income role does not leak");
+            Assert_Equal_Int (1, Long_Long_Integer (Current.Unresolved_Count),
+                              "unassigned canonical mystery locus remains unresolved");
+            Assert_Equal_Int (1, Long_Long_Integer (Current.Zero_Origin_Count),
                               "canonical coverage excludes legacy-only coordinate");
-            Assert (Before.Coverage_Snapshot.Kind = Snapshot_Unversioned
-                    and then Before.Coverage_File_Present,
+            Assert (Current.Coverage_Snapshot.Kind = Snapshot_Unversioned
+                    and then Current.Coverage_File_Present,
                     "canonical coverage has independent unversioned source identity");
-            Assert_Equal_Int (2, Long_Long_Integer (After.Total_Events),
-                              "future canonical event enters after as-of");
-            Assert_Equal_Int (-50, After.Summary.Total_Assets,
-                              "after as-of includes canonical future amount only");
-            Assert_Equal_Int (1, Long_Long_Integer (After.Unresolved_Count),
-                              "canonical unclassified locus is visible");
+
+            Assert (Historical.Status = Query_Partial
+                    and then not Historical.Role_History_Available
+                    and then Historical.Unresolved_Count >= 2,
+                    "current canonical roles are not applied to historical as-of");
+            Assert_Equal_Int (0, Historical.Summary.Total_Assets,
+                              "historical assets remain unclassified without role history");
+            Assert_Equal_Int (0, Historical.Summary.Total_Expense,
+                              "historical expenses remain unclassified without role history");
+            Assert (Ada.Strings.Fixed.Index
+                      (Historical.Diagnostic (1 .. Historical.Diagnostic_Len),
+                       "role history unavailable") > 0,
+                    "historical canonical Statement diagnoses missing role history");
          end;
          --  Home uses the same Statement authority, not a second legacy
          --  transaction stream. Scheduled is present to complete probe selection.
@@ -333,7 +351,49 @@ package body Test_Statement is
                     "Home exposes canonical Statement source separately");
             Assert_Equal_Int (1, Long_Long_Integer (Home.Zero_Origins),
                               "Home counts selected canonical coverage");
+            Assert_Equal_Int (2, Long_Long_Integer (Home.Role_Assignments),
+                              "Home counts canonical roles, not three legacy history rows");
          end;
+
+         --  Canonical Role is required and never falls back to legacy history.
+         Ada.Directories.Delete_File (Test_Dir & "/accounting-role.loam");
+         declare
+            Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+         begin
+            Assert (Rep.Status = Query_Rejected
+                    and then Ada.Strings.Fixed.Index
+                      (Rep.Diagnostic (1 .. Rep.Diagnostic_Len),
+                       "accounting-role.loam") > 0,
+                    "missing canonical role authority rejects without fallback");
+         end;
+
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/accounting-role.loam",
+                    "LOAM-ACCOUNTING-ROLE-MAP" & HT & "1" & NL,
+                    Error, Error_Len), "present-empty canonical role installs");
+         declare
+            Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+         begin
+            Assert (Rep.Status = Query_Partial
+                    and then Rep.Role_Assignment_Count = 0
+                    and then Rep.Unresolved_Count >= 3,
+                    "present-empty canonical role is valid with all loci unresolved");
+         end;
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/accounting-role.loam", "BROKEN" & NL,
+                    Error, Error_Len), "malformed canonical role installs");
+         declare
+            Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+         begin
+            Assert (Rep.Status = Query_Rejected,
+                    "malformed canonical role rejects without fallback");
+         end;
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/accounting-role.loam",
+                    "LOAM-ACCOUNTING-ROLE-MAP" & HT & "1" & NL &
+                    "ROLE" & HT & "cash" & HT & "ASSET" & NL &
+                    "ROLE" & HT & "food" & HT & "EXPENSE" & NL,
+                    Error, Error_Len), "canonical role restored");
 
          --  Missing canonical coverage is empty evidence, never policy fallback.
          Ada.Directories.Delete_File (Test_Dir & "/zero-origin-coverage.loam");

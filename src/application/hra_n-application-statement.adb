@@ -6,6 +6,7 @@
 with Ada.Directories;
 with HRA_N.Application.Canonical_Authority;
 with HRA_N.Storage.Loam_Zero_Origin_Coverage_Reader;
+with HRA_N.Storage.Loam_Accounting_Role_Reader;
 with HRA_N.Core.Event;                use HRA_N.Core.Event;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 
@@ -84,7 +85,7 @@ package body HRA_N.Application.Statement is
 
    function Project_With_Evidence
      (Journal      : Journal_Result;
-      Roles        : Role_Map;
+      Roles        : Role_Evidence;
       Coverage     : Zero_Origin_Coverage;
       Loci         : Locus_Vocabulary;
       As_Of        : Date_Type := (Year => 2026, Month => 1, Day => 1);
@@ -145,6 +146,9 @@ package body HRA_N.Application.Statement is
          else (Kind => Snapshot_Unversioned));
       Result.Coverage_Snapshot := Result.Actual_Snapshot;
       Result.Zero_Origin_Count := Natural (Coordinate_Count (Coverage));
+      Result.Role_Snapshot := Result.Actual_Snapshot;
+      Result.Role_Assignment_Count := Evidence_Assignment_Count (Roles);
+      Result.Role_History_Available := Role_History_Available (Roles);
       Result.Has_As_Of := Has_As_Of;
       Result.As_Of_Date := As_Of;
 
@@ -165,15 +169,30 @@ package body HRA_N.Application.Statement is
          return Result;
       end if;
 
-      --  1. Pre-populate accounts from Role declarations
-      for I in 1 .. Entry_Count (Roles) loop
-         declare
-            Assignment : constant Role_Assignment := Entry_At (Roles, I);
-            Idx        : Natural;
-         begin
-            Ensure_Account (Assignment.Locus, Idx);
-         end;
-      end loop;
+      --  1. Pre-populate accounts from the selected Role evidence without
+      --  converting a current map into historical assignments.
+      case Roles.Kind is
+         when Historical_Role_Evidence =>
+            for I in 1 .. Entry_Count (Roles.Historical) loop
+               declare
+                  Assignment : constant Role_Assignment :=
+                    Entry_At (Roles.Historical, I);
+                  Idx : Natural;
+               begin
+                  Ensure_Account (Assignment.Locus, Idx);
+               end;
+            end loop;
+         when Current_Role_Evidence =>
+            for I in 1 .. Current_Entry_Count (Roles.Current) loop
+               declare
+                  Assignment : constant Current_Role_Assignment :=
+                    Current_Entry_At (Roles.Current, I);
+                  Idx : Natural;
+               begin
+                  Ensure_Account (Assignment.Locus, Idx);
+               end;
+            end loop;
+      end case;
 
       --  Pre-populate from Zero-Origin coverage in policy
       for I in 1 .. Coordinate_Count (Coverage) loop
@@ -277,12 +296,9 @@ package body HRA_N.Application.Statement is
             Role_Val     : Accounting_Role := Role_Asset;
             Has_Role_Val : Boolean := False;
          begin
-            if Has_As_Of then
-               Find_Role_As_Of
-                 (Roles, Acc.Locus, As_Of, Role_Val, Has_Role_Val);
-            else
-               Find_Role (Roles, Acc.Locus, Role_Val, Has_Role_Val);
-            end if;
+            Resolve_Role
+              (Roles, Acc.Locus, Has_As_Of, As_Of,
+               Role_Val, Has_Role_Val);
 
             Acc.Role := Role_Val;
             Acc.Has_Role := Has_Role_Val;
@@ -339,6 +355,8 @@ package body HRA_N.Application.Statement is
          Result.Status := Query_Partial;
          declare
             Message : constant String :=
+              (if Has_As_Of and then not Result.Role_History_Available
+               then "role history unavailable; " else "") &
               "statement evidence incomplete: unclassified=" &
               Natural'Image (Result.Unresolved_Count) &
               "; unknown stock origin=" & Natural'Image (Result.Unknown_Stock_Count) &
@@ -377,13 +395,15 @@ package body HRA_N.Application.Statement is
          return Result;
       end if;
       return Project_With_Evidence
-        (Journal, Policy.Roles, Policy.Coverage, Policy.Loci,
+        (Journal,
+         (Kind => Historical_Role_Evidence, Historical => Policy.Roles),
+         Policy.Coverage, Policy.Loci,
          As_Of, Has_As_Of, Snapshot, Is_Versioned);
    end Project;
 
    function Project_Canonical
      (Actual       : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
-      Roles        : Role_Map;
+      Roles        : Current_Role_Map;
       Coverage     : Zero_Origin_Coverage;
       Loci         : Locus_Vocabulary;
       Coverage_File_Present : Boolean;
@@ -395,8 +415,14 @@ package body HRA_N.Application.Statement is
       Journal : Journal_Result;
       Result  : Statement_Report;
       Gap     : constant String :=
-        "balance assertion evidence unavailable; Actual/Coverage/Policy snapshots unbound";
+        "balance assertion evidence unavailable; Actual/Coverage/Role/Policy snapshots unbound";
    begin
+      Result.Role_Snapshot := (Kind => Snapshot_Unversioned);
+      Result.Role_Assignment_Count := Natural (Current_Entry_Count (Roles));
+      Result.Role_History_Available := False;
+      Result.Coverage_Snapshot := (Kind => Snapshot_Unversioned);
+      Result.Coverage_File_Present := Coverage_File_Present;
+      Result.Zero_Origin_Count := Natural (Coordinate_Count (Coverage));
       if not Actual.Success then
          Result.Status := Query_Rejected;
          declare
@@ -422,13 +448,15 @@ package body HRA_N.Application.Statement is
       Journal.Descriptions := Actual.Descriptions;
       Journal.Metadata := Actual.Metadata;
       Result := Project_With_Evidence
-        (Journal, Roles, Coverage, Loci, As_Of, Has_As_Of,
+        (Journal, (Kind => Current_Role_Evidence, Current => Roles),
+         Coverage, Loci, As_Of, Has_As_Of,
          (if Policy_Snapshot.Kind = Snapshot_Versioned
           then Policy_Snapshot.Identity else (Length => 0, Value => [others => ' '])),
          Policy_Snapshot.Kind = Snapshot_Versioned);
       Result.Actual_Snapshot := (Kind => Snapshot_Unversioned);
       Result.Coverage_Snapshot := (Kind => Snapshot_Unversioned);
       Result.Coverage_File_Present := Coverage_File_Present;
+      Result.Role_Snapshot := (Kind => Snapshot_Unversioned);
       Result.Assertion_Evidence_Available := False;
       if Result.Status /= Query_Rejected then
          declare
@@ -494,9 +522,33 @@ package body HRA_N.Application.Statement is
                       HRA_N.Storage.Loam_Zero_Origin_Coverage_Reader.Read_File
                         (Ada.Directories.Compose
                            (Data_Dir_Str (Paths), "zero-origin-coverage.loam"));
+                  Role_Result : constant
+                    HRA_N.Storage.Loam_Accounting_Role_Reader.Read_Result :=
+                      HRA_N.Storage.Loam_Accounting_Role_Reader.Read_File
+                        (Ada.Directories.Compose
+                           (Data_Dir_Str (Paths), "accounting-role.loam"));
                begin
-                  if not Coverage_Result.Success then
+                  if not Role_Result.Success then
                      Result.Status := Query_Rejected;
+                     Result.Role_Snapshot := (Kind => Snapshot_Unversioned);
+                     Result.Role_History_Available := False;
+                     Result.Assertion_Evidence_Available := False;
+                     declare
+                        Message : constant String := "accounting-role.loam: " &
+                          Role_Result.Error_Reason (1 .. Role_Result.Error_Len);
+                     begin
+                        Result.Diagnostic_Len :=
+                          Natural'Min (Message'Length, Result.Diagnostic'Length);
+                        Result.Diagnostic (1 .. Result.Diagnostic_Len) :=
+                          Message (1 .. Result.Diagnostic_Len);
+                     end;
+                     return Result;
+                  elsif not Coverage_Result.Success then
+                     Result.Status := Query_Rejected;
+                     Result.Role_Snapshot := (Kind => Snapshot_Unversioned);
+                     Result.Role_Assignment_Count :=
+                       Natural (Current_Entry_Count (Role_Result.Roles));
+                     Result.Role_History_Available := False;
                      Result.Assertion_Evidence_Available := False;
                      declare
                         Message : constant String := "zero-origin-coverage.loam: " &
@@ -513,7 +565,7 @@ package body HRA_N.Application.Statement is
                   return Project_Canonical
                     (HRA_N.Storage.Loam_Actual_Reader.Read_Loam_Actual_File
                        (Ada.Directories.Compose (Data_Dir_Str (Paths), "actual.loam")),
-                     Policy.Roles, Coverage_Result.Coverage, Policy.Loci,
+                     Role_Result.Roles, Coverage_Result.Coverage, Policy.Loci,
                      Coverage_Result.Present, As_Of, Has_As_Of, Snap);
                end;
             when Legacy_Only =>
