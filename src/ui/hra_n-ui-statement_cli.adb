@@ -7,6 +7,7 @@ with Ada.Command_Line;
 with Ada.Strings;       use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
+with HRA_N.UI.Snapshot_Label;
 with HRA_N.Application.Review;
 with HRA_N.Core.Accounting_Role;       use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Validity;              use HRA_N.Core.Validity;
@@ -122,9 +123,19 @@ package body HRA_N.UI.Statement_Cli is
       Put_Line (" HRA-N Financial Statement Report (B/S & P/L Projection)");
       Put_Line ("================================================================================");
 
+      Put_Line ("  Sources             : actual=" &
+                HRA_N.UI.Snapshot_Label.Format (Report.Actual_Snapshot) &
+                " / policy=" &
+                HRA_N.UI.Snapshot_Label.Format
+                  ((if Report.Is_Versioned
+                    then (Kind => Snapshot_Versioned, Identity => Report.Snapshot)
+                    else (Kind => Snapshot_Unversioned))));
       if Report.Is_Versioned and then Report.Snapshot.Length > 0 then
-         Put_Line ("  Snapshot            : " &
-                   Report.Snapshot.Value (1 .. Report.Snapshot.Length));
+         Put_Line
+           ((if Report.Actual_Snapshot.Kind = Snapshot_Unversioned
+             then "  Policy Snapshot     : "
+             else "  Snapshot            : ") &
+            Report.Snapshot.Value (1 .. Report.Snapshot.Length));
       end if;
 
       if Report.Has_As_Of then

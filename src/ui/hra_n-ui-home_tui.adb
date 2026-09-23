@@ -30,7 +30,7 @@ with HRA_N.UI.Scheduled_TUI;
 with HRA_N.UI.Balance_TUI;
 with HRA_N.UI.Record_TUI;
 with HRA_N.UI.Report_TUI;
-with HRA_N.Storage.Journal_Reader;
+with HRA_N.Application.Statement;
 with HRA_N.Storage.Policy_Reader;
 with HRA_N.UI.Snapshot_Label;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
@@ -84,7 +84,7 @@ package body HRA_N.UI.Home_TUI is
 
    procedure Draw
      (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
-      JR           : HRA_N.Storage.Journal_Reader.Journal_Result;
+      Statement    : HRA_N.Application.Statement.Statement_Report;
       Actual       : HRA_N.Application.Actual_Query.Actual_View;
       PR           : HRA_N.Storage.Policy_Reader.Policy_Result;
       Scheduled    : HRA_N.Application.Scheduled_Query.Scheduled_View;
@@ -104,7 +104,7 @@ package body HRA_N.UI.Home_TUI is
       declare
          View : constant HRA_N.Application.Home_Query.Home_View :=
            HRA_N.Application.Home_Query.Project_With_Views
-             (JR        => JR,
+             (Statement => Statement,
               PR        => PR,
               Actual    => Actual,
               Scheduled => Scheduled,
@@ -335,6 +335,8 @@ package body HRA_N.UI.Home_TUI is
                & HRA_N.UI.Snapshot_Label.Format (View.Actual_Snapshot)
                & " / scheduled="
                & HRA_N.UI.Snapshot_Label.Format (View.Scheduled_Snapshot)
+               & " / statement="
+               & HRA_N.UI.Snapshot_Label.Format (View.Statement_Actual_Snapshot)
                & " / other="
                & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
             Next_Row := Next_Row + 1;
@@ -474,7 +476,7 @@ package body HRA_N.UI.Home_TUI is
       Screen_Started : Boolean := False;
       Query_Healthy  : Boolean := False;
 
-      JR     : HRA_N.Storage.Journal_Reader.Journal_Result;
+      Statement : HRA_N.Application.Statement.Statement_Report;
       Actual : HRA_N.Application.Actual_Query.Actual_View;
       PR     : HRA_N.Storage.Policy_Reader.Policy_Result;
       Scheduled : HRA_N.Application.Scheduled_Query.Scheduled_View;
@@ -487,10 +489,10 @@ package body HRA_N.UI.Home_TUI is
               (Scope        => HRA_N.Application.Actual_Query.Scope_All,
                Selected_Day => Selected,
                Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First));
-         JR := HRA_N.Storage.Journal_Reader.Read_Journal_File
-                 (HRA_N.Application.Path_Resolver.Journal_Path_Str (Current_Paths));
          PR := HRA_N.Storage.Policy_Reader.Read_Policy_File
                  (HRA_N.Application.Path_Resolver.Policy_Path_Str (Current_Paths));
+         Statement := HRA_N.Application.Statement.Execute_With_Policy
+           (Current_Paths, PR);
          Scheduled := HRA_N.Application.Scheduled_Query.Execute
            (Current_Paths,
             (Scope        => HRA_N.Application.Scheduled_Query.Scope_All,
@@ -513,7 +515,7 @@ package body HRA_N.UI.Home_TUI is
       Reload;
 
       while Running loop
-         Draw (Current_Paths, JR, Actual, PR, Scheduled, Selected, Query_Healthy);
+         Draw (Current_Paths, Statement, Actual, PR, Scheduled, Selected, Query_Healthy);
          declare
             Evt : constant HRA_N.UI.TUI_Input.Event := HRA_N.UI.TUI_Input.Read;
             Previous_Day : constant Date_Type := Selected;

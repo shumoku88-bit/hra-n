@@ -9,6 +9,7 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Actual_Query;
 with HRA_N.Application.Scheduled_Query;
+with HRA_N.Application.Statement;
 with HRA_N.Application.Home_Query;
 with HRA_N.Application.Initializer; use HRA_N.Application.Initializer;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
@@ -255,6 +256,21 @@ package body Test_Home_Query is
             and then Equal_Token
               (View.Snapshot.Identity, Make_Token ("g00000001")),
             "remaining Home evidence retains transitional generation snapshot");
+         Assert (View.Statement_Actual_Snapshot.Kind = Snapshot_Unversioned,
+                 "Home Statement reads canonical transactions independently of policy generation");
+         declare
+            Statement : constant HRA_N.Application.Statement.Statement_Report :=
+              HRA_N.Application.Statement.Execute_Statement_Query (Paths);
+         begin
+            Assert (Statement.Is_Versioned
+                    and then Equal_Token
+                      (Statement.Snapshot, Make_Token ("g00000001"))
+                    and then Statement.Actual_Snapshot.Kind = Snapshot_Unversioned,
+                    "Statement labels canonical Actual separately from versioned Policy");
+            Assert (Statement.Status = Query_Partial
+                    and then not Statement.Assertion_Evidence_Available,
+                    "canonical Statement never claims complete without assertions");
+         end;
       end;
 
       --  Canonical Scheduled supersedes retained legacy Scheduled, including

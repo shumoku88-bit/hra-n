@@ -68,6 +68,46 @@ class TestHraNCli(unittest.TestCase):
             self.assertNotEqual(res.returncode, 0)
             self.assertIn("cannot be combined", res.stdout + res.stderr)
 
+    def test_canonical_statement_actual_is_partial_and_independent(self) -> None:
+        self.write_report_fixture('TX legacy-only 2026-09-10 cash:-999 food:999\n')
+        ht = "\t"
+        with open(os.path.join(self.test_dir, "actual.loam"), "w", encoding="utf-8") as stream:
+            stream.write(
+                f"LOAM-NORMALIZED-ACTUAL{ht}1\n"
+                f"TX{ht}canonical-1{ht}2026-09-10{ht}DESC{ht}Canonical\n"
+                f"EFFECT{ht}cash{ht}jpy{ht}-20\n"
+                f"EFFECT{ht}food{ht}jpy{ht}20\n"
+                "ENDTX\n"
+            )
+        res = self.run_cmd("statement", "--as-of", "2026-09-15")
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn("actual=UNVERSIONED / policy=UNVERSIONED", res.stdout)
+        self.assertIn("PARTIAL PROJECTION", res.stdout)
+        self.assertIn("balance assertion evidence unavailable", res.stdout)
+        self.assertIn("Events Aggregated   :  1", res.stdout)
+        self.assertNotIn("COMPLETE FINANCIAL STATEMENT", res.stdout)
+        self.assertNotIn("999 JPY", res.stdout)
+        # Scheduled has its own canonical authority; install the minimal
+        # empty image before checking the composite Home view.
+        with open(os.path.join(self.test_dir, "scheduled.loam"), "w", encoding="utf-8") as stream:
+            stream.write(
+                f"LOAM-SCHEDULED-LIFECYCLE{ht}1\n"
+                f"BEGIN{ht}Scheduled\nLOAM-SCHEDULED-MEMORY{ht}1\nEND{ht}Scheduled\n"
+                f"BEGIN{ht}Completion\nLOAM-SCHEDULED-COMPLETION-MEMORY{ht}1\nEND{ht}Completion\n"
+                f"BEGIN{ht}Retirement\nLOAM-SCHEDULED-RETIREMENT-MEMORY{ht}1\nEND{ht}Retirement\n"
+                f"BEGIN{ht}Replacement\nLOAM-SCHEDULED-REPLACEMENT-MEMORY{ht}1\nEND{ht}Replacement\n"
+            )
+        home = self.run_cmd("home")
+        self.assertEqual(home.returncode, 0, home.stdout + home.stderr)
+        self.assertIn("PARTIAL", home.stdout)
+        self.assertIn("statement=UNVERSIONED", home.stdout)
+
+        with open(os.path.join(self.test_dir, "actual.loam"), "w", encoding="utf-8") as stream:
+            stream.write("invalid canonical Actual\n")
+        res = self.run_cmd("statement")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("actual.loam", res.stdout + res.stderr)
+
     def test_statement_origin_and_conflict_across_surfaces(self) -> None:
         journal = 'TX e0001 2026-09-10 cash:-10 food:10 "purchase"\n'
         for known, assertion, diagnostic in [

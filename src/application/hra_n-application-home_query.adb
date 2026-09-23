@@ -27,7 +27,7 @@ package body HRA_N.Application.Home_Query is
    end Same_Snapshot;
 
    function Project_With_Views
-     (JR        : HRA_N.Storage.Journal_Reader.Journal_Result;
+     (Statement : HRA_N.Application.Statement.Statement_Report;
       PR        : HRA_N.Storage.Policy_Reader.Policy_Result;
       Actual    : HRA_N.Application.Actual_Query.Actual_View;
       Scheduled : HRA_N.Application.Scheduled_Query.Scheduled_View;
@@ -42,6 +42,7 @@ package body HRA_N.Application.Home_Query is
          Snapshot           => Snapshot,
          Actual_Snapshot    => Actual.Snapshot,
          Scheduled_Snapshot => Scheduled.Snapshot,
+         Statement_Actual_Snapshot => Statement.Actual_Snapshot,
          Selected_Day       => Query.Selected_Day,
          Total_Actual       => 0,
          Selected_Actual    => 0,
@@ -66,10 +67,7 @@ package body HRA_N.Application.Home_Query is
 
    begin
 
-      if not JR.Success then
-         Set_Diagnostic ("journal.hra: " & JR.Error_Reason (1 .. JR.Error_Len));
-         return Result;
-      elsif not PR.Success then
+      if not PR.Success then
          Set_Diagnostic ("policy.hra: " & PR.Error_Reason (1 .. PR.Error_Len));
          return Result;
       elsif Scheduled.Status = Query_Rejected then
@@ -106,23 +104,25 @@ package body HRA_N.Application.Home_Query is
          end if;
       end loop;
 
-      declare
-         Statement : constant Statement_Report :=
-           HRA_N.Application.Statement.Project (JR, PR);
-      begin
-         Result.Unresolved_Loci := Statement.Unresolved_Count;
-         if Statement.Status = Query_Rejected then
-            Result.Status := Query_Partial;
-            Set_Diagnostic
-              (Statement.Diagnostic (1 .. Statement.Diagnostic_Len));
-         elsif Is_Complete (Statement) then
-            Result.Status := Query_Complete;
-         else
-            Result.Status := Query_Partial;
-            Set_Diagnostic
-              (Statement.Diagnostic (1 .. Statement.Diagnostic_Len));
+      Result.Unresolved_Loci := Statement.Unresolved_Count;
+      if Statement.Status = Query_Rejected then
+         --  Preserve legacy Home partial treatment of unsupported Statement
+         --  projections, but refuse unreadable canonical transaction authority.
+         Result.Status :=
+           (if Statement.Assertion_Evidence_Available
+            then Query_Partial else Query_Rejected);
+         Set_Diagnostic
+           (Statement.Diagnostic (1 .. Statement.Diagnostic_Len));
+         if Result.Status = Query_Rejected then
+            return Result;
          end if;
-      end;
+      elsif Is_Complete (Statement) then
+         Result.Status := Query_Complete;
+      else
+         Result.Status := Query_Partial;
+         Set_Diagnostic
+           (Statement.Diagnostic (1 .. Statement.Diagnostic_Len));
+      end if;
 
       if Scheduled.Status = Query_Partial then
          Result.Status := Query_Partial;
@@ -153,7 +153,8 @@ package body HRA_N.Application.Home_Query is
 
       if Result.Status = Query_Complete
         and then (not Same_Snapshot (Actual.Snapshot, Snapshot)
-                  or else not Same_Snapshot (Scheduled.Snapshot, Snapshot))
+                  or else not Same_Snapshot (Scheduled.Snapshot, Snapshot)
+                  or else not Same_Snapshot (Statement.Actual_Snapshot, Snapshot))
       then
          --  UNVERSIONED never proves correspondence between authorities.
          Result.Status := Query_Partial;
@@ -179,6 +180,7 @@ package body HRA_N.Application.Home_Query is
             Snapshot           => (Kind => Snapshot_Unversioned),
             Actual_Snapshot    => (Kind => Snapshot_Unversioned),
             Scheduled_Snapshot => (Kind => Snapshot_Unversioned),
+            Statement_Actual_Snapshot => (Kind => Snapshot_Unversioned),
             Selected_Day       => Query.Selected_Day,
             Total_Actual       => 0,
             Selected_Actual    => 0,
@@ -204,10 +206,10 @@ package body HRA_N.Application.Home_Query is
               (Scope        => HRA_N.Application.Actual_Query.Scope_All,
                Selected_Day => Query.Selected_Day,
                Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First));
-         JR : constant HRA_N.Storage.Journal_Reader.Journal_Result :=
-           HRA_N.Storage.Journal_Reader.Read_Journal_File (Journal_Path_Str (Paths));
          PR : constant HRA_N.Storage.Policy_Reader.Policy_Result :=
            HRA_N.Storage.Policy_Reader.Read_Policy_File (Policy_Path_Str (Paths));
+         Statement : constant HRA_N.Application.Statement.Statement_Report :=
+           HRA_N.Application.Statement.Execute_With_Policy (Paths, PR);
          Scheduled : constant HRA_N.Application.Scheduled_Query.Scheduled_View :=
            HRA_N.Application.Scheduled_Query.Execute
              (Paths,
@@ -216,7 +218,7 @@ package body HRA_N.Application.Home_Query is
                Ordering     => HRA_N.Application.Scheduled_Query.Order_Due_Ascending));
       begin
          return Project_With_Views
-           (JR        => JR,
+           (Statement => Statement,
             PR        => PR,
             Actual    => Actual,
             Scheduled => Scheduled,

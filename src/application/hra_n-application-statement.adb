@@ -3,6 +3,8 @@
 --  Package body: HRA_N.Application.Statement
 -------------------------------------------------------------------------------
 
+with Ada.Directories;
+with HRA_N.Application.Canonical_Authority;
 with HRA_N.Core.Coverage;             use HRA_N.Core.Coverage;
 with HRA_N.Core.Event;                use HRA_N.Core.Event;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
@@ -136,6 +138,9 @@ package body HRA_N.Application.Statement is
    begin
       Result.Is_Versioned := Is_Versioned;
       Result.Snapshot := Snapshot;
+      Result.Actual_Snapshot :=
+        (if Is_Versioned then (Kind => Snapshot_Versioned, Identity => Snapshot)
+         else (Kind => Snapshot_Unversioned));
       Result.Has_As_Of := Has_As_Of;
       Result.As_Of_Date := As_Of;
 
@@ -348,39 +353,134 @@ package body HRA_N.Application.Statement is
       return Result;
    end Project;
 
-   function Execute_Statement_Query
-     (Paths     : Path_Config;
-      As_Of     : Date_Type := (Year => 2026, Month => 1, Day => 1);
-      Has_As_Of : Boolean   := False) return Statement_Report
+   function Project_Canonical
+     (Actual       : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
+      Policy       : Policy_Result;
+      As_Of        : Date_Type := (Year => 2026, Month => 1, Day => 1);
+      Has_As_Of    : Boolean := False;
+      Policy_Snapshot : Snapshot_Reference := (Kind => Snapshot_Unversioned))
+      return Statement_Report
    is
-      Result : Statement_Report;
-      Snap   : Token_Text := (Length => 0, Value => [others => ' ']);
+      Journal : Journal_Result;
+      Result  : Statement_Report;
+      Gap     : constant String :=
+        "balance assertion evidence unavailable; Actual/Policy snapshot unbound";
    begin
-      if not Paths.Resolution_Ok then
+      if not Actual.Success then
          Result.Status := Query_Rejected;
-         Result.Diagnostic_Len := 47;
-         Result.Diagnostic (1 .. 47) := "statement query requires a resolvable household";
+         declare
+            Message : constant String :=
+              "actual.loam: " & Actual.Error_Reason (1 .. Actual.Error_Len);
+         begin
+            Result.Diagnostic_Len := Natural'Min (Message'Length, Result.Diagnostic'Length);
+            Result.Diagnostic (1 .. Result.Diagnostic_Len) :=
+              Message (1 .. Result.Diagnostic_Len);
+         end;
+         Result.Assertion_Evidence_Available := False;
          return Result;
       end if;
 
-      if Paths.Is_Versioned then
-         Snap := Make_Token (Snapshot_Id_Str (Paths));
+      --  Transport an admitted semantic image to the existing Statement and
+      --  Balance projections. The empty Assertions field is NOT negative
+      --  assertion evidence; availability is tracked separately below.
+      Journal.Success := True;
+      for E of Actual.Events loop
+         Journal.Events.Append (E);
+      end loop;
+      Journal.Validities := Actual.Validities;
+      Journal.Descriptions := Actual.Descriptions;
+      Journal.Metadata := Actual.Metadata;
+      Result := Project
+        (Journal, Policy, As_Of, Has_As_Of,
+         (if Policy_Snapshot.Kind = Snapshot_Versioned
+          then Policy_Snapshot.Identity else (Length => 0, Value => [others => ' '])),
+         Policy_Snapshot.Kind = Snapshot_Versioned);
+      Result.Actual_Snapshot := (Kind => Snapshot_Unversioned);
+      Result.Assertion_Evidence_Available := False;
+      if Result.Status /= Query_Rejected then
+         declare
+            Message : constant String :=
+              (if Result.Diagnostic_Len > 0
+               then Gap & "; " & Result.Diagnostic (1 .. Result.Diagnostic_Len)
+               else Gap);
+         begin
+            Result.Status := Query_Partial;
+            Result.Diagnostic_Len := Natural'Min (Message'Length, Result.Diagnostic'Length);
+            Result.Diagnostic (1 .. Result.Diagnostic_Len) :=
+              Message (1 .. Result.Diagnostic_Len);
+         end;
+      end if;
+      return Result;
+   end Project_Canonical;
+
+   function Execute_With_Policy
+     (Paths     : Path_Config;
+      Policy    : Policy_Result;
+      As_Of     : Date_Type := (Year => 2026, Month => 1, Day => 1);
+      Has_As_Of : Boolean := False) return Statement_Report
+   is
+      use HRA_N.Application.Canonical_Authority;
+      Result : Statement_Report;
+      Snap : constant Snapshot_Reference :=
+        (if Paths.Is_Versioned
+         then (Kind => Snapshot_Versioned,
+               Identity => Make_Token (Snapshot_Id_Str (Paths)))
+         else (Kind => Snapshot_Unversioned));
+   begin
+      if not Paths.Resolution_Ok then
+         Result.Status := Query_Rejected;
+         declare
+            Message : constant String := "statement query requires a resolvable household";
+         begin
+            Result.Diagnostic_Len := Message'Length;
+            Result.Diagnostic (1 .. Message'Length) := Message;
+         end;
+         return Result;
       end if;
 
       declare
-         J_Res : constant Journal_Result :=
-           Read_Journal_File (Journal_Path_Str (Paths));
-         P_Res : constant Policy_Result :=
-           Read_Policy_File (Policy_Path_Str (Paths));
+         Authority : constant Authority_Probe := Probe (Data_Dir_Str (Paths));
       begin
-         return Project
-           (Journal      => J_Res,
-            Policy       => P_Res,
-            As_Of        => As_Of,
-            Has_As_Of    => Has_As_Of,
-            Snapshot     => Snap,
-            Is_Versioned => Paths.Is_Versioned);
+         case Authority.State is
+            when Canonical_Present =>
+               return Project_Canonical
+                 (HRA_N.Storage.Loam_Actual_Reader.Read_Loam_Actual_File
+                    (Ada.Directories.Compose (Data_Dir_Str (Paths), "actual.loam")),
+                  Policy, As_Of, Has_As_Of, Snap);
+            when Legacy_Only =>
+               return Project
+                 (Read_Journal_File (Journal_Path_Str (Paths)), Policy,
+                  As_Of, Has_As_Of,
+                  (if Paths.Is_Versioned then Snap.Identity
+                   else (Length => 0, Value => [others => ' '])),
+                  Paths.Is_Versioned);
+            when Probe_Failed =>
+               Result.Status := Query_Rejected;
+               Result.Assertion_Evidence_Available := False;
+               declare
+                  Message : constant String := "Authority probe failed: " &
+                    Authority.Diagnostic (1 .. Authority.Diagnostic_Len);
+               begin
+                  Result.Diagnostic_Len := Natural'Min (Message'Length, Result.Diagnostic'Length);
+                  Result.Diagnostic (1 .. Result.Diagnostic_Len) :=
+                    Message (1 .. Result.Diagnostic_Len);
+               end;
+               return Result;
+         end case;
       end;
+   end Execute_With_Policy;
+
+   function Execute_Statement_Query
+     (Paths     : Path_Config;
+      As_Of     : Date_Type := (Year => 2026, Month => 1, Day => 1);
+      Has_As_Of : Boolean := False) return Statement_Report
+   is
+   begin
+      if not Paths.Resolution_Ok then
+         return Execute_With_Policy (Paths, (others => <>), As_Of, Has_As_Of);
+      end if;
+      return Execute_With_Policy
+        (Paths, Read_Policy_File (Policy_Path_Str (Paths)), As_Of, Has_As_Of);
    end Execute_Statement_Query;
 
 end HRA_N.Application.Statement;
