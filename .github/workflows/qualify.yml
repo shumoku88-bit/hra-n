@@ -124,6 +124,12 @@ jobs:
       - name: Test LOAM Scheduled Completion Protocol Refinement
         run: ./tests/bin/test_runner Test_Loam_Scheduled_Completion_Protocol_Refinement
 
+      - name: Test LOAM Scheduled Retirement Writer
+        run: ./tests/bin/test_runner Test_Loam_Scheduled_Retirement_Writer
+
+      - name: Test LOAM Scheduled Retirement Refinement
+        run: ./tests/bin/test_runner Test_Loam_Scheduled_Retirement_Refinement
+
       - name: Test Validity
         run: ./tests/bin/test_runner Test_Validity
 
