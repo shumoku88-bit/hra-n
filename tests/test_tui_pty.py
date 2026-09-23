@@ -1121,6 +1121,17 @@ def test_canonical_actual_tui() -> None:
         reaped = False
         try:
             read_until(fd, output, b"Markers:")
+            # Home must already observe the same canonical Actual authority.
+            read_until(fd, output, b"Canonical Bento")
+            home_screen_at = output.rfind(b"HRA-N HOME")
+            assert home_screen_at >= 0, bytes(output)
+            home_screen = bytes(output[home_screen_at:])
+            assert b"e-legacy" not in home_screen, home_screen
+            assert b"Canonical Coffee" in home_screen, home_screen
+            assert b"Canonical Bento" in home_screen, home_screen
+            assert b"Actual     2 selected / 2 total" in home_screen, home_screen
+            assert b"Sources    actual=UNVERSIONED / other=g00000001" in home_screen, home_screen
+
             # 'a' opens Actual TUI in Scope_All
             os.write(fd, b"a")
             # Wait for list footer to ensure screen drawing is complete
