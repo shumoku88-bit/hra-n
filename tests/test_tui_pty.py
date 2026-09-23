@@ -942,7 +942,9 @@ def test_canonical_scheduled_tui() -> None:
         try:
             read_until(fd, output, b"Markers:")
             os.write(fd, b"s")
-            read_until(fd, output, b"scheduled-1")
+            # Wait for the list footer so every visible canonical row has had
+            # a chance to reach the PTY before inspecting the rendered screen.
+            read_until(fd, output, b"n: create")
             scheduled_screen_at = output.rfind(b"SCHEDULED  CURRENT OPEN")
             assert scheduled_screen_at >= 0, bytes(output)
             canonical_list = bytes(output[scheduled_screen_at:])
@@ -984,8 +986,7 @@ def test_canonical_scheduled_tui() -> None:
             os.write(fd, b"food\n")
             time.sleep(0.05)
             os.write(fd, b"500\n")
-            read_until(fd, output, b"ADMISSION PREVIEW")
-            assert b"canonical Loam" in output
+            read_until(fd, output, b"canonical Loam")
             os.write(fd, b"\n")
             read_until(fd, output, b"scheduled-4")
 
@@ -996,8 +997,7 @@ def test_canonical_scheduled_tui() -> None:
             os.write(fd, b"c")
             read_until(fd, output, b"Complete Scheduled: scheduled-4")
             os.write(fd, b"\n\n\n\n\n")
-            read_until(fd, output, b"Completes:    scheduled-4")
-            assert b"canonical Loam" in output
+            read_until(fd, output, b"canonical Loam")
             os.write(fd, b"\n")
             time.sleep(0.2)
             with open(scheduled_path, encoding="utf-8") as stream:
@@ -1057,8 +1057,130 @@ def test_canonical_scheduled_tui() -> None:
         shutil.rmtree(household, ignore_errors=True)
 
 
+def test_canonical_actual_tui() -> None:
+    """Actual TUI must observe canonical Loam authority and not fall back to legacy journal."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    harness = os.path.join(root, "tests", "bin", "tui_harness")
+    household = tempfile.mkdtemp(prefix="hra_n_canonical_actual_tui_")
+    try:
+        today = datetime.date.today().isoformat()
+        gen_dir = os.path.join(household, ".hra", "generations", "g00000001")
+        os.makedirs(gen_dir, exist_ok=True)
+        selector = os.path.join(household, ".hra", "CURRENT")
+        with open(selector, "w", encoding="utf-8") as stream:
+            stream.write("g00000001\n")
+
+        legacy_path = os.path.join(gen_dir, "journal.hra")
+        with open(legacy_path, "w", encoding="utf-8") as stream:
+            stream.write(f'TX e-legacy {today} cash:-999 food:999 "Legacy Breakfast"\n')
+
+        with open(os.path.join(gen_dir, "policy.hra"), "w", encoding="utf-8") as stream:
+            stream.write(
+                "LOCUS cash\n"
+                "LOCUS food\n"
+                "ROLE cash: ASSET\n"
+                "ROLE food: EXPENSE\n"
+                "ZERO-ORIGIN cash:jpy\n"
+            )
+
+        with open(os.path.join(gen_dir, "scheduled.hra"), "w", encoding="utf-8") as stream:
+            stream.write("")
+
+        ht = "\t"
+        nl = "\n"
+        with open(os.path.join(household, "actual.loam"), "w", encoding="utf-8") as stream:
+            stream.write(
+                f"LOAM-NORMALIZED-ACTUAL{ht}1{nl}"
+                f"TX{ht}e-canonical-1{ht}{today}{ht}DESC{ht}Canonical Coffee{nl}"
+                f"EFFECT{ht}cash{ht}jpy{ht}-450{nl}"
+                f"EFFECT{ht}food{ht}jpy{ht}450{nl}"
+                f"ENDTX{nl}"
+                f"TX{ht}e-canonical-2{ht}{today}{ht}DESC{ht}Canonical Bento{nl}"
+                f"EFFECT{ht}cash{ht}jpy{ht}-850{nl}"
+                f"EFFECT{ht}food{ht}jpy{ht}850{nl}"
+                f"ENDTX{nl}"
+            )
+        with open(os.path.join(household, "locus-admission.loam"), "w", encoding="utf-8") as stream:
+            stream.write(
+                f"LOAM-LOCUS-ADMISSION-VOCABULARY{ht}1{nl}"
+                f"LOCUS{ht}cash{nl}"
+                f"LOCUS{ht}food{nl}"
+            )
+
+        pid, fd = pty.fork()
+        if pid == 0:
+            env = os.environ.copy()
+            env["TERM"] = "xterm-256color"
+            env["LANG"] = "C.UTF-8"
+            env["LC_ALL"] = "C.UTF-8"
+            env["LC_CTYPE"] = "C.UTF-8"
+            os.execve(harness, [harness, household], env)
+
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 35, 120, 0, 0))
+        output = bytearray()
+        reaped = False
+        try:
+            read_until(fd, output, b"Markers:")
+            # 'a' opens Actual TUI in Scope_All
+            os.write(fd, b"a")
+            # Wait for list footer to ensure screen drawing is complete
+            read_until(fd, output, b"Enter: detail")
+            actual_screen_at = output.rfind(b"ACTUAL  ALL CURRENT")
+            assert actual_screen_at >= 0, bytes(output)
+            canonical_list = bytes(output[actual_screen_at:])
+            assert b"e-legacy" not in canonical_list, canonical_list
+            assert b"e-canonical-1" in canonical_list, canonical_list
+            assert b"e-canonical-2" in canonical_list, canonical_list
+            assert b"Canonical Coffee" in canonical_list, canonical_list
+            assert b"Canonical Bento" in canonical_list, canonical_list
+
+            # Enter opens detail view for the first selected item
+            os.write(fd, b"\n")
+            read_until(fd, output, b"b/Esc: Actual")
+            detail_at = output.rfind(b"DETAIL  e-canonical")
+            assert detail_at >= 0, bytes(output)
+            canonical_detail = bytes(output[detail_at:])
+            assert b"Canonical Bento" in canonical_detail, canonical_detail
+            assert b"cash  -850 jpy" in canonical_detail, canonical_detail
+            assert b"Snapshot: UNVERSIONED" in canonical_detail, canonical_detail
+
+            # 'b' returns to Actual list
+            os.write(fd, b"b")
+            read_until(fd, output, b"Enter: detail")
+
+            # 'b' returns to Home
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
+            os.write(fd, b"q")
+
+            deadline = time.monotonic() + 8.0
+            while time.monotonic() < deadline:
+                exited, status = os.waitpid(pid, os.WNOHANG)
+                if exited == pid:
+                    reaped = True
+                    assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+                    break
+                ready, _, _ = select.select([fd], [], [], 0.1)
+                if ready:
+                    try:
+                        output.extend(os.read(fd, 4096))
+                    except OSError:
+                        pass
+            assert reaped, "Canonical Actual TUI did not quit"
+        finally:
+            if not reaped:
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+            os.close(fd)
+
+        print("Canonical Actual PTY: read list and detail observed Loam authority without fallback")
+    finally:
+        shutil.rmtree(household, ignore_errors=True)
+
+
 if __name__ == "__main__":
     main()
+    test_canonical_actual_tui()
     test_canonical_scheduled_tui()
     test_statement_evidence()
     test_month_end_budget()

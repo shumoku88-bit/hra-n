@@ -539,6 +539,8 @@ package body HRA_N.Application.Movement_Command is
    function Canonical_Authority_Present
      (Root_Path : String) return Boolean
    is
+      Scheduled_Path : constant String :=
+        Ada.Directories.Compose (Root_Path, "scheduled.loam");
       Actual_Path : constant String :=
         Ada.Directories.Compose (Root_Path, "actual.loam");
       Policy_Path : constant String :=
@@ -546,7 +548,8 @@ package body HRA_N.Application.Movement_Command is
    begin
       --  OR is deliberate.  A half-created canonical authority must not make
       --  callers fall back to the transitional journal and create two writers.
-      return Ada.Directories.Exists (Actual_Path)
+      return Ada.Directories.Exists (Scheduled_Path)
+        or else Ada.Directories.Exists (Actual_Path)
         or else Ada.Directories.Exists (Policy_Path);
    exception
       when others =>

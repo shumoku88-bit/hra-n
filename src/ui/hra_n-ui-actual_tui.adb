@@ -1,13 +1,11 @@
 with Ada.Characters.Handling;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
-with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Actual_Query; use HRA_N.Application.Actual_Query;
 with HRA_N.Application.Scheduled_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
-with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 with HRA_N.UI.Actual_Detail_TUI;
 with HRA_N.UI.Scheduled_TUI;
 with HRA_N.UI.Record_TUI;
@@ -148,9 +146,8 @@ package body HRA_N.UI.Actual_TUI is
       Scope           : Actual_Scope := Initial_Scope;
       Ordering        : Actual_Order := Order_Newest_First;
       Cursor          : Positive := 1;
-      Running         : Boolean := True;
-      Current_Journal : Journal_Result;
-      Current_View    : Actual_View;
+      Running      : Boolean := True;
+      Current_View : Actual_View;
 
       Filtered_Map   : Index_Array;
       Filtered_Count : Natural := 0;
@@ -179,26 +176,15 @@ package body HRA_N.UI.Actual_TUI is
          end if;
       end Update_Filter;
 
-      procedure Recompute_View is
-         Snap : Snapshot_Reference := (Kind => Snapshot_Unversioned);
-      begin
-         if Current_Paths.Is_Versioned then
-            Snap := (Kind => Snapshot_Versioned, Identity => Make_Token (Snapshot_Id_Str (Current_Paths)));
-         end if;
-         Current_View := Project
-           (Journal  => Current_Journal,
-            Request  =>
-              (Scope        => Scope,
-               Selected_Day => Selected_Day,
-               Ordering     => Ordering),
-            Snapshot => Snap);
-         Update_Filter;
-      end Recompute_View;
-
       procedure Reload is
       begin
-         Current_Journal := Read_Journal_File (Journal_Path_Str (Current_Paths));
-         Recompute_View;
+         Current_View :=
+           HRA_N.Application.Actual_Query.Execute
+             (Current_Paths,
+              (Scope        => Scope,
+               Selected_Day => Selected_Day,
+               Ordering     => Ordering));
+         Update_Filter;
       end Reload;
    begin
       HRA_N.UI.Terminal_Style.Initialize;
@@ -346,7 +332,7 @@ package body HRA_N.UI.Actual_TUI is
                         elsif Key = Character'Pos ('f') or else Key = Character'Pos ('F') then
                            Scope :=
                              (if Scope = Scope_Selected_Day then Scope_All else Scope_Selected_Day);
-                           Recompute_View;
+                           Reload;
                            Cursor := 1;
                         elsif Key = Character'Pos ('s') or else Key = Character'Pos ('S') then
                            HRA_N.UI.Scheduled_TUI.Run
@@ -360,7 +346,7 @@ package body HRA_N.UI.Actual_TUI is
                              (if Ordering = Order_Newest_First
                               then Order_Oldest_First
                               else Order_Newest_First);
-                           Recompute_View;
+                           Reload;
                            Cursor := 1;
                         elsif HRA_N.UI.TUI_Input.Is_Redraw (Key) or else Key = Character'Pos ('R') then
                            Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
