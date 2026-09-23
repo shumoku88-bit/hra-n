@@ -135,12 +135,8 @@ is
            (Actual_Middle,
             HRA_N.Core.Event.Id (Added_Actual)).State = Not_Found);
       pragma Assert
-        (Reference_Lookup
-           (Actual_Middle,
-            Claim.Actual).State = Not_Found);
-      pragma Assert
         (Inert_Middle
-           (Scheduled_Middle, Actual_Middle, Claim));
+           (Scheduled_Middle, Actual_Middle, Claim, Added_Actual));
 
       Prove_Added_Lookup
         (Actual_Before,
@@ -156,14 +152,6 @@ is
         (Reference_Lookup
            (Actual_After,
             HRA_N.Core.Event.Id (Added_Actual)).Value = Added_Actual);
-      pragma Assert
-        (Reference_Lookup
-           (Actual_After,
-            Claim.Actual).State = Found);
-      pragma Assert
-        (Reference_Lookup
-           (Actual_After,
-            Claim.Actual).Value = Added_Actual);
       pragma Assert
         (Effective_Finish
            (Scheduled_After, Actual_After, Claim, Added_Actual));
