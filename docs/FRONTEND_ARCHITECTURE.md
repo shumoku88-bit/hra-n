@@ -209,6 +209,69 @@ filesystem mutation endpoint.
 The protocol should be introduced from one real GUI or AI operation rather than
 as a speculative universal frontend framework.
 
+### GUI longevity and dependency strategy
+
+HRA-N's long-lived guarantee belongs to the **canonical data, Core, and shared
+Application semantics**, not to one GUI toolkit or one desktop binary. A GUI is
+a replaceable shell over typed queries and intents.
+
+The current practical GUI direction is GtkAda. It is useful for discovering the
+right desktop workflows now, and it must continue to call typed Application
+views rather than acquiring accounting logic of its own. Introducing GtkAda does
+not weaken SPARK-proved Core properties merely because the rendering/event-loop
+layer is not itself proved. The proof boundary remains explicit: GUI code may
+select, arrange, and render qualified values; it must not silently strengthen,
+reinterpret, or recompute them.
+
+For multi-decade operation, dependency minimization is a durability concern:
+
+- prefer a small, explicit dependency surface;
+- prefer self-contained distribution where practical;
+- do not make canonical data readability depend on GtkAda, GTK, or any GUI;
+- preserve CLI/read-only recovery paths when the desktop frontend is unavailable;
+- keep GUI-specific types below the Application boundary;
+- treat toolkit replacement as a frontend migration, not a ledger migration.
+
+A single executable can simplify deployment and archival, but **one binary is
+not itself a semantic guarantee**. Native GUI code still depends on operating
+system APIs and ABI behavior. The stronger goal is that the accounting engine
+and data remain independently buildable and understandable even if a particular
+desktop stack becomes obsolete.
+
+The long-term shape is therefore:
+
+```text
+canonical data
+     |
+Ada/SPARK Core
+     |
+typed Application boundary
+     |
+     +-- GtkAda GUI          (current practical desktop)
+     +-- CLI/TUI             (continuity / recovery)
+     +-- future GUI backend  (replaceable)
+```
+
+If GtkAda/GTK later becomes a significant portability or preservation liability,
+a thinner Ada desktop layer may be evaluated. Such a layer should wrap only the
+small primitive set HRA-N actually needs, for example window, label, table,
+scroll, selection, input, dialog, and 2D drawing, with platform backends beneath
+it. This is preferable to attempting a general-purpose GUI framework.
+
+Do **not** build that native layer speculatively. Revisit it only when concrete
+evidence shows that the current toolkit materially harms one or more of:
+
+1. reproducible builds on supported systems;
+2. offline/self-contained installation;
+3. startup/runtime reliability;
+4. long-term archival and rebuildability;
+5. portability to a newly required platform;
+6. the ability to preserve HRA-N's thin-frontend boundary.
+
+Until one of those pressures is demonstrated, GtkAda remains an acceptable
+replaceable frontend dependency. The architectural obligation is to keep the
+replacement inexpensive.
+
 ## 7. AI/chat connection
 
 AI access is a least-authority tool interface, not direct access to household
