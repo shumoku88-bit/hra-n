@@ -181,6 +181,9 @@ jobs:
       - name: Test Balance Query
         run: ./tests/bin/test_runner Test_Balance_Query
 
+      - name: Test Canonical Balance Query
+        run: ./tests/bin/test_runner Test_Canonical_Balance_Query
+
       - name: Test Assertion
         run: ./tests/bin/test_runner Test_Assertion
 
