@@ -93,6 +93,22 @@ package body HRA_N.Application.Canonical_Activity_Query is
       end if;
    end Set_Diagnostic;
 
+   procedure Set_Detail_Diagnostic
+     (View    : in out Event_Detail_View;
+      Message : String)
+   is
+      Len : constant Natural :=
+        Natural'Min (Message'Length, View.Diagnostic'Length);
+   begin
+      View.Success := False;
+      View.Diagnostic := [others => ' '];
+      View.Diagnostic_Len := Len;
+      if Len > 0 then
+         View.Diagnostic (1 .. Len) :=
+           Message (Message'First .. Message'First + Len - 1);
+      end if;
+   end Set_Detail_Diagnostic;
+
    function Open (Root_Path : String) return Browser_Snapshot is
       Source : Browser_Snapshot;
    begin
@@ -296,5 +312,117 @@ package body HRA_N.Application.Canonical_Activity_Query is
       Result.Diagnostic_Len := 0;
       return Result;
    end Activity_For;
+
+   function Event_Detail_For
+     (Source : Browser_Snapshot;
+      Target : Event_Id) return Event_Detail_View
+   is
+      Result : Event_Detail_View;
+   begin
+      if Source.Data = null or else not Source.Data.Is_Ready then
+         Set_Detail_Diagnostic
+           (Result,
+            (if Source.Data /= null and then Source.Data.Msg_Len > 0
+             then Source.Data.Message (1 .. Source.Data.Msg_Len)
+             else "canonical browser snapshot is not ready"));
+         return Result;
+      end if;
+
+      for Position in 1 .. Natural (Source.Data.Actual.Events.Length) loop
+         declare
+            Ev : constant Event :=
+              Source.Data.Actual.Events.Element (Positive (Position));
+         begin
+            if Equal_Token (Id (Ev).Token, Target.Token) then
+               declare
+                  Occurred       : Date_Type;
+                  Have_Date      : Boolean;
+                  Desc           : Description_Text;
+                  Have_Desc      : Boolean;
+                  Metadata       : Transaction_Metadata_Entry;
+                  Have_Metadata  : Boolean;
+                  Successor      : Event_Id;
+                  Is_Superseded  : Boolean := False;
+                  Reverser       : Event_Id;
+                  Have_Reverser  : Boolean := False;
+               begin
+                  Find_Occurrence_Date
+                    (Source.Data.Actual.Validities,
+                     Id (Ev),
+                     Occurred,
+                     Have_Date);
+                  Find_Description
+                    (Source.Data.Actual.Descriptions,
+                     Id (Ev),
+                     Desc,
+                     Have_Desc);
+                  Find_Metadata
+                    (Source.Data.Actual.Metadata,
+                     Id (Ev),
+                     Metadata,
+                     Have_Metadata);
+                  Find_Successor
+                    (Source.Data.Actual.Metadata,
+                     Id (Ev),
+                     Successor,
+                     Is_Superseded);
+                  Find_Reverser
+                    (Source.Data.Actual.Metadata,
+                     Id (Ev),
+                     Reverser,
+                     Have_Reverser);
+
+                  if not Have_Date then
+                     Set_Detail_Diagnostic
+                       (Result,
+                        "canonical Event detail is missing validity evidence");
+                     return Result;
+                  elsif not Have_Metadata then
+                     Set_Detail_Diagnostic
+                       (Result,
+                        "canonical Event detail is missing metadata evidence");
+                     return Result;
+                  end if;
+
+                  Result.Event := Id (Ev);
+                  Result.Valid_On := Occurred;
+                  Result.Has_Description := Have_Desc;
+                  Result.Description := Desc;
+                  Result.Is_Superseded := Is_Superseded;
+                  Result.Successor := Successor;
+                  Result.Is_Replacement := Metadata.Replaces.Present;
+                  Result.Replaces := Metadata.Replaces.Value;
+                  Result.Is_Reversal := Metadata.Reverses.Present;
+                  Result.Reverses := Metadata.Reverses.Value;
+                  Result.Has_Reverser := Have_Reverser;
+                  Result.Reversed_By := Reverser;
+                  Result.Effect_Count :=
+                    Detail_Effect_Count (Effect_Count (Ev));
+
+                  for I in 1 .. Effect_Count (Ev) loop
+                     declare
+                        Item : constant Effect := Effect_At (Ev, I);
+                     begin
+                        Result.Effects (Detail_Effect_Index (I)) :=
+                          (Has_Key => Item.Key.Present,
+                           Key     => Item.Key.Value,
+                           Locus   => Item.Locus,
+                           Measure => Item.Measure,
+                           Amount  => Long_Long_Integer (Item.Amount.Quanta));
+                     end;
+                  end loop;
+
+                  Result.Success := True;
+                  Result.Diagnostic_Len := 0;
+                  return Result;
+               end;
+            end if;
+         end;
+      end loop;
+
+      Set_Detail_Diagnostic
+        (Result, "canonical Event identity was not found in snapshot");
+      return Result;
+   end Event_Detail_For;
 
 end HRA_N.Application.Canonical_Activity_Query;
