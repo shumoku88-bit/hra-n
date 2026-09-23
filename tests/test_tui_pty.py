@@ -993,7 +993,8 @@ def test_canonical_scheduled_tui() -> None:
             # The newly created item is due today and sorts before scheduled-2.
             os.write(fd, b"\n")
             read_until(fd, output, b"scheduled-4")
-            read_until(fd, output, b"c: complete")
+            if b"c: complete" not in output[output.rfind(b"DETAIL  scheduled-4"):]:
+                read_until(fd, output, b"c: complete")
             os.write(fd, b"c")
             read_until(fd, output, b"Complete Scheduled: scheduled-4")
             os.write(fd, b"\n\n\n\n\n")
@@ -1107,6 +1108,15 @@ def test_canonical_actual_tui() -> None:
                 f"LOCUS{ht}food{nl}"
             )
 
+        with open(os.path.join(household, "scheduled.loam"), "w", encoding="utf-8") as stream:
+            stream.write(
+                f"LOAM-SCHEDULED-LIFECYCLE{ht}1{nl}"
+                f"BEGIN{ht}Scheduled{nl}LOAM-SCHEDULED-MEMORY{ht}1{nl}END{ht}Scheduled{nl}"
+                f"BEGIN{ht}Completion{nl}LOAM-SCHEDULED-COMPLETION-MEMORY{ht}1{nl}END{ht}Completion{nl}"
+                f"BEGIN{ht}Retirement{nl}LOAM-SCHEDULED-RETIREMENT-MEMORY{ht}1{nl}END{ht}Retirement{nl}"
+                f"BEGIN{ht}Replacement{nl}LOAM-SCHEDULED-REPLACEMENT-MEMORY{ht}1{nl}END{ht}Replacement{nl}"
+            )
+
         pid, fd = pty.fork()
         if pid == 0:
             env = os.environ.copy()
@@ -1121,8 +1131,9 @@ def test_canonical_actual_tui() -> None:
         reaped = False
         try:
             read_until(fd, output, b"Markers:")
-            # Home must already observe the same canonical Actual authority.
-            read_until(fd, output, b"Canonical Bento")
+            # Wait for the complete Home draw before inspecting its rows.
+            if b"Canonical Bento" not in output:
+                read_until(fd, output, b"Canonical Bento")
             home_screen_at = output.rfind(b"HRA-N HOME")
             assert home_screen_at >= 0, bytes(output)
             home_screen = bytes(output[home_screen_at:])
@@ -1130,7 +1141,7 @@ def test_canonical_actual_tui() -> None:
             assert b"Canonical Coffee" in home_screen, home_screen
             assert b"Canonical Bento" in home_screen, home_screen
             assert b"Actual     2 selected / 2 total" in home_screen, home_screen
-            assert b"Sources    actual=UNVERSIONED / other=g00000001" in home_screen, home_screen
+            assert b"Sources    actual=UNVERSIONED / scheduled=UNVERSIONED / other=g00000001" in home_screen, home_screen
 
             # 'a' opens Actual TUI in Scope_All
             os.write(fd, b"a")
@@ -1213,7 +1224,7 @@ def test_scheduled_unresolved_completion_tui() -> None:
                 "ZERO-ORIGIN cash:jpy\n"
             )
         with open(os.path.join(gen_dir, "scheduled.hra"), "w", encoding="utf-8") as stream:
-            stream.write("")
+            stream.write(f"SCHED legacy-only {today} cash:-50 food:50 status:open\n")
 
         ht = "\t"
         nl = "\n"
@@ -1260,6 +1271,15 @@ def test_scheduled_unresolved_completion_tui() -> None:
         reaped = False
         try:
             read_until(fd, output, b"Markers:")
+            if b"scheduled-wait" not in output:
+                read_until(fd, output, b"scheduled-wait")
+            home_at = output.rfind(b"HRA-N HOME")
+            home_screen = bytes(output[home_at:])
+            assert b"Scheduled  1 selected / 1 open / 1 retained" in home_screen, home_screen
+            assert b"Planned Payments (1):" in home_screen, home_screen
+            assert b"legacy-only" not in home_screen, home_screen
+            assert b"Sources    actual=UNVERSIONED / scheduled=UNVERSIONED / other=g00000001" in home_screen, home_screen
+            assert f"[{datetime.date.today().day:2d}*]".encode() in home_screen, home_screen
             os.write(fd, b"s")
             read_until(fd, output, b"n: create")
             list_at = output.rfind(b"SCHEDULED  CURRENT OPEN")

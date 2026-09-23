@@ -61,6 +61,8 @@ package body HRA_N.UI.Home_CLI is
       Put_Line
         ("Sources     actual="
          & HRA_N.UI.Snapshot_Label.Format (View.Actual_Snapshot)
+         & " / scheduled="
+         & HRA_N.UI.Snapshot_Label.Format (View.Scheduled_Snapshot)
          & " / other="
          & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
       Put_Line ("------------------------------------------------------------");

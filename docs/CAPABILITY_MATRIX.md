@@ -147,6 +147,14 @@ proof that adjacent counterexamples are covered:
 - Home Actual projection (Selected_Actual and calendar presence markers)
   aligns directly with Actual_Query, resolving occurrence dates from
   retained events in lockstep with the selected day Actual listing.
+- Home Scheduled totals/open/selected and calendar/day rows consume one
+  `Scheduled_Query` observation per reload. Canonical `scheduled.loam` wins over
+  retained legacy `scheduled.hra`; unresolved completion targets remain open
+  until the named Actual endpoint is retained. Home carries independent Actual
+  and Scheduled source identities alongside transitional Statement/Policy
+  generation evidence; `UNVERSIONED` does not prove cross-source atomicity.
+  Home still reads legacy journal for Statement and policy for roles, coverage,
+  attention and classification; this slice does not qualify those authorities.
 - Full three-stream admission, overflow propagation through all report tabs,
   and snapshot/completeness propagation need dedicated cross-surface evidence.
 

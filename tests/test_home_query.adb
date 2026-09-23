@@ -8,6 +8,7 @@ with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Actual_Query;
+with HRA_N.Application.Scheduled_Query;
 with HRA_N.Application.Home_Query;
 with HRA_N.Application.Initializer; use HRA_N.Application.Initializer;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
@@ -63,6 +64,10 @@ package body Test_Home_Query is
                  "Home query carries selected snapshot identity");
          Assert (Equal_Token (View.Snapshot.Identity, Make_Token ("g00000001")),
                  "Home query snapshot identity matches CURRENT");
+         Assert (View.Scheduled_Snapshot.Kind = Snapshot_Versioned
+                 and then Equal_Token
+                   (View.Scheduled_Snapshot.Identity, Make_Token ("g00000001")),
+                 "legacy Scheduled source retains generation snapshot");
          Assert (View.Actual_Snapshot.Kind = Snapshot_Versioned,
                  "legacy Home Actual observation carries selected generation snapshot");
          Assert (Equal_Token
@@ -208,6 +213,24 @@ package body Test_Home_Query is
             Error_Len),
          "Canonical Home locus marker installs");
 
+      Assert
+        (Write_File_Atomically
+           (Test_Dir & "/scheduled.loam",
+            "LOAM-SCHEDULED-LIFECYCLE" & ASCII.HT & "1" & ASCII.LF
+            & "BEGIN" & ASCII.HT & "Scheduled" & ASCII.LF
+            & "LOAM-SCHEDULED-MEMORY" & ASCII.HT & "1" & ASCII.LF
+            & "END" & ASCII.HT & "Scheduled" & ASCII.LF
+            & "BEGIN" & ASCII.HT & "Completion" & ASCII.LF
+            & "LOAM-SCHEDULED-COMPLETION-MEMORY" & ASCII.HT & "1" & ASCII.LF
+            & "END" & ASCII.HT & "Completion" & ASCII.LF
+            & "BEGIN" & ASCII.HT & "Retirement" & ASCII.LF
+            & "LOAM-SCHEDULED-RETIREMENT-MEMORY" & ASCII.HT & "1" & ASCII.LF
+            & "END" & ASCII.HT & "Retirement" & ASCII.LF
+            & "BEGIN" & ASCII.HT & "Replacement" & ASCII.LF
+            & "LOAM-SCHEDULED-REPLACEMENT-MEMORY" & ASCII.HT & "1" & ASCII.LF
+            & "END" & ASCII.HT & "Replacement" & ASCII.LF,
+            Error, Error_Len),
+         "canonical Scheduled marker accompanies Actual fixture");
       declare
          View : constant HRA_N.Application.Home_Query.Home_View :=
            HRA_N.Application.Home_Query.Execute (Paths, (Selected_Day => Day));
@@ -232,6 +255,92 @@ package body Test_Home_Query is
             and then Equal_Token
               (View.Snapshot.Identity, Make_Token ("g00000001")),
             "remaining Home evidence retains transitional generation snapshot");
+      end;
+
+      --  Canonical Scheduled supersedes retained legacy Scheduled, including
+      --  an unresolved completion whose Actual endpoint has not been retained.
+      declare
+         HT : constant String := [1 => ASCII.HT];
+         NL : constant String := [1 => ASCII.LF];
+         Canonical : constant String :=
+           "LOAM-SCHEDULED-LIFECYCLE" & HT & "1" & NL
+           & "BEGIN" & HT & "Scheduled" & NL
+           & "LOAM-SCHEDULED-MEMORY" & HT & "1" & NL
+           & "SCHEDULED" & HT & "canonical-due" & HT & "2026-09-11" & HT & "jpy" & NL
+           & "CHANGE" & HT & "cash" & HT & "-321" & NL
+           & "CHANGE" & HT & "food" & HT & "321" & NL
+           & "END" & HT & "Scheduled" & NL
+           & "BEGIN" & HT & "Completion" & NL
+           & "LOAM-SCHEDULED-COMPLETION-MEMORY" & HT & "1" & NL
+           & "COMPLETION" & HT & "canonical-due" & HT & "actual-missing" & NL
+           & "END" & HT & "Completion" & NL
+           & "BEGIN" & HT & "Retirement" & NL
+           & "LOAM-SCHEDULED-RETIREMENT-MEMORY" & HT & "1" & NL
+           & "END" & HT & "Retirement" & NL
+           & "BEGIN" & HT & "Replacement" & NL
+           & "LOAM-SCHEDULED-REPLACEMENT-MEMORY" & HT & "1" & NL
+           & "END" & HT & "Replacement" & NL;
+      begin
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/scheduled.loam", Canonical, Error, Error_Len),
+                 "canonical Home Scheduled fixture installs");
+         declare
+            View : constant HRA_N.Application.Home_Query.Home_View :=
+              HRA_N.Application.Home_Query.Execute (Paths, (Selected_Day => Day));
+            Scheduled : constant HRA_N.Application.Scheduled_Query.Scheduled_View :=
+              HRA_N.Application.Scheduled_Query.Execute
+                (Paths, (Scope => HRA_N.Application.Scheduled_Query.Scope_All,
+                         Selected_Day => Day,
+                         Ordering => HRA_N.Application.Scheduled_Query.Order_Due_Ascending));
+         begin
+            Assert (View.Status = Query_Partial, "independent canonical sources remain partial");
+            Assert (View.Scheduled_Snapshot.Kind = Snapshot_Unversioned,
+                    "canonical Scheduled source has independent unversioned identity");
+            Assert_Equal_Int (1, Long_Long_Integer (View.Total_Scheduled),
+                              "legacy-only Scheduled declaration does not enter Home");
+            Assert_Equal_Int (1, Long_Long_Integer (View.Open_Scheduled),
+                              "unresolved completion remains open in Home");
+            Assert_Equal_Int (1, Long_Long_Integer (View.Selected_Scheduled),
+                              "unresolved completion remains selected in Home");
+            Assert (Scheduled.Row_Count = 1
+                    and then Equal_Token (Scheduled.Rows (1).Id, Make_Token ("canonical-due")),
+                    "Home uses canonical Scheduled rows, not legacy IDs");
+         end;
+
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/actual.loam",
+                    "LOAM-NORMALIZED-ACTUAL" & HT & "1" & NL
+                    & "TX" & HT & "actual-missing" & HT & "2026-09-11"
+                    & HT & "DESC" & HT & "Completion Actual" & NL
+                    & "EFFECT" & HT & "cash" & HT & "jpy" & HT & "-321" & NL
+                    & "EFFECT" & HT & "food" & HT & "jpy" & HT & "321" & NL
+                    & "ENDTX" & NL, Error, Error_Len),
+                 "completion endpoint fixture installs");
+         declare
+            View : constant HRA_N.Application.Home_Query.Home_View :=
+              HRA_N.Application.Home_Query.Execute (Paths, (Selected_Day => Day));
+         begin
+            Assert_Equal_Int (0, Long_Long_Integer (View.Open_Scheduled),
+                              "effective completion closes Home Scheduled");
+            Assert_Equal_Int (0, Long_Long_Integer (View.Selected_Scheduled),
+                              "effective completion clears Home selected count");
+         end;
+
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/scheduled.loam", "invalid canonical lifecycle" & NL,
+                    Error, Error_Len), "malformed canonical fixture installs");
+         declare
+            View : constant HRA_N.Application.Home_Query.Home_View :=
+              HRA_N.Application.Home_Query.Execute (Paths, (Selected_Day => Day));
+         begin
+            Assert (View.Status = Query_Rejected,
+                    "malformed canonical Scheduled fails closed without legacy fallback");
+            Assert (View.Diagnostic_Len > 0,
+                    "rejected Home retains Scheduled diagnostic");
+            Assert_Equal_Int (0, Long_Long_Integer (View.Total_Scheduled),
+                              "rejected Home does not report legacy counts");
+         end;
+         Ada.Directories.Delete_File (Test_Dir & "/scheduled.loam");
       end;
 
       Ada.Directories.Delete_File (Test_Dir & "/actual.loam");

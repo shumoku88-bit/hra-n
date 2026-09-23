@@ -11,13 +11,12 @@
 with Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
-with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Core.Attention; use HRA_N.Core.Attention;
-with HRA_N.Core.Scheduled; use HRA_N.Core.Scheduled;
 with HRA_N.Application.Actual_Query;
 with HRA_N.Application.Scheduled_Query;
+use type HRA_N.Application.Scheduled_Query.Scheduled_Status_Kind;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Home_Query;
 with HRA_N.Application.Review; use HRA_N.Application.Review;
@@ -33,7 +32,6 @@ with HRA_N.UI.Record_TUI;
 with HRA_N.UI.Report_TUI;
 with HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Policy_Reader;
-with HRA_N.Storage.Scheduled_Journal_Reader;
 with HRA_N.UI.Snapshot_Label;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with HRA_N.UI.Terminal_Style;
@@ -89,7 +87,7 @@ package body HRA_N.UI.Home_TUI is
       JR           : HRA_N.Storage.Journal_Reader.Journal_Result;
       Actual       : HRA_N.Application.Actual_Query.Actual_View;
       PR           : HRA_N.Storage.Policy_Reader.Policy_Result;
-      SR           : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
+      Scheduled    : HRA_N.Application.Scheduled_Query.Scheduled_View;
       Selected_Day : Date_Type;
       Healthy      : out Boolean)
    is
@@ -105,13 +103,13 @@ package body HRA_N.UI.Home_TUI is
 
       declare
          View : constant HRA_N.Application.Home_Query.Home_View :=
-           HRA_N.Application.Home_Query.Project_With_Actual
-             (JR       => JR,
-              PR       => PR,
-              SR       => SR,
-              Actual   => Actual,
-              Query    => (Selected_Day => Selected_Day),
-              Snapshot => Snap);
+           HRA_N.Application.Home_Query.Project_With_Views
+             (JR        => JR,
+              PR        => PR,
+              Actual    => Actual,
+              Scheduled => Scheduled,
+              Query     => (Selected_Day => Selected_Day),
+              Snapshot  => Snap);
 
          First_Day_Date    : constant Date_Type := Make_Date (Selected_Day.Year, Selected_Day.Month, 1);
          First_Weekday     : constant Natural := Day_Of_Week (First_Day_Date);
@@ -193,11 +191,12 @@ package body HRA_N.UI.Home_TUI is
                 end loop;
 
                --  Populate Scheduled flags
-               for Index in 1 .. SR.Lifecycle.Sched_Count loop
+               for Index in 1 .. Scheduled.Row_Count loop
                   declare
-                     Item : constant Scheduled_Occurrence := SR.Lifecycle.Sched_Items (Index);
+                     Item : constant HRA_N.Application.Scheduled_Query.Scheduled_Row :=
+                       Scheduled.Rows (Index);
                   begin
-                     if Is_Current_Open (SR.Lifecycle, Item.Id)
+                     if Item.Status = HRA_N.Application.Scheduled_Query.Status_Open
                        and then Item.Expected_Day.Year = Selected_Day.Year
                        and then Item.Expected_Day.Month = Selected_Day.Month
                        and then Item.Expected_Day.Day in 1 .. Days_In_Month_Val
@@ -334,6 +333,8 @@ package body HRA_N.UI.Home_TUI is
               (Next_Row,
                "Sources    actual="
                & HRA_N.UI.Snapshot_Label.Format (View.Actual_Snapshot)
+               & " / scheduled="
+               & HRA_N.UI.Snapshot_Label.Format (View.Scheduled_Snapshot)
                & " / other="
                & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
             Next_Row := Next_Row + 1;
@@ -407,31 +408,40 @@ package body HRA_N.UI.Home_TUI is
             --  Direct inspection of Planned Payments for Selected Day
             if Rows > Next_Row + 3 then
                declare
-                  Sched_View : constant HRA_N.Application.Scheduled_Query.Scheduled_View :=
-                    HRA_N.Application.Scheduled_Query.Project
-                      (Sched_Res => SR,
-                       Request   =>
-                         (Scope        => HRA_N.Application.Scheduled_Query.Scope_Selected_Day,
-                          Selected_Day => Selected_Day,
-                          Ordering     => HRA_N.Application.Scheduled_Query.Order_Due_Ascending),
-                       Snapshot  => Snap);
+                  Selected_Count : Natural := 0;
+                  Printed_Count  : Natural := 0;
                begin
-                  Put_Clipped (Next_Row, "Planned Payments (" & Image (Natural (Sched_View.Row_Count)) & "):");
+                  for I in 1 .. Scheduled.Row_Count loop
+                     if Equal_Date (Scheduled.Rows (I).Expected_Day, Selected_Day)
+                       and then Scheduled.Rows (I).Status =
+                         HRA_N.Application.Scheduled_Query.Status_Open
+                     then
+                        Selected_Count := Selected_Count + 1;
+                     end if;
+                  end loop;
+                  Put_Clipped (Next_Row, "Planned Payments (" & Image (Selected_Count) & "):");
                   Next_Row := Next_Row + 1;
 
-                  if Sched_View.Row_Count = 0 then
+                  if Selected_Count = 0 then
                      Put_Clipped (Next_Row, "   (none due on this day)");
                      Next_Row := Next_Row + 1;
                   else
-                     for I in 1 .. Natural'Min (Natural (Sched_View.Row_Count), 2) loop
-                        declare
-                           Row_Item : constant HRA_N.Application.Scheduled_Query.Scheduled_Row := Sched_View.Rows (I);
-                           Id_Str   : constant String := Row_Item.Id.Value (1 .. Row_Item.Id.Length);
-                           Flow_Str : constant String := Row_Item.Flow_Summary (1 .. Row_Item.Flow_Len);
-                        begin
-                           Put_Clipped (Next_Row, "   - " & Id_Str & "  " & Flow_Str);
-                           Next_Row := Next_Row + 1;
-                        end;
+                     for I in 1 .. Scheduled.Row_Count loop
+                        exit when Printed_Count = 2;
+                        if Equal_Date (Scheduled.Rows (I).Expected_Day, Selected_Day)
+                          and then Scheduled.Rows (I).Status =
+                            HRA_N.Application.Scheduled_Query.Status_Open
+                        then
+                           declare
+                              Row_Item : constant HRA_N.Application.Scheduled_Query.Scheduled_Row := Scheduled.Rows (I);
+                              Id_Str   : constant String := Row_Item.Id.Value (1 .. Row_Item.Id.Length);
+                              Flow_Str : constant String := Row_Item.Flow_Summary (1 .. Row_Item.Flow_Len);
+                           begin
+                              Put_Clipped (Next_Row, "   - " & Id_Str & "  " & Flow_Str);
+                              Next_Row := Next_Row + 1;
+                              Printed_Count := Printed_Count + 1;
+                           end;
+                        end if;
                      end loop;
                   end if;
                end;
@@ -467,7 +477,7 @@ package body HRA_N.UI.Home_TUI is
       JR     : HRA_N.Storage.Journal_Reader.Journal_Result;
       Actual : HRA_N.Application.Actual_Query.Actual_View;
       PR     : HRA_N.Storage.Policy_Reader.Policy_Result;
-      SR     : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
+      Scheduled : HRA_N.Application.Scheduled_Query.Scheduled_View;
 
       procedure Reload is
       begin
@@ -481,8 +491,11 @@ package body HRA_N.UI.Home_TUI is
                  (HRA_N.Application.Path_Resolver.Journal_Path_Str (Current_Paths));
          PR := HRA_N.Storage.Policy_Reader.Read_Policy_File
                  (HRA_N.Application.Path_Resolver.Policy_Path_Str (Current_Paths));
-         SR := HRA_N.Storage.Scheduled_Journal_Reader.Read_Scheduled_Journal_File
-                 (HRA_N.Application.Path_Resolver.Scheduled_Path_Str (Current_Paths));
+         Scheduled := HRA_N.Application.Scheduled_Query.Execute
+           (Current_Paths,
+            (Scope        => HRA_N.Application.Scheduled_Query.Scope_All,
+             Selected_Day => Selected,
+             Ordering     => HRA_N.Application.Scheduled_Query.Order_Due_Ascending));
       end Reload;
    begin
       Success := False;
@@ -500,9 +513,10 @@ package body HRA_N.UI.Home_TUI is
       Reload;
 
       while Running loop
-         Draw (Current_Paths, JR, Actual, PR, SR, Selected, Query_Healthy);
+         Draw (Current_Paths, JR, Actual, PR, Scheduled, Selected, Query_Healthy);
          declare
             Evt : constant HRA_N.UI.TUI_Input.Event := HRA_N.UI.TUI_Input.Read;
+            Previous_Day : constant Date_Type := Selected;
          begin
             case Evt.Kind is
                when HRA_N.UI.TUI_Input.Scroll_Input =>
@@ -674,6 +688,9 @@ package body HRA_N.UI.Home_TUI is
                when HRA_N.UI.TUI_Input.Ignored_Input =>
                   null;
             end case;
+            if not Equal_Date (Previous_Day, Selected) then
+               Reload;
+            end if;
          end;
       end loop;
 
