@@ -129,7 +129,7 @@ package body Test_Scheduled_Completion_Protocol is
             Actual_After),
          "successful composition satisfies complete protocol relation");
       Assert
-        (Inert_Middle (Scheduled_Middle, Actual_Middle, Claim),
+        (Inert_Middle (Scheduled_Middle, Actual_Middle, Claim, Added_Actual),
          "middle retains claim while Actual endpoint is absent");
       Assert
         (Effective_Finish
