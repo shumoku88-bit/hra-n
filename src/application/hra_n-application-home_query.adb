@@ -21,7 +21,9 @@ package body HRA_N.Application.Home_Query is
       if Left.Kind /= Right.Kind then
          return False;
       elsif Left.Kind = Snapshot_Unversioned then
-         return True;
+         --  UNVERSIONED is absence of a binding identity, not evidence that
+         --  two independently acquired observations are the same snapshot.
+         return False;
       else
          return Equal_Token (Left.Identity, Right.Identity);
       end if;
