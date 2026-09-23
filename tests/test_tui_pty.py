@@ -1189,6 +1189,129 @@ def test_canonical_actual_tui() -> None:
         shutil.rmtree(household, ignore_errors=True)
 
 
+def test_scheduled_unresolved_completion_tui() -> None:
+    """Retained completion without Actual stays open and is rendered explicitly."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    harness = os.path.join(root, "tests", "bin", "tui_harness")
+    household = tempfile.mkdtemp(prefix="hra_n_scheduled_unresolved_completion_")
+    try:
+        today = datetime.date.today().isoformat()
+        gen_dir = os.path.join(household, ".hra", "generations", "g00000001")
+        os.makedirs(gen_dir, exist_ok=True)
+        selector = os.path.join(household, ".hra", "CURRENT")
+        with open(selector, "w", encoding="utf-8") as stream:
+            stream.write("g00000001\n")
+
+        with open(os.path.join(gen_dir, "journal.hra"), "w", encoding="utf-8") as stream:
+            stream.write("")
+        with open(os.path.join(gen_dir, "policy.hra"), "w", encoding="utf-8") as stream:
+            stream.write(
+                "LOCUS cash\n"
+                "LOCUS food\n"
+                "ROLE cash: ASSET\n"
+                "ROLE food: EXPENSE\n"
+                "ZERO-ORIGIN cash:jpy\n"
+            )
+        with open(os.path.join(gen_dir, "scheduled.hra"), "w", encoding="utf-8") as stream:
+            stream.write("")
+
+        ht = "\t"
+        nl = "\n"
+        with open(os.path.join(household, "actual.loam"), "w", encoding="utf-8") as stream:
+            stream.write(f"LOAM-NORMALIZED-ACTUAL{ht}1{nl}")
+        with open(os.path.join(household, "locus-admission.loam"), "w", encoding="utf-8") as stream:
+            stream.write(
+                f"LOAM-LOCUS-ADMISSION-VOCABULARY{ht}1{nl}"
+                f"LOCUS{ht}cash{nl}"
+                f"LOCUS{ht}food{nl}"
+            )
+        with open(os.path.join(household, "scheduled.loam"), "w", encoding="utf-8") as stream:
+            stream.write(
+                f"LOAM-SCHEDULED-LIFECYCLE{ht}1{nl}"
+                f"BEGIN{ht}Scheduled{nl}"
+                f"LOAM-SCHEDULED-MEMORY{ht}1{nl}"
+                f"SCHEDULED{ht}scheduled-wait{ht}{today}{ht}jpy{nl}"
+                f"CHANGE{ht}cash{ht}-100{nl}"
+                f"CHANGE{ht}food{ht}100{nl}"
+                f"END{ht}Scheduled{nl}"
+                f"BEGIN{ht}Completion{nl}"
+                f"LOAM-SCHEDULED-COMPLETION-MEMORY{ht}1{nl}"
+                f"COMPLETION{ht}scheduled-wait{ht}actual-pending{nl}"
+                f"END{ht}Completion{nl}"
+                f"BEGIN{ht}Retirement{nl}"
+                f"LOAM-SCHEDULED-RETIREMENT-MEMORY{ht}1{nl}"
+                f"END{ht}Retirement{nl}"
+                f"BEGIN{ht}Replacement{nl}"
+                f"LOAM-SCHEDULED-REPLACEMENT-MEMORY{ht}1{nl}"
+                f"END{ht}Replacement{nl}"
+            )
+
+        pid, fd = pty.fork()
+        if pid == 0:
+            env = os.environ.copy()
+            env["TERM"] = "xterm-256color"
+            env["LANG"] = "C.UTF-8"
+            env["LC_ALL"] = "C.UTF-8"
+            env["LC_CTYPE"] = "C.UTF-8"
+            os.execve(harness, [harness, household], env)
+
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 35, 120, 0, 0))
+        output = bytearray()
+        reaped = False
+        try:
+            read_until(fd, output, b"Markers:")
+            os.write(fd, b"s")
+            read_until(fd, output, b"n: create")
+            list_at = output.rfind(b"SCHEDULED  CURRENT OPEN")
+            assert list_at >= 0, bytes(output)
+            list_screen = bytes(output[list_at:])
+            assert b"scheduled-wait" in list_screen, list_screen
+            assert b"OPEN/WAIT" in list_screen, list_screen
+            assert b"actual-pending" in list_screen, list_screen
+
+            os.write(fd, b"\n")
+            read_until(fd, output, b"c: retry completion")
+            detail_at = output.rfind(b"SCHEDULED DETAIL")
+            if detail_at < 0:
+                detail_at = output.rfind(b"Status")
+            assert detail_at >= 0, bytes(output)
+            detail_screen = bytes(output[detail_at:])
+            assert b"completion awaits Actual: actual-pending" in detail_screen, detail_screen
+            assert b"c: retry completion" in detail_screen, detail_screen
+            assert b"x: retire" not in detail_screen, detail_screen
+            assert b"r: replace" not in detail_screen, detail_screen
+
+            os.write(fd, b"b")
+            read_until(fd, output, b"CURRENT OPEN")
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
+            os.write(fd, b"q")
+
+            deadline = time.monotonic() + 8.0
+            while time.monotonic() < deadline:
+                exited, status = os.waitpid(pid, os.WNOHANG)
+                if exited == pid:
+                    reaped = True
+                    assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+                    break
+                ready, _, _ = select.select([fd], [], [], 0.1)
+                if ready:
+                    try:
+                        output.extend(os.read(fd, 4096))
+                    except OSError:
+                        pass
+            assert reaped, "Scheduled unresolved-completion PTY did not quit"
+        finally:
+            if not reaped:
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+            os.close(fd)
+
+        print("Scheduled unresolved completion PTY: OPEN/WAIT remained retryable and explicit")
+    finally:
+        shutil.rmtree(household, ignore_errors=True)
+
+
 def test_scheduled_detail_probe_failure() -> None:
     """Scheduled Detail TUI must display diagnostic on probe failure and keep scheduled.hra intact."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1312,6 +1435,7 @@ if __name__ == "__main__":
     main()
     test_canonical_actual_tui()
     test_canonical_scheduled_tui()
+    test_scheduled_unresolved_completion_tui()
     test_scheduled_detail_probe_failure()
     test_statement_evidence()
     test_month_end_budget()

@@ -5,29 +5,58 @@
 with Ada.Directories;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Application.Canonical_Authority; use HRA_N.Application.Canonical_Authority;
+with HRA_N.Application.Scheduled_Effective_State; use HRA_N.Application.Scheduled_Effective_State;
 with HRA_N.Storage.Scheduled_Journal_Reader; use HRA_N.Storage.Scheduled_Journal_Reader;
 with HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader;
+with HRA_N.Storage.Loam_Actual_Reader;
 
 package body HRA_N.Application.Scheduled_Query is
 
    procedure Determine_Status
-     (Lifecycle    : Scheduled_Lifecycle;
-      Id           : Scheduled_Id;
-      Status       : out Scheduled_Status_Kind;
-      Terminal_Ref : out Token_Text)
+     (Lifecycle          : Scheduled_Lifecycle;
+      Id                 : Scheduled_Id;
+      Actual             : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
+      Canonical_Semantics : Boolean;
+      Status             : out Scheduled_Status_Kind;
+      Terminal_Ref       : out Token_Text)
    is
    begin
       Status := Status_Open;
       Terminal_Ref := (Length => 0, Value => [others => ' ']);
 
-      --  1. Check completion
-      for I in 1 .. Lifecycle.Comp_Count loop
-         if Equal_Token (Lifecycle.Comp_Items (I).Scheduled.Token, Id.Token) then
-            Status := Status_Completed;
-            Terminal_Ref := Lifecycle.Comp_Items (I).Actual.Token;
-            return;
-         end if;
-      end loop;
+      --  1. Check completion.  Canonical Loam completion is effective
+      --  only while its Actual endpoint is currently retained.  A retained
+      --  completion with a missing Actual endpoint is inert: keep the source
+      --  open, but preserve the retained target in Terminal_Ref.
+      if Canonical_Semantics then
+         declare
+            Completion : constant Completion_Observation :=
+              Observe_Completion (Lifecycle, Id, Actual);
+         begin
+            case Completion.State is
+               when Effective_Completion =>
+                  Status := Status_Completed;
+                  Terminal_Ref := Completion.Actual;
+                  return;
+               when Unresolved_Completion =>
+                  Status := Status_Open;
+                  Terminal_Ref := Completion.Actual;
+                  return;
+               when No_Retained_Completion =>
+                  null;
+            end case;
+         end;
+      else
+         for I in 1 .. Lifecycle.Comp_Count loop
+            if Equal_Token
+              (Lifecycle.Comp_Items (I).Scheduled.Token, Id.Token)
+            then
+               Status := Status_Completed;
+               Terminal_Ref := Lifecycle.Comp_Items (I).Actual.Token;
+               return;
+            end if;
+         end loop;
+      end if;
 
       --  2. Check replacement
       for I in 1 .. Lifecycle.Repl_Count loop
@@ -108,12 +137,13 @@ package body HRA_N.Application.Scheduled_Query is
       end if;
    end Format_Flow_Summary;
 
-   function Project
-     (Sched_Res    : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
-      Request      : Query;
-      Snapshot     : Frontend_Types.Snapshot_Reference :=
-        (Kind => Frontend_Types.Snapshot_Unversioned);
-      Source_Label : String := "scheduled.hra") return Scheduled_View
+   function Project_Internal
+     (Sched_Res           : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
+      Request             : Query;
+      Snapshot            : Frontend_Types.Snapshot_Reference;
+      Source_Label        : String;
+      Actual              : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
+      Canonical_Semantics : Boolean) return Scheduled_View
    is
       use HRA_N.Application.Frontend_Types;
 
@@ -158,6 +188,12 @@ package body HRA_N.Application.Scheduled_Query is
            (Source_Label & ": "
             & Sched_Res.Error_Reason (1 .. Sched_Res.Error_Len));
          return Result;
+      elsif Canonical_Semantics
+        and then not Lifecycle_Readable (Sched_Res.Lifecycle)
+      then
+         Set_Diagnostic
+           ("scheduled.loam: lifecycle is not application-readable");
+         return Result;
       end if;
 
       Result.Total_Count := Sched_Res.Lifecycle.Sched_Count;
@@ -173,7 +209,13 @@ package body HRA_N.Application.Scheduled_Query is
             Include_Row : Boolean;
             Is_Open     : Boolean;
          begin
-            Determine_Status (Sched_Res.Lifecycle, Occ.Id, Status, Term_Ref);
+            Determine_Status
+              (Sched_Res.Lifecycle,
+               Occ.Id,
+               Actual,
+               Canonical_Semantics,
+               Status,
+               Term_Ref);
             Is_Open := (Status = Status_Open);
 
             if Is_Open then
@@ -227,6 +269,24 @@ package body HRA_N.Application.Scheduled_Query is
 
       Result.Status := Query_Complete;
       return Result;
+   end Project_Internal;
+
+   function Project
+     (Sched_Res    : HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result;
+      Request      : Query;
+      Snapshot     : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned);
+      Source_Label : String := "scheduled.hra") return Scheduled_View
+   is
+      Empty_Actual : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
+   begin
+      return Project_Internal
+        (Sched_Res           => Sched_Res,
+         Request             => Request,
+         Snapshot            => Snapshot,
+         Source_Label        => Source_Label,
+         Actual              => Empty_Actual,
+         Canonical_Semantics => False);
    end Project;
 
    function Execute
@@ -286,11 +346,40 @@ package body HRA_N.Application.Scheduled_Query is
                        Canonical.Error_Reason (1 .. Error_Len);
                   end if;
 
-                  return Project
-                    (Sched_Res    => SR,
-                     Request      => Request,
-                     Snapshot     => (Kind => Snapshot_Unversioned),
-                     Source_Label => "scheduled.loam");
+                  declare
+                     Actual : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
+                  begin
+                     if SR.Success
+                       and then Lifecycle_Readable (SR.Lifecycle)
+                       and then SR.Lifecycle.Comp_Count > 0
+                     then
+                        Actual :=
+                          HRA_N.Storage.Loam_Actual_Reader.Read_Loam_Actual_File
+                            (Ada.Directories.Compose
+                               (Data_Dir_Str (Paths), "actual.loam"));
+                        if not Actual.Success then
+                           SR.Success := False;
+                           SR.Error_Reason := [others => ' '];
+                           declare
+                              Msg : constant String :=
+                                "completion semantics require readable actual.loam";
+                              L : constant Natural :=
+                                Natural'Min (Msg'Length, SR.Error_Reason'Length);
+                           begin
+                              SR.Error_Len := L;
+                              SR.Error_Reason (1 .. L) := Msg (1 .. L);
+                           end;
+                        end if;
+                     end if;
+
+                     return Project_Internal
+                       (Sched_Res           => SR,
+                        Request             => Request,
+                        Snapshot            => (Kind => Snapshot_Unversioned),
+                        Source_Label        => "scheduled.loam",
+                        Actual              => Actual,
+                        Canonical_Semantics => True);
+                  end;
                end;
             when Legacy_Only =>
                declare

@@ -24,7 +24,10 @@ package body HRA_N.UI.Scheduled_TUI is
       Id_Text   : constant String := Item.Id.Value (1 .. Item.Id.Length);
       Stat_Text : constant String :=
         (case Item.Status is
-            when Status_Open      => "OPEN     ",
+            when Status_Open      =>
+              (if Item.Terminal_Ref.Length > 0
+               then "OPEN/WAIT"
+               else "OPEN     "),
             when Status_Completed => "COMPLETED",
             when Status_Retired   => "RETIRED  ",
             when Status_Replaced  => "REPLACED ");
