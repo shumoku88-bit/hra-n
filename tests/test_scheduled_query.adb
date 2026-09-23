@@ -209,7 +209,181 @@ package body Test_Scheduled_Query is
          end;
       end;
 
-      --  6. Partial canonical presence fails closed instead of reading legacy.
+      --  6. Canonical completion is effective only when the named Actual
+      --  endpoint is retained.  Missing Actual keeps the source current-open
+      --  while preserving the retained completion target for observation.
+      declare
+         HT : constant String := [1 => ASCII.HT];
+         NL : constant String := [1 => ASCII.LF];
+         Canonical_Text : constant String :=
+           "LOAM-SCHEDULED-LIFECYCLE" & HT & "1" & NL
+           & "BEGIN" & HT & "Scheduled" & NL
+           & "LOAM-SCHEDULED-MEMORY" & HT & "1" & NL
+           & "SCHEDULED" & HT & "scheduled-10" & HT
+           & "2026-09-15" & HT & "jpy" & NL
+           & "CHANGE" & HT & "cash" & HT & "-321" & NL
+           & "CHANGE" & HT & "food" & HT & "321" & NL
+           & "END" & HT & "Scheduled" & NL
+           & "BEGIN" & HT & "Completion" & NL
+           & "LOAM-SCHEDULED-COMPLETION-MEMORY" & HT & "1" & NL
+           & "COMPLETION" & HT & "scheduled-10" & HT & "actual-missing" & NL
+           & "END" & HT & "Completion" & NL
+           & "BEGIN" & HT & "Retirement" & NL
+           & "LOAM-SCHEDULED-RETIREMENT-MEMORY" & HT & "1" & NL
+           & "END" & HT & "Retirement" & NL
+           & "BEGIN" & HT & "Replacement" & NL
+           & "LOAM-SCHEDULED-REPLACEMENT-MEMORY" & HT & "1" & NL
+           & "END" & HT & "Replacement" & NL;
+      begin
+         Assert
+           (Write_File_Atomically
+              (Test_Dir & "/scheduled.loam",
+               Canonical_Text,
+               Error,
+               Error_Len),
+            "canonical unresolved completion fixture publishes");
+         Assert
+           (Write_File_Atomically
+              (Test_Dir & "/actual.loam",
+               "LOAM-NORMALIZED-ACTUAL" & HT & "1" & NL,
+               Error,
+               Error_Len),
+            "empty canonical Actual fixture publishes");
+
+         declare
+            Open_View : constant Scheduled_View :=
+              Execute
+                (Paths,
+                 (Scope        => Scope_Current_Open,
+                  Selected_Day => Focus_Day,
+                  Ordering     => Order_Due_Ascending));
+            All_View : constant Scheduled_View :=
+              Execute
+                (Paths,
+                 (Scope        => Scope_All,
+                  Selected_Day => Focus_Day,
+                  Ordering     => Order_Due_Ascending));
+            Detail : constant
+              HRA_N.Application.Scheduled_Detail_Query.Scheduled_Detail_View :=
+                HRA_N.Application.Scheduled_Detail_Query.Execute
+                  (Paths, Make_Token ("scheduled-10"));
+         begin
+            Assert (Open_View.Status = Query_Complete,
+                    "unresolved canonical completion keeps query readable");
+            Assert_Equal_Int
+              (1, Long_Long_Integer (Open_View.Open_Count),
+               "missing Actual endpoint keeps Scheduled current-open");
+            Assert_Equal_Int
+              (1, Long_Long_Integer (Open_View.Row_Count),
+               "current-open scope includes unresolved completion source");
+            Assert
+              (Open_View.Rows (1).Status = Status_Open,
+               "unresolved completion projects semantic Open status");
+            Assert
+              (Term_Ref_At (Open_View, 1) = "actual-missing",
+               "open row retains unresolved completion target");
+            Assert
+              (All_View.Rows (1).Status = Status_Open,
+               "all-scope row also remains Open while Actual is missing");
+            Assert
+              (Detail.Status = Query_Complete
+               and then Detail.Lifecycle_Status = Status_Open,
+               "detail remains Open while completion Actual is missing");
+            Assert
+              (Detail.Has_Terminal_Ref
+               and then Detail.Terminal_Ref.Value
+                 (1 .. Detail.Terminal_Ref.Length) = "actual-missing",
+               "detail exposes retained unresolved completion target");
+         end;
+
+         Assert
+           (Write_File_Atomically
+              (Test_Dir & "/actual.loam",
+               "LOAM-NORMALIZED-ACTUAL" & HT & "1" & NL
+               & "TX" & HT & "actual-missing" & HT & "2026-09-15"
+               & HT & "DESC" & HT & "Completion Actual" & NL
+               & "EFFECT" & HT & "cash" & HT & "jpy" & HT & "-321" & NL
+               & "EFFECT" & HT & "food" & HT & "jpy" & HT & "321" & NL
+               & "ENDTX" & NL,
+               Error,
+               Error_Len),
+            "effective completion Actual fixture publishes");
+
+         declare
+            Open_View : constant Scheduled_View :=
+              Execute
+                (Paths,
+                 (Scope        => Scope_Current_Open,
+                  Selected_Day => Focus_Day,
+                  Ordering     => Order_Due_Ascending));
+            All_View : constant Scheduled_View :=
+              Execute
+                (Paths,
+                 (Scope        => Scope_All,
+                  Selected_Day => Focus_Day,
+                  Ordering     => Order_Due_Ascending));
+            Detail : constant
+              HRA_N.Application.Scheduled_Detail_Query.Scheduled_Detail_View :=
+                HRA_N.Application.Scheduled_Detail_Query.Execute
+                  (Paths, Make_Token ("scheduled-10"));
+         begin
+            Assert_Equal_Int
+              (0, Long_Long_Integer (Open_View.Open_Count),
+               "retained Actual endpoint closes Scheduled completion");
+            Assert_Equal_Int
+              (0, Long_Long_Integer (Open_View.Row_Count),
+               "completed source leaves current-open scope");
+            Assert
+              (All_View.Rows (1).Status = Status_Completed,
+               "all-scope row becomes Completed when Actual exists");
+            Assert
+              (Detail.Lifecycle_Status = Status_Completed,
+               "detail becomes Completed when Actual exists");
+         end;
+
+         --  Cross-kind terminal conflict is retained by the codec but refused
+         --  by the application interpretation boundary.
+         Assert
+           (Write_File_Atomically
+              (Test_Dir & "/scheduled.loam",
+               Canonical_Text
+                 (Canonical_Text'First
+                  .. Canonical_Text'Last
+                     - ("END" & HT & "Retirement" & NL
+                        & "BEGIN" & HT & "Replacement" & NL
+                        & "LOAM-SCHEDULED-REPLACEMENT-MEMORY" & HT & "1" & NL
+                        & "END" & HT & "Replacement" & NL)'Length)
+               & "RETIREMENT" & HT & "scheduled-10" & NL
+               & "END" & HT & "Retirement" & NL
+               & "BEGIN" & HT & "Replacement" & NL
+               & "LOAM-SCHEDULED-REPLACEMENT-MEMORY" & HT & "1" & NL
+               & "END" & HT & "Replacement" & NL,
+               Error,
+               Error_Len),
+            "canonical conflicting terminal fixture publishes");
+
+         declare
+            View : constant Scheduled_View :=
+              Execute
+                (Paths,
+                 (Scope        => Scope_All,
+                  Selected_Day => Focus_Day,
+                  Ordering     => Order_Due_Ascending));
+            Detail : constant
+              HRA_N.Application.Scheduled_Detail_Query.Scheduled_Detail_View :=
+                HRA_N.Application.Scheduled_Detail_Query.Execute
+                  (Paths, Make_Token ("scheduled-10"));
+         begin
+            Assert
+              (View.Status = Query_Rejected,
+               "cross-kind canonical terminal conflict rejects list query");
+            Assert
+              (Detail.Status = Query_Rejected,
+               "cross-kind canonical terminal conflict rejects detail query");
+         end;
+      end;
+
+      --  7. Partial canonical presence fails closed instead of reading legacy.
       Ada.Directories.Delete_File (Test_Dir & "/scheduled.loam");
       Assert
         (Write_File_Atomically
@@ -239,7 +413,7 @@ package body Test_Scheduled_Query is
             "partial canonical authority rejects Scheduled detail");
       end;
 
-      --  7. Missing scheduled file degrades fail-closed with rejected status
+      --  8. Missing scheduled file degrades fail-closed with rejected status
       declare
          Absent_Paths : constant Path_Config := Resolve_Paths ("/tmp/hra_n_absent_dir");
          View : constant Scheduled_View :=
