@@ -80,7 +80,7 @@ package HRA_N.Application.Balance_Query is
    --  independently. Assertions remain part of the selected Journal image.
    function Project_With_Evidence
      (Journal  : Journal_Result;
-      Roles    : Role_Map;
+      Roles    : Role_Evidence;
       Coverage : Zero_Origin_Coverage;
       Request  : Query := (Scope => Scope_All, Has_As_Of => False, As_Of_Date => (2026, 1, 1));
       Snapshot : Frontend_Types.Snapshot_Reference := (Kind => Frontend_Types.Snapshot_Unversioned))

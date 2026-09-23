@@ -79,6 +79,12 @@ class TestHraNCli(unittest.TestCase):
                 f"EFFECT{ht}food{ht}jpy{ht}20\n"
                 "ENDTX\n"
             )
+        with open(os.path.join(self.test_dir, "accounting-role.loam"), "w", encoding="utf-8") as stream:
+            stream.write(
+                f"LOAM-ACCOUNTING-ROLE-MAP{ht}1\n"
+                f"ROLE{ht}cash{ht}ASSET\n"
+                f"ROLE{ht}food{ht}EXPENSE\n"
+            )
         res = self.run_cmd("statement", "--as-of", "2026-09-15")
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         self.assertIn("actual=UNVERSIONED / policy=UNVERSIONED", res.stdout)

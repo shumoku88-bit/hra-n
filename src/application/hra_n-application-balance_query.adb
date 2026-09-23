@@ -58,7 +58,7 @@ package body HRA_N.Application.Balance_Query is
 
    function Project_With_Evidence
      (Journal  : Journal_Result;
-      Roles    : Role_Map;
+      Roles    : Role_Evidence;
       Coverage : Zero_Origin_Coverage;
       Request  : Query := (Scope => Scope_All, Has_As_Of => False, As_Of_Date => (2026, 1, 1));
       Snapshot : Frontend_Types.Snapshot_Reference := (Kind => Frontend_Types.Snapshot_Unversioned))
@@ -294,12 +294,9 @@ package body HRA_N.Application.Balance_Query is
                      end loop;
 
                      --  Determine role
-                     if Request.Has_As_Of then
-                        Find_Role_As_Of
-                          (Roles, (Token => Loc), Request.As_Of_Date, Role_Val, Has_Role_Val);
-                     else
-                        Find_Role (Roles, (Token => Loc), Role_Val, Has_Role_Val);
-                     end if;
+                     Resolve_Role
+                       (Roles, (Token => Loc), Request.Has_As_Of,
+                        Request.As_Of_Date, Role_Val, Has_Role_Val);
 
                      declare
                         Status_Val : constant Balance_Epistemic_Status :=
@@ -390,7 +387,9 @@ package body HRA_N.Application.Balance_Query is
          return Result;
       end if;
       return Project_With_Evidence
-        (Journal, Policy.Roles, Policy.Coverage, Request, Snapshot);
+        (Journal,
+         (Kind => Historical_Role_Evidence, Historical => Policy.Roles),
+         Policy.Coverage, Request, Snapshot);
    end Project;
 
    function Execute

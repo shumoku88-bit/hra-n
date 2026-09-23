@@ -52,6 +52,9 @@ package HRA_N.Application.Statement is
       Coverage_Snapshot : Snapshot_Reference := (Kind => Snapshot_Unversioned);
       Coverage_File_Present : Boolean := False;
       Zero_Origin_Count : Natural := 0;
+      Role_Snapshot    : Snapshot_Reference := (Kind => Snapshot_Unversioned);
+      Role_Assignment_Count : Natural := 0;
+      Role_History_Available : Boolean := True;
       Assertion_Evidence_Available : Boolean := True;
       Has_As_Of        : Boolean           := False;
       As_Of_Date       : Date_Type         := (Year => 2026, Month => 1, Day => 1);
@@ -88,7 +91,7 @@ package HRA_N.Application.Statement is
    --  evidence. Assertions, when available, remain in the Journal image.
    function Project_With_Evidence
      (Journal      : Journal_Result;
-      Roles        : Role_Map;
+      Roles        : Role_Evidence;
       Coverage     : Zero_Origin_Coverage;
       Loci         : Locus_Vocabulary;
       As_Of        : Date_Type := (Year => 2026, Month => 1, Day => 1);
@@ -105,12 +108,11 @@ package HRA_N.Application.Statement is
       Snapshot     : Token_Text := (Length => 0, Value => [others => ' ']);
       Is_Versioned : Boolean := False) return Statement_Report;
 
-   --  Canonical Actual and Coverage use the same projection without a fake
-   --  Policy_Result and without fabricated assertion evidence. Roles and Locus
-   --  vocabulary remain transitional legacy evidence.
+   --  Canonical Actual, Coverage, and current Roles use the same projection
+   --  without a fake historical Role_Map or fabricated assertion evidence.
    function Project_Canonical
      (Actual       : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
-      Roles        : Role_Map;
+      Roles        : Current_Role_Map;
       Coverage     : Zero_Origin_Coverage;
       Loci         : Locus_Vocabulary;
       Coverage_File_Present : Boolean;
@@ -119,14 +121,16 @@ package HRA_N.Application.Statement is
       Policy_Snapshot : Snapshot_Reference := (Kind => Snapshot_Unversioned))
       return Statement_Report;
 
-   --  Select Actual authority while consuming an already loaded legacy Policy.
+   --  Select canonical evidence while retaining only still-transitional legacy
+   --  Policy domains such as Locus vocabulary.
    function Execute_With_Policy
      (Paths     : Path_Config;
       Policy    : Policy_Result;
       As_Of     : Date_Type := (Year => 2026, Month => 1, Day => 1);
       Has_As_Of : Boolean := False) return Statement_Report;
 
-   --  Statement query: canonical Actual if present, otherwise legacy journal.
+   --  Statement query: canonical evidence if any marker is present, otherwise
+   --  the legacy Journal/Policy projection.
    function Execute_Statement_Query
      (Paths     : Path_Config;
       As_Of     : Date_Type := (Year => 2026, Month => 1, Day => 1);

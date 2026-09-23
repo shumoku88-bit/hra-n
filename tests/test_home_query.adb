@@ -216,6 +216,15 @@ package body Test_Home_Query is
 
       Assert
         (Write_File_Atomically
+           (Test_Dir & "/accounting-role.loam",
+            "LOAM-ACCOUNTING-ROLE-MAP" & ASCII.HT & "1" & ASCII.LF &
+            "ROLE" & ASCII.HT & "cash" & ASCII.HT & "ASSET" & ASCII.LF &
+            "ROLE" & ASCII.HT & "food" & ASCII.HT & "EXPENSE" & ASCII.LF,
+            Error, Error_Len),
+         "Canonical Home current role fixture installs");
+
+      Assert
+        (Write_File_Atomically
            (Test_Dir & "/scheduled.loam",
             "LOAM-SCHEDULED-LIFECYCLE" & ASCII.HT & "1" & ASCII.LF
             & "BEGIN" & ASCII.HT & "Scheduled" & ASCII.LF
@@ -258,6 +267,8 @@ package body Test_Home_Query is
             "remaining Home evidence retains transitional generation snapshot");
          Assert (View.Statement_Actual_Snapshot.Kind = Snapshot_Unversioned,
                  "Home Statement reads canonical transactions independently of policy generation");
+         Assert_Equal_Int (2, Long_Long_Integer (View.Role_Assignments),
+                           "Home role count follows canonical current map");
          declare
             Statement : constant HRA_N.Application.Statement.Statement_Report :=
               HRA_N.Application.Statement.Execute_Statement_Query (Paths);
@@ -361,6 +372,7 @@ package body Test_Home_Query is
 
       Ada.Directories.Delete_File (Test_Dir & "/actual.loam");
       Ada.Directories.Delete_File (Test_Dir & "/locus-admission.loam");
+      Ada.Directories.Delete_File (Test_Dir & "/accounting-role.loam");
 
       Assert
         (Write_File_Atomically

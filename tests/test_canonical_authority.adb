@@ -19,6 +19,7 @@ package body Test_Canonical_Authority is
    Scheduled : constant String := Root & "/scheduled.loam";
    Policy    : constant String := Root & "/locus-admission.loam";
    Coverage  : constant String := Root & "/zero-origin-coverage.loam";
+   Roles     : constant String := Root & "/accounting-role.loam";
 
    procedure Write_Fixture (Path : String; Content : String) is
       Error     : String (1 .. 192) := [others => ' '];
@@ -120,6 +121,14 @@ package body Test_Canonical_Authority is
          "zero-origin coverage only must report Canonical_Present");
       Ada.Directories.Delete_File (Coverage);
 
+      Write_Fixture
+        (Roles, "LOAM-ACCOUNTING-ROLE-MAP" & ASCII.HT & "1" & ASCII.LF);
+      Assert_Equal_Int
+        (Authority_State'Pos (Canonical_Present),
+         Authority_State'Pos (Probe (Root).State),
+         "accounting role only must report Canonical_Present");
+      Ada.Directories.Delete_File (Roles);
+
       --  5. All markers present: Canonical_Present
       Write_Fixture (Actual, "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1" & ASCII.LF);
       Write_Fixture (Scheduled, "LOAM-SCHEDULED-LIFECYCLE" & ASCII.HT & "1" & ASCII.LF);
@@ -129,6 +138,8 @@ package body Test_Canonical_Authority is
       Write_Fixture
         (Coverage,
          "LOAM-ZERO-ORIGIN-COVERAGE" & ASCII.HT & "1" & ASCII.LF);
+      Write_Fixture
+        (Roles, "LOAM-ACCOUNTING-ROLE-MAP" & ASCII.HT & "1" & ASCII.LF);
       Assert_Equal_Int
         (Authority_State'Pos (Canonical_Present),
          Authority_State'Pos (Probe (Root).State),
@@ -137,6 +148,7 @@ package body Test_Canonical_Authority is
       --  6. Partial presence (pair: actual + policy): Canonical_Present
       Ada.Directories.Delete_File (Scheduled);
       Ada.Directories.Delete_File (Coverage);
+      Ada.Directories.Delete_File (Roles);
       Assert_Equal_Int
         (Authority_State'Pos (Canonical_Present),
          Authority_State'Pos (Probe (Root).State),

@@ -36,6 +36,15 @@ def read_until(fd: int, output: bytearray, needle: bytes | tuple[bytes, ...], ti
         raise AssertionError(f"TUI did not render {needle!r}, got: {bytes(output[start:])!r}")
 
 
+def write_canonical_roles(household: str) -> None:
+    with open(os.path.join(household, "accounting-role.loam"), "w", encoding="utf-8") as stream:
+        stream.write(
+            "LOAM-ACCOUNTING-ROLE-MAP\t1\n"
+            "ROLE\tcash\tASSET\n"
+            "ROLE\tfood\tEXPENSE\n"
+        )
+
+
 def test_statement_evidence() -> None:
     """Unknown and conflicting stock evidence must survive cached TUI rendering."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -893,6 +902,7 @@ def test_canonical_scheduled_tui() -> None:
         with open(legacy_path, "w", encoding="utf-8") as stream:
             stream.write(legacy_scheduled)
 
+        write_canonical_roles(household)
         ht = "\t"
         nl = "\n"
         with open(os.path.join(household, "actual.loam"), "w", encoding="utf-8") as stream:
@@ -1087,6 +1097,7 @@ def test_canonical_actual_tui() -> None:
         with open(os.path.join(gen_dir, "scheduled.hra"), "w", encoding="utf-8") as stream:
             stream.write("")
 
+        write_canonical_roles(household)
         ht = "\t"
         nl = "\n"
         with open(os.path.join(household, "actual.loam"), "w", encoding="utf-8") as stream:
@@ -1228,6 +1239,7 @@ def test_scheduled_unresolved_completion_tui() -> None:
         with open(os.path.join(gen_dir, "scheduled.hra"), "w", encoding="utf-8") as stream:
             stream.write(f"SCHED legacy-only {today} cash:-50 food:50 status:open\n")
 
+        write_canonical_roles(household)
         ht = "\t"
         nl = "\n"
         with open(os.path.join(household, "actual.loam"), "w", encoding="utf-8") as stream:
