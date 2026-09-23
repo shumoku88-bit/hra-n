@@ -987,7 +987,7 @@ def test_canonical_scheduled_tui() -> None:
             time.sleep(0.05)
             os.write(fd, b"500\n")
             read_until(fd, output, b"ADMISSION PREVIEW")
-            assert b"canonical Loam" in output
+            read_until(fd, output, b"canonical Loam")
             os.write(fd, b"\n")
             read_until(fd, output, b"scheduled-4")
 
@@ -999,7 +999,7 @@ def test_canonical_scheduled_tui() -> None:
             read_until(fd, output, b"Complete Scheduled: scheduled-4")
             os.write(fd, b"\n\n\n\n\n")
             read_until(fd, output, b"Completes:    scheduled-4")
-            assert b"canonical Loam" in output
+            read_until(fd, output, b"canonical Loam")
             os.write(fd, b"\n")
             time.sleep(0.2)
             with open(scheduled_path, encoding="utf-8") as stream:
