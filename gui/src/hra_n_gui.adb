@@ -18,12 +18,13 @@ with Cairo.Surface;
 with Glib;                use Glib;
 with Gtk.Box;              use Gtk.Box;
 with Gtk.Container;        use Gtk.Container;
-with Gtk.Handlers;
 with Gtk.Image;            use Gtk.Image;
 with Gtk.Label;            use Gtk.Label;
 with Gtk.Main;
 with Gtk.Widget;           use Gtk.Widget;
 with Gtk.Window;           use Gtk.Window;
+
+with HRA_N_GUI_Callbacks;
 
 procedure HRA_N_GUI is
 
@@ -35,13 +36,6 @@ procedure HRA_N_GUI is
    Note_Label   : Gtk_Label;
    Report_Image : Gtk_Image;
 
-   package Widget_Handler is new Gtk.Handlers.Callback (Gtk_Widget_Record);
-
-   procedure Quit (Widget : access Gtk_Widget_Record'Class) is
-      pragma Unreferenced (Widget);
-   begin
-      Gtk.Main.Main_Quit;
-   end Quit;
 
    procedure Draw_Label
      (Cr    : Cairo_Context;
@@ -165,7 +159,7 @@ begin
      (Root_Box, Report_Image,
       Expand => True, Fill => True, Padding => 0);
 
-   Widget_Handler.Connect (Window, "destroy", Quit'Access);
+   HRA_N_GUI_Callbacks.Connect_Quit (Window);
 
    Show_All (Window);
    Gtk.Main.Main;
