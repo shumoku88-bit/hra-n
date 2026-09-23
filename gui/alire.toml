@@ -7,3 +7,8 @@ executables = ["hra-n-gui"]
 
 [[depends-on]]
 gtkada = "~26.0.0"
+
+
+[[actions]]
+type = "pre-build"
+command = ["python3", "tools/patch_gtkada_26.py"]
