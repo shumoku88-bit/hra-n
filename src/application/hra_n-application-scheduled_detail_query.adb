@@ -215,7 +215,9 @@ package body HRA_N.Application.Scheduled_Detail_Query is
                   declare
                      Actual : HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result;
                   begin
-                     if Canonical.Lifecycle.Comp_Count > 0 then
+                     if Lifecycle_Readable (Canonical.Lifecycle)
+                       and then Canonical.Lifecycle.Comp_Count > 0
+                     then
                         Actual :=
                           HRA_N.Storage.Loam_Actual_Reader.Read_Loam_Actual_File
                             (Ada.Directories.Compose
