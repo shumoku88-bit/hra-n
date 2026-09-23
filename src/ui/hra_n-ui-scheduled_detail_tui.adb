@@ -84,7 +84,11 @@ package body HRA_N.UI.Scheduled_Detail_TUI is
                declare
                   Stat_Str : constant String :=
                     (case View.Lifecycle_Status is
-                       when Status_Open      => "OPEN",
+                       when Status_Open      =>
+                         (if View.Has_Terminal_Ref
+                          then "OPEN (completion awaits Actual: "
+                            & Token_String (View.Terminal_Ref) & ")"
+                          else "OPEN"),
                        when Status_Completed =>
                          "COMPLETED (Actual: " & Token_String (View.Terminal_Ref) & ")",
                        when Status_Retired   => "RETIRED",
