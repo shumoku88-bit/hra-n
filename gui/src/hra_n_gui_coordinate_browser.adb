@@ -2,12 +2,14 @@ with Ada.Strings;       use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 
 with Cairo;               use Cairo;
+with Gtk;                 use Gtk;
 with Cairo.Image_Surface;
 with Cairo.Png;
 with Cairo.Surface;
 with Glib;                use Glib;
 with Gtk.Box;              use Gtk.Box;
 with Gtk.Cell_Renderer_Text; use Gtk.Cell_Renderer_Text;
+with Gtk.Container;        use Gtk.Container;
 with Gtk.Enums;            use Gtk.Enums;
 with Gtk.Image;            use Gtk.Image;
 with Gtk.Label;            use Gtk.Label;
