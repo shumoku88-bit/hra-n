@@ -62,3 +62,25 @@ typed GUI report model
         |
 GtkAda widgets + Cairo drawing
 ```
+
+
+## GtkAda 26 compatibility
+
+GtkAda v26.0.0 contains two `gtkada-canvas_view.ads` expression functions
+that rely on an implicit anonymous-access conversion rejected by current GNAT.
+GtkAda upstream has already changed both to an explicit
+`Abstract_Item (Self)` conversion.
+
+The GUI sub-crate therefore runs
+`tools/patch_gtkada_26.py` as a narrow, idempotent pre-build compatibility
+step. It edits only those two exact v26.0.0 expressions in the Alire-deployed
+dependency and refuses unfamiliar source shapes. Nothing in the HRA-N
+production crate is patched.
+
+After pulling an updated GUI branch, retry from `gui/`:
+
+```sh
+alr update
+alr build
+alr run
+```
