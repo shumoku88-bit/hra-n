@@ -167,6 +167,26 @@ package body HRA_N.UI.Record_TUI is
 
       Proposal_Obj : HRA_N.Application.Proposal.Authority_Proposal;
 
+      Use_Canonical_Scheduled : constant Boolean :=
+        Op in Op_Create_Scheduled | Op_Complete_Scheduled
+        and then
+          HRA_N.Application.Scheduled_Command.Canonical_Authority_Present
+            (Data_Dir_Str (Paths));
+      Canonical_Preview : Boolean := False;
+      Pending_Create : Create_Intent :=
+        (Id           => (0, [others => ' ']),
+         Expected_Day => Selected_Day,
+         From_Locus   => (Token => Make_Token ("")),
+         To_Locus     => (Token => Make_Token ("")),
+         Measure      => (Token => Make_Token ("jpy")),
+         Amount       => 0);
+      Pending_Complete : Complete_Intent :=
+        (Target_Id          => (0, [others => ' ']),
+         Has_Execution_Date => False,
+         Execution_Date     => Selected_Day,
+         Description        => (0, [others => ' ']),
+         Existing_Actual_Id => (0, [others => ' ']));
+
       Policy     : constant Policy_Result := Read_Policy_File (Policy_Path_Str (Paths));
       Loci       : Locus_Array;
       Loci_Count : Natural := 0;
@@ -543,7 +563,14 @@ package body HRA_N.UI.Record_TUI is
                               Measure      => (Token => Make_Token ("jpy")),
                               Amount       => Amt);
                         begin
-                           Res := Propose_Create (Paths, Intent);
+                           if Use_Canonical_Scheduled then
+                              Pending_Create := Intent;
+                              Canonical_Preview := True;
+                              Mode := Mode_Preview;
+                              return;
+                           else
+                              Res := Propose_Create (Paths, Intent);
+                           end if;
                         end;
                      else
                         Set_Notice ("Scheduled obligation must have one outflow and one inflow.");
@@ -568,7 +595,14 @@ package body HRA_N.UI.Record_TUI is
                      Description        => Desc_Tok,
                      Existing_Actual_Id => (0, [others => ' ']));
                begin
-                  Res := Propose_Completion (Paths, Intent);
+                  if Use_Canonical_Scheduled then
+                     Pending_Complete := Intent;
+                     Canonical_Preview := True;
+                     Mode := Mode_Preview;
+                     return;
+                  else
+                     Res := Propose_Completion (Paths, Intent);
+                  end if;
                end;
 
             when Op_Correct_Actual =>
@@ -944,7 +978,16 @@ package body HRA_N.UI.Record_TUI is
          Put_Clipped (Current_Row, "================================================================================");
          Current_Row := Current_Row + 1;
 
-         Put_Clipped (Current_Row, " Proposed ID:  " & HRA_N.Application.Proposal.Primary_Id (Proposal_Obj));
+         if Canonical_Preview then
+            Put_Clipped
+              (Current_Row,
+               " Proposed ID:  (allocated by canonical authority on commit)");
+         else
+            Put_Clipped
+              (Current_Row,
+               " Proposed ID:  "
+               & HRA_N.Application.Proposal.Primary_Id (Proposal_Obj));
+         end if;
          Current_Row := Current_Row + 1;
 
          if Op = Op_Correct_Actual then
@@ -1005,9 +1048,17 @@ package body HRA_N.UI.Record_TUI is
             " Total:        " & Format_Quanta_With_Commas (Pos_Total) & " jpy (balanced)");
          Current_Row := Current_Row + 1;
 
-         Put_Clipped
-           (Current_Row,
-            " Snapshot:     " & HRA_N.Application.Proposal.Expected_Snapshot (Proposal_Obj) & " -> next immutable generation");
+         if Canonical_Preview then
+            Put_Clipped
+              (Current_Row,
+               " Authority:    canonical Loam (publication occurs on Enter)");
+         else
+            Put_Clipped
+              (Current_Row,
+               " Snapshot:     "
+               & HRA_N.Application.Proposal.Expected_Snapshot (Proposal_Obj)
+               & " -> next immutable generation");
+         end if;
          Current_Row := Current_Row + 1;
 
          Put_Clipped (Current_Row, "--------------------------------------------------------------------------------");
@@ -1178,27 +1229,95 @@ package body HRA_N.UI.Record_TUI is
                           and then (Key = Integer (Curses.KEY_ENTER)
                                     or else Key = Integer (Curses.Key_Enter_Or_Send)))
                then
-                  declare
-                     Receipt : constant HRA_N.Application.Proposal.Receipt :=
-                       HRA_N.Application.Proposal.Commit (Proposal_Obj);
-                  begin
-                     if Receipt.Success then
-                        Committed := True;
-                        New_Id :=
-                          Make_Token (Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                        Running := False;
-                     else
-                        Set_Notice
-                          ("Commit rejected: " &
-                           Receipt.Error (1 .. Receipt.Error_Len));
-                     end if;
-                  end;
+                  if Canonical_Preview then
+                     case Op is
+                        when Op_Create_Scheduled =>
+                           declare
+                              Result : constant Canonical_Create_Result :=
+                                Create_Loam_Scheduled
+                                  (Data_Dir_Str (Paths), Pending_Create);
+                           begin
+                              if Result.State /=
+                                HRA_N.Application.Scheduled_Command.Canonical_Not_Published
+                              then
+                                 Committed := True;
+                                 New_Id := Result.Scheduled_Id;
+                                 Running := False;
+                              elsif Result.Diagnostic_Len > 0 then
+                                 Set_Notice
+                                   ("Commit rejected: "
+                                    & Result.Diagnostic
+                                      (1 .. Result.Diagnostic_Len));
+                              else
+                                 Set_Notice
+                                   ("Commit rejected by canonical Scheduled authority.");
+                              end if;
+                           end;
+
+                        when Op_Complete_Scheduled =>
+                           declare
+                              Result : constant Canonical_Complete_Result :=
+                                Complete_Loam_Scheduled
+                                  (Data_Dir_Str (Paths), Pending_Complete);
+                           begin
+                              if Result.State =
+                                HRA_N.Application.Scheduled_Command.Canonical_Completion_Claim_Inert
+                              then
+                                 if Result.Diagnostic_Len > 0 then
+                                    Set_Notice
+                                      ("Completion claim retained; press Enter to retry: "
+                                       & Result.Diagnostic
+                                         (1 .. Result.Diagnostic_Len));
+                                 else
+                                    Set_Notice
+                                      ("Completion claim retained; press Enter to retry.");
+                                 end if;
+                              elsif Result.State /=
+                                HRA_N.Application.Scheduled_Command.Canonical_Completion_Not_Published
+                              then
+                                 Committed := True;
+                                 New_Id := Result.Actual_Id;
+                                 Running := False;
+                              elsif Result.Diagnostic_Len > 0 then
+                                 Set_Notice
+                                   ("Commit rejected: "
+                                    & Result.Diagnostic
+                                      (1 .. Result.Diagnostic_Len));
+                              else
+                                 Set_Notice
+                                   ("Commit rejected by canonical completion authority.");
+                              end if;
+                           end;
+
+                        when others =>
+                           Set_Notice
+                             ("Internal error: canonical Scheduled preview kind mismatch.");
+                     end case;
+                  else
+                     declare
+                        Receipt : constant HRA_N.Application.Proposal.Receipt :=
+                          HRA_N.Application.Proposal.Commit (Proposal_Obj);
+                     begin
+                        if Receipt.Success then
+                           Committed := True;
+                           New_Id :=
+                             Make_Token
+                               (Receipt.Primary_Id (1 .. Receipt.Primary_Len));
+                           Running := False;
+                        else
+                           Set_Notice
+                             ("Commit rejected: "
+                              & Receipt.Error (1 .. Receipt.Error_Len));
+                        end if;
+                     end;
+                  end if;
                elsif Is_Character
                  and then (Key = Character'Pos ('e')
                            or else Key = Character'Pos ('E')
                            or else Key = 27)
                then
                   Mode := Mode_Editing;
+                  Canonical_Preview := False;
                   Notice_Len := 0;
                elsif Is_Character
                  and then (Key = Character'Pos ('q')
