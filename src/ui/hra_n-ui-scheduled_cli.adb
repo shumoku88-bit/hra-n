@@ -209,32 +209,100 @@ package body HRA_N.UI.Scheduled_Cli is
               (if Existing_Actual_Str'Length > 0
                then Make_Token (Existing_Actual_Str)
                else (0, [others => ' '])));
-         Prop_Res : constant Proposal_Result := Propose_Completion (Paths, Intent);
       begin
-         if not Prop_Res.Success then
-            Put_Error_Line ("hra-n: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
-            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-            return;
+         if Canonical_Authority_Present (Data_Dir_Str (Paths)) then
+            declare
+               Canonical : constant Canonical_Complete_Result :=
+                 Complete_Loam_Scheduled (Data_Dir_Str (Paths), Intent);
+            begin
+               if Canonical.State = Canonical_Completion_Not_Published then
+                  Put_Error_Line
+                    ("hra-n: canonical Scheduled completion rejected: "
+                     & Canonical.Diagnostic
+                       (1 .. Canonical.Diagnostic_Len));
+                  Ada.Command_Line.Set_Exit_Status
+                    (Ada.Command_Line.Failure);
+                  return;
+               elsif Canonical.State = Canonical_Completion_Claim_Inert then
+                  Put_Error_Line
+                    ("hra-n: canonical Scheduled completion retained an inert "
+                     & "claim; retry the same command");
+                  if Canonical.Diagnostic_Len > 0 then
+                     Put_Error_Line
+                       ("       "
+                        & Canonical.Diagnostic
+                          (1 .. Canonical.Diagnostic_Len));
+                  end if;
+                  Ada.Command_Line.Set_Exit_Status
+                    (Ada.Command_Line.Failure);
+                  return;
+               end if;
+
+               Put_Line ("============================================================");
+               Put_Line
+                 (" [OK] Completed canonical Scheduled obligation: "
+                  & Selected_Id_Str (1 .. Selected_Id_Len));
+               Put_Line
+                 ("      Recorded actual receipt: "
+                  & Canonical.Actual_Id.Value
+                    (1 .. Canonical.Actual_Id.Length));
+               Put_Line
+                 ("      AUTHORITY: scheduled.loam + actual.loam");
+
+               if Canonical.State =
+                 Canonical_Completion_Published_Readback_Verified
+               then
+                  Put_Line
+                    ("      READ-BACK: proved relation-first protocol verified");
+               else
+                  Put_Line
+                    (" [WARN] Completion published; fresh protocol read-back "
+                     & "was not verified");
+                  if Canonical.Diagnostic_Len > 0 then
+                     Put_Line
+                       ("        "
+                        & Canonical.Diagnostic
+                          (1 .. Canonical.Diagnostic_Len));
+                  end if;
+               end if;
+               Put_Line ("============================================================");
+            end;
+         else
+            declare
+               Prop_Res : constant Proposal_Result :=
+                 Propose_Completion (Paths, Intent);
+            begin
+               if not Prop_Res.Success then
+                  Put_Error_Line
+                    ("hra-n: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
+                  Ada.Command_Line.Set_Exit_Status
+                    (Ada.Command_Line.Failure);
+                  return;
+               end if;
+
+               declare
+                  Receipt : constant Scheduled_Receipt :=
+                    Commit (Prop_Res.Proposal);
+               begin
+                  if not Receipt.Success then
+                     Put_Error_Line
+                       ("hra-n: " & Receipt.Error (1 .. Receipt.Error_Len));
+                     Ada.Command_Line.Set_Exit_Status
+                       (Ada.Command_Line.Failure);
+                     return;
+                  end if;
+
+                  Put_Line ("============================================================");
+                  Put_Line (" [OK] Completed scheduled obligation: " &
+                            Receipt.Primary_Id (1 .. Receipt.Primary_Len));
+                  Put_Line ("      Recorded actual receipt: " &
+                            Receipt.Secondary_Id (1 .. Receipt.Secondary_Len));
+                  Put_Line ("      Activated snapshot: " &
+                            Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                  Put_Line ("============================================================");
+               end;
+            end;
          end if;
-
-         declare
-            Receipt : constant Scheduled_Receipt := Commit (Prop_Res.Proposal);
-         begin
-            if not Receipt.Success then
-               Put_Error_Line ("hra-n: " & Receipt.Error (1 .. Receipt.Error_Len));
-               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-               return;
-            end if;
-
-            Put_Line ("============================================================");
-            Put_Line (" [OK] Completed scheduled obligation: " &
-                      Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-            Put_Line ("      Recorded actual receipt: " &
-                      Receipt.Secondary_Id (1 .. Receipt.Secondary_Len));
-            Put_Line ("      Activated snapshot: " &
-                      Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-            Put_Line ("============================================================");
-         end;
       end;
    end Complete_Scheduled;
 
