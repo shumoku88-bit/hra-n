@@ -72,7 +72,10 @@ package body HRA_N.UI.Scheduled_Cli is
             Date_Str : constant String := Format_Iso_Date (Row.Expected_Day);
             Stat_Str : constant String :=
               (case Row.Status is
-                 when Status_Open      => "OPEN     ",
+                 when Status_Open      =>
+                   (if Row.Terminal_Ref.Length > 0
+                    then "OPEN/WAIT"
+                    else "OPEN     "),
                  when Status_Completed => "COMPLETED",
                  when Status_Retired   => "RETIRED  ",
                  when Status_Replaced  => "REPLACED ");
