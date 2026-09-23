@@ -1,3 +1,4 @@
+with Ada.Containers;
 with Ada.Directories;
 with Ada.Strings.Unbounded;
 with HRA_N.Core.Description; use HRA_N.Core.Description;
@@ -16,6 +17,8 @@ use HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader;
 with Test_Support; use Test_Support;
 
 package body Test_Loam_Scheduled_Completion_Publisher is
+
+   use type Ada.Containers.Count_Type;
 
    package US renames Ada.Strings.Unbounded;
 
