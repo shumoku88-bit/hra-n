@@ -276,40 +276,12 @@ package body HRA_N.UI.Scheduled_Cli is
                Put_Line ("============================================================");
             end;
                when Legacy_Only =>
-                  declare
-               Prop_Res : constant Proposal_Result :=
-                 Propose_Completion (Paths, Intent);
-            begin
-               if not Prop_Res.Success then
                   Put_Error_Line
-                    ("hra-n: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                  Ada.Command_Line.Set_Exit_Status
-                    (Ada.Command_Line.Failure);
+                    ("[ERROR] Canonical Loam repository required for scheduled operations.");
+                  Put_Error_Line
+                    ("        Legacy 3-stream write transactions are retired.");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
                   return;
-               end if;
-
-               declare
-                  Receipt : constant Scheduled_Receipt :=
-                    Commit (Prop_Res.Proposal);
-               begin
-                  if not Receipt.Success then
-                     Put_Error_Line
-                       ("hra-n: " & Receipt.Error (1 .. Receipt.Error_Len));
-                     Ada.Command_Line.Set_Exit_Status
-                       (Ada.Command_Line.Failure);
-                     return;
-                  end if;
-
-                  Put_Line ("============================================================");
-                  Put_Line (" [OK] Completed scheduled obligation: " &
-                            Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                  Put_Line ("      Recorded actual receipt: " &
-                            Receipt.Secondary_Id (1 .. Receipt.Secondary_Len));
-                  Put_Line ("      Activated snapshot: " &
-                            Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-                  Put_Line ("============================================================");
-               end;
-            end;
                when Probe_Failed =>
                   Put_Error_Line
                     ("hra-n: authority probe failed: "
@@ -397,40 +369,12 @@ package body HRA_N.UI.Scheduled_Cli is
                Put_Line ("============================================================");
             end;
                when Legacy_Only =>
-                  declare
-               Prop_Res : constant Proposal_Result :=
-                 Propose_Retirement (Paths, Intent);
-            begin
-               if not Prop_Res.Success then
                   Put_Error_Line
-                    ("hra-n: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                  Ada.Command_Line.Set_Exit_Status
-                    (Ada.Command_Line.Failure);
+                    ("[ERROR] Canonical Loam repository required for scheduled operations.");
+                  Put_Error_Line
+                    ("        Legacy 3-stream write transactions are retired.");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
                   return;
-               end if;
-
-               declare
-                  Receipt : constant Scheduled_Receipt :=
-                    Commit (Prop_Res.Proposal);
-               begin
-                  if not Receipt.Success then
-                     Put_Error_Line
-                       ("hra-n: " & Receipt.Error (1 .. Receipt.Error_Len));
-                     Ada.Command_Line.Set_Exit_Status
-                       (Ada.Command_Line.Failure);
-                     return;
-                  end if;
-
-                  Put_Line ("============================================================");
-                  Put_Line
-                    (" [OK] Retired scheduled obligation: "
-                     & Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                  Put_Line
-                    ("      Activated snapshot: "
-                     & Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-                  Put_Line ("============================================================");
-               end;
-            end;
                when Probe_Failed =>
                   Put_Error_Line
                     ("hra-n: authority probe failed: "
@@ -539,40 +483,12 @@ package body HRA_N.UI.Scheduled_Cli is
                Put_Line ("============================================================");
             end;
                when Legacy_Only =>
-                  declare
-               Prop_Res : constant Proposal_Result :=
-                 Propose_Create (Paths, Intent);
-            begin
-               if not Prop_Res.Success then
                   Put_Error_Line
-                    ("hra-n: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                  Ada.Command_Line.Set_Exit_Status
-                    (Ada.Command_Line.Failure);
+                    ("[ERROR] Canonical Loam repository required for scheduled operations.");
+                  Put_Error_Line
+                    ("        Legacy 3-stream write transactions are retired.");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
                   return;
-               end if;
-
-               declare
-                  Receipt : constant Scheduled_Receipt :=
-                    Commit (Prop_Res.Proposal);
-               begin
-                  if not Receipt.Success then
-                     Put_Error_Line
-                       ("hra-n: " & Receipt.Error (1 .. Receipt.Error_Len));
-                     Ada.Command_Line.Set_Exit_Status
-                       (Ada.Command_Line.Failure);
-                     return;
-                  end if;
-
-                  Put_Line ("============================================================");
-                  Put_Line
-                    (" [OK] Added scheduled obligation: "
-                     & Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                  Put_Line
-                    ("      Activated snapshot: "
-                     & Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-                  Put_Line ("============================================================");
-               end;
-            end;
                when Probe_Failed =>
                   Put_Error_Line
                     ("hra-n: authority probe failed: "
@@ -698,42 +614,12 @@ package body HRA_N.UI.Scheduled_Cli is
                Put_Line ("============================================================");
             end;
                when Legacy_Only =>
-                  declare
-               Prop_Res : constant Proposal_Result :=
-                 Propose_Replacement (Paths, Intent);
-            begin
-               if not Prop_Res.Success then
                   Put_Error_Line
-                    ("hra-n: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                  Ada.Command_Line.Set_Exit_Status
-                    (Ada.Command_Line.Failure);
+                    ("[ERROR] Canonical Loam repository required for scheduled operations.");
+                  Put_Error_Line
+                    ("        Legacy 3-stream write transactions are retired.");
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
                   return;
-               end if;
-
-               declare
-                  Receipt : constant Scheduled_Receipt :=
-                    Commit (Prop_Res.Proposal);
-               begin
-                  if not Receipt.Success then
-                     Put_Error_Line
-                       ("hra-n: " & Receipt.Error (1 .. Receipt.Error_Len));
-                     Ada.Command_Line.Set_Exit_Status
-                       (Ada.Command_Line.Failure);
-                     return;
-                  end if;
-
-                  Put_Line ("============================================================");
-                  Put_Line
-                    (" [OK] Replaced scheduled obligation "
-                     & Receipt.Primary_Id (1 .. Receipt.Primary_Len)
-                     & " with "
-                     & Receipt.Secondary_Id (1 .. Receipt.Secondary_Len));
-                  Put_Line
-                    ("      Activated snapshot: "
-                     & Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-                  Put_Line ("============================================================");
-               end;
-            end;
                when Probe_Failed =>
                   Put_Error_Line
                     ("hra-n: authority probe failed: "

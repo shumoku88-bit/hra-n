@@ -311,49 +311,10 @@ begin
                           ("============================================================");
                      end;
                         when Legacy_Only =>
-                           declare
-                        Prop_Res : constant Proposal_Result :=
-                          Propose_Reversal (Paths, Intent);
-                     begin
-                        if not Prop_Res.Success then
-                           Put_Line ("[ERROR] Reversal rejected: " &
-                                     Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                           Ada.Command_Line.Set_Exit_Status
-                             (Ada.Command_Line.Failure);
+                           Put_Line ("[ERROR] Canonical Loam repository required for movement reversal.");
+                           Put_Line ("        Legacy 3-stream write transactions are retired.");
+                           Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
                            return;
-                        end if;
-
-                        declare
-                           Receipt : constant Movement_Receipt :=
-                             Commit (Prop_Res.Proposal);
-                        begin
-                           if Receipt.Success then
-                              Put_Line
-                                ("============================================================");
-                              Put_Line (" [OK] Committed Reversal: " &
-                                        Receipt.Primary_Id
-                                          (1 .. Receipt.Primary_Len));
-                              Put_Line ("      REVERSED: " & Target_Id);
-                              Put_Line ("      SNAPSHOT: " &
-                                        Receipt.Snapshot_Id
-                                          (1 .. Receipt.Snapshot_Len));
-                              Put_Line
-                                ("      DATE:   " & Format_Iso_Date (Date_Val));
-                              if Desc_Len > 0 then
-                                 Put_Line
-                                   ("      REASON: " & Desc_Val (1 .. Desc_Len));
-                              end if;
-                              Put_Line
-                                ("============================================================");
-                           else
-                              Put_Line ("[ERROR] Reversal commit rejected: " &
-                                        Receipt.Error
-                                          (1 .. Receipt.Error_Len));
-                              Ada.Command_Line.Set_Exit_Status
-                                (Ada.Command_Line.Failure);
-                           end if;
-                        end;
-                     end;
                         when Probe_Failed =>
                            Put_Line
                              ("[ERROR] Authority probe failed: "
@@ -507,44 +468,10 @@ begin
                         Put_Line ("============================================================");
                      end;
                         when Legacy_Only =>
-                           declare
-                        Prop_Res : constant Proposal_Result :=
-                          Propose_Correction (Paths, Intent);
-                     begin
-                        if not Prop_Res.Success then
-                           Put_Line ("[ERROR] Correction rejected: " &
-                                     Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                           Ada.Command_Line.Set_Exit_Status
-                             (Ada.Command_Line.Failure);
+                           Put_Line ("[ERROR] Canonical Loam repository required for transaction correction.");
+                           Put_Line ("        Legacy 3-stream write transactions are retired.");
+                           Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
                            return;
-                        end if;
-
-                        declare
-                           Receipt : constant Movement_Receipt :=
-                             Commit (Prop_Res.Proposal);
-                        begin
-                           if Receipt.Success then
-                              Put_Line ("============================================================");
-                              Put_Line (" [OK] Committed Correction: " &
-                                        Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                              Put_Line ("      REPLACED: " & Target_Id);
-                              Put_Line ("      SNAPSHOT: " &
-                                        Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-                              Put_Line ("      FLOW:     " & From_Locus & " (-" & Amt_Str & " jpy) -> " &
-                                        To_Locus & " (+" & Amt_Str & " jpy)");
-                              Put_Line ("      DATE:     " & Format_Iso_Date (Date_Val));
-                              if Desc_Len > 0 then
-                                 Put_Line ("      DESC:     " & Desc_Val (1 .. Desc_Len));
-                              end if;
-                              Put_Line ("============================================================");
-                           else
-                              Put_Line ("[ERROR] Correction commit rejected: " &
-                                        Receipt.Error (1 .. Receipt.Error_Len));
-                              Ada.Command_Line.Set_Exit_Status
-                                (Ada.Command_Line.Failure);
-                           end if;
-                        end;
-                     end;
                         when Probe_Failed =>
                            Put_Line
                              ("[ERROR] Authority probe failed: "
@@ -692,40 +619,10 @@ begin
                      Put_Line ("============================================================");
                   end;
                      when Legacy_Only =>
-                        declare
-                     Prop_Res : constant Proposal_Result :=
-                       Propose (Paths, Intent);
-                  begin
-                     if not Prop_Res.Success then
-                        Put_Line ("[ERROR] Proposal rejected: " &
-                                  Prop_Res.Error (1 .. Prop_Res.Error_Len));
+                        Put_Line ("[ERROR] Canonical Loam repository required to record movements.");
+                        Put_Line ("        Legacy 3-stream write transactions are retired.");
                         Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
                         return;
-                     end if;
-
-                     declare
-                        Receipt : constant Movement_Receipt := Commit (Prop_Res.Proposal);
-                     begin
-                        if Receipt.Success then
-                           Put_Line ("============================================================");
-                           Put_Line (" [OK] Committed Movement: " &
-                                     Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                           Put_Line ("      SNAPSHOT: " &
-                                     Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-                           Put_Line ("      FLOW:     " & From_Locus & " (-" & Amount_Str & " jpy) -> " &
-                                     To_Locus & " (+" & Amount_Str & " jpy)");
-                           Put_Line ("      DATE:     " & Format_Iso_Date (Date_Val));
-                           if Desc_Len > 0 then
-                              Put_Line ("      DESC:     " & Desc_Val (1 .. Desc_Len));
-                           end if;
-                           Put_Line ("============================================================");
-                        else
-                           Put_Line ("[ERROR] Movement commit rejected: " &
-                                     Receipt.Error (1 .. Receipt.Error_Len));
-                           Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                        end if;
-                     end;
-                  end;
                      when Probe_Failed =>
                         Put_Line
                           ("[ERROR] Authority probe failed: "

@@ -250,37 +250,9 @@ package body HRA_N.UI.Split_CLI is
                end;
 
             when HRA_N.Application.Canonical_Authority.Legacy_Only =>
-               declare
-                  Prop_Res : constant Proposal_Result :=
-                    Propose_Split (Paths, Intent);
-               begin
-                  if not Prop_Res.Success then
-                     Put_Line ("[ERROR] Split rejected: " &
-                               Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                     return;
-                  end if;
-                  declare
-                     Receipt : constant Movement_Receipt :=
-                       Commit (Prop_Res.Proposal);
-                  begin
-                     if Receipt.Success then
-                        Put_Line ("============================================================");
-                        Put_Line (" [OK] Committed Split: " &
-                                  Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                        Put_Line ("      SNAPSHOT: " &
-                                  Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-                        Put_Line ("      DATE:     " & Format_Iso_Date (Date_Val));
-                        if Desc_Len > 0 then
-                           Put_Line ("      DESC:     " & Desc_Val (1 .. Desc_Len));
-                        end if;
-                        Put_Line ("============================================================");
-                        Success := True;
-                     else
-                        Put_Line ("[ERROR] Split commit rejected: " &
-                                  Receipt.Error (1 .. Receipt.Error_Len));
-                     end if;
-                  end;
-               end;
+               Put_Line ("[ERROR] Canonical Loam repository required for split movements.");
+               Put_Line ("        Legacy 3-stream write transactions are retired.");
+               return;
 
             when HRA_N.Application.Canonical_Authority.Probe_Failed =>
                Put_Line
