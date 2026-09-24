@@ -58,11 +58,13 @@ package body Test_Loam_Scheduled_Lifecycle_Reader is
    end Populated_Lifecycle;
 
    procedure Run is
+      use type Lifecycle_Read_Status;
    begin
       declare
          Empty : constant Read_Result := Read_Content (Empty_Lifecycle);
       begin
          Assert (Empty.Success, "explicit empty lifecycle admits");
+         Assert (Format_Error (Empty) = "", "formatted error empty on success");
          Assert_Equal_Int
            (0, Long_Long_Integer (Empty.Lifecycle.Sched_Count),
             "empty lifecycle has no Scheduled occurrences");
@@ -120,6 +122,10 @@ package body Test_Loam_Scheduled_Lifecycle_Reader is
          Assert
            (not Rejected.Success,
             "unbalanced Scheduled occurrence fails complete lifecycle admission");
+         Assert (Rejected.Status = Unconserved_Scheduled,
+                 "unbalanced occurrence status is Unconserved_Scheduled");
+         Assert (Format_Error (Rejected)'Length > 0,
+                 "Format_Error returns non-empty diagnostic");
       end;
 
       declare
@@ -145,6 +151,8 @@ package body Test_Loam_Scheduled_Lifecycle_Reader is
          Assert
            (not Rejected.Success,
             "duplicate completion Actual endpoint fails like Loam terminal memory");
+         Assert (Rejected.Status = Duplicate_Target,
+                 "duplicate completion status is Duplicate_Target");
       end;
 
       declare
@@ -154,6 +162,16 @@ package body Test_Loam_Scheduled_Lifecycle_Reader is
          Assert
            (not Extra.Success,
             "extra bytes after complete lifecycle fail closed");
+         Assert (Extra.Status = Unexpected_Trailing_Bytes,
+                 "extra bytes status is Unexpected_Trailing_Bytes");
+      end;
+
+      declare
+         Missing : constant Read_Result :=
+           Read_File (Root & "/nonexistent_scheduled.loam");
+      begin
+         Assert (not Missing.Success, "missing file fails");
+         Assert (Missing.Status = IO_Error, "missing file status is IO_Error");
       end;
 
       if Ada.Directories.Exists (Root) then

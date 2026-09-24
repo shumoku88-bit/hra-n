@@ -156,8 +156,27 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
       return False;
    end Completion_Mentions_Actual;
 
+   function Make_Failure
+     (Status  : Lifecycle_Read_Status;
+      At_Line : Natural;
+      Message : String) return Read_Result
+   is
+      Result : Read_Result (Success => False);
+      N      : constant Natural :=
+        Natural'Min (Message'Length, Result.Error_Reason'Length);
+   begin
+      Result.Status     := Status;
+      Result.Error_Line := At_Line;
+      Result.Error_Len  := N;
+      if N > 0 then
+         Result.Error_Reason (1 .. N) :=
+           Message (Message'First .. Message'First + N - 1);
+      end if;
+      return Result;
+   end Make_Failure;
+
    function Read_Content (Content : String) return Read_Result is
-      Result   : Read_Result;
+      Result   : Read_Result (Success => True);
       Position : Natural :=
         (if Content'Length = 0 then 0 else Content'First);
       Line_No  : Natural := 0;
@@ -173,27 +192,12 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
                Amount => 0)]));
       Have_Current : Boolean := False;
 
-      procedure Set_Error (At_Line : Natural; Message : String) is
-         Len : constant Natural :=
-           Natural'Min (Message'Length, Result.Error_Reason'Length);
-      begin
-         Result.Success := False;
-         Result.Error_Line := At_Line;
-         Result.Error_Reason := [others => ' '];
-         Result.Error_Len := Len;
-         if Len > 0 then
-            Result.Error_Reason (1 .. Len) :=
-              Message (Message'First .. Message'First + Len - 1);
-         end if;
-      end Set_Error;
-
       function Fail
-        (At_Line : Natural;
-         Message : String) return Read_Result
-      is
+        (Status  : Lifecycle_Read_Status;
+         At_Line : Natural;
+         Message : String) return Read_Result is
       begin
-         Set_Error (At_Line, Message);
-         return Result;
+         return Make_Failure (Status, At_Line, Message);
       end Fail;
 
       procedure Read_Line
@@ -301,17 +305,17 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
 
    begin
       if Content'Length = 0 then
-         return Fail (0, "LOAM Scheduled lifecycle document is empty");
+         return Fail (Document_Empty, 0, "LOAM Scheduled lifecycle document is empty");
       elsif Content (Content'Last) /= ASCII.LF then
-         return Fail (0, "LOAM Scheduled lifecycle must end with newline");
+         return Fail (Missing_Final_Newline, 0, "LOAM Scheduled lifecycle must end with newline");
       end if;
 
       if not Expect (Lifecycle_Header) then
-         return Fail (Line_No, "unsupported LOAM Scheduled lifecycle header");
+         return Fail (Malformed_Header, Line_No, "unsupported LOAM Scheduled lifecycle header");
       elsif not Expect ("BEGIN" & ASCII.HT & "Scheduled") then
-         return Fail (Line_No, "expected Scheduled section");
+         return Fail (Syntax_Error, Line_No, "expected Scheduled section");
       elsif not Expect (Scheduled_Header) then
-         return Fail (Line_No, "unsupported LOAM Scheduled memory header");
+         return Fail (Malformed_Header, Line_No, "unsupported LOAM Scheduled memory header");
       end if;
 
       --  Scheduled section.  Empty movement change lists are valid in Loam;
@@ -323,7 +327,7 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
          begin
             Read_Line (Raw, Ok);
             if not Ok then
-               return Fail (Line_No + 1, "unterminated Scheduled section");
+               return Fail (Syntax_Error, Line_No + 1, "unterminated Scheduled section");
             end if;
 
             declare
@@ -339,7 +343,7 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
                      Finish_Current (Finished);
                      if not Finished then
                         return Fail
-                          (Line_No, "Scheduled occurrence violates supported balance or capacity");
+                          (Unconserved_Scheduled, Line_No, "Scheduled occurrence violates supported balance or capacity");
                      end if;
                   end;
                   exit;
@@ -347,12 +351,12 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
 
                Split_Tab (Line, Fields, Count, Overflow);
                if Overflow or else Count = 0 then
-                  return Fail (Line_No, "malformed Scheduled row");
+                  return Fail (Syntax_Error, Line_No, "malformed Scheduled row");
                end if;
 
                if US.To_String (Fields (1)) = "SCHEDULED" then
                   if Count /= 4 then
-                     return Fail (Line_No, "malformed SCHEDULED row");
+                     return Fail (Syntax_Error, Line_No, "malformed SCHEDULED row");
                   end if;
 
                   declare
@@ -365,12 +369,12 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
                      Finish_Current (Finished);
                      if not Finished then
                         return Fail
-                          (Line_No, "previous Scheduled occurrence violates supported balance or capacity");
+                          (Unconserved_Scheduled, Line_No, "previous Scheduled occurrence violates supported balance or capacity");
                      elsif not Valid_Token (Id_Text)
                        or else not Valid_Token (Measure_Text)
                        or else not Parse_Iso_Date (Day_Text, Day)
                      then
-                        return Fail (Line_No, "invalid SCHEDULED identity, date, or Measure");
+                        return Fail (Invalid_Token, Line_No, "invalid SCHEDULED identity, date, or Measure");
                      end if;
 
                      Current :=
@@ -386,7 +390,7 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
                   end;
                elsif US.To_String (Fields (1)) = "CHANGE" then
                   if Count /= 3 or else not Have_Current then
-                     return Fail (Line_No, "CHANGE row has no Scheduled occurrence");
+                     return Fail (Syntax_Error, Line_No, "CHANGE row has no Scheduled occurrence");
                   end if;
 
                   declare
@@ -394,12 +398,12 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
                      Amount_Text : constant String := US.To_String (Fields (3));
                      Amount : Quanta_Type;
                   begin
-                     if not Valid_Token (Locus_Text)
-                       or else not Parse_Quanta (Amount_Text, Amount)
-                       or else Current.Changes.Count = Max_Changes_Per_Sched
-                     then
-                        return Fail
-                          (Line_No, "invalid or unsupported Scheduled CHANGE row");
+                     if not Valid_Token (Locus_Text) then
+                        return Fail (Invalid_Token, Line_No, "invalid Scheduled CHANGE locus token");
+                     elsif not Parse_Quanta (Amount_Text, Amount) then
+                        return Fail (Syntax_Error, Line_No, "invalid Scheduled CHANGE amount");
+                     elsif Current.Changes.Count = Max_Changes_Per_Sched then
+                        return Fail (Capacity_Exceeded, Line_No, "exceeded maximum changes per Scheduled occurrence");
                      end if;
                      Current.Changes.Count := Current.Changes.Count + 1;
                      Current.Changes.Values (Current.Changes.Count) :=
@@ -407,16 +411,16 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
                         Amount => Amount);
                   end;
                else
-                  return Fail (Line_No, "unexpected row in Scheduled section");
+                  return Fail (Syntax_Error, Line_No, "unexpected row in Scheduled section");
                end if;
             end;
          end;
       end loop;
 
       if not Expect ("BEGIN" & ASCII.HT & "Completion") then
-         return Fail (Line_No, "expected Completion section");
+         return Fail (Syntax_Error, Line_No, "expected Completion section");
       elsif not Expect (Completion_Header) then
-         return Fail (Line_No, "unsupported Completion memory header");
+         return Fail (Malformed_Header, Line_No, "unsupported Completion memory header");
       end if;
 
       loop
@@ -426,7 +430,7 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
          begin
             Read_Line (Raw, Ok);
             if not Ok then
-               return Fail (Line_No + 1, "unterminated Completion section");
+               return Fail (Syntax_Error, Line_No + 1, "unterminated Completion section");
             end if;
             declare
                Line : constant String := US.To_String (Raw);
@@ -441,7 +445,7 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
                if Overflow or else Count /= 3
                  or else US.To_String (Fields (1)) /= "COMPLETION"
                then
-                  return Fail (Line_No, "malformed COMPLETION row");
+                  return Fail (Syntax_Error, Line_No, "malformed COMPLETION row");
                end if;
                declare
                   Scheduled_Text : constant String := US.To_String (Fields (2));
@@ -452,15 +456,14 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
                   if not Valid_Token (Scheduled_Text)
                     or else not Valid_Token (Actual_Text)
                   then
-                     return Fail (Line_No, "invalid COMPLETION endpoint token");
+                     return Fail (Invalid_Token, Line_No, "invalid COMPLETION endpoint token");
                   end if;
                   Scheduled_Tok := Make_Token (Scheduled_Text);
                   Actual_Tok := Make_Token (Actual_Text);
-                  if Result.Lifecycle.Comp_Count = Max_Scheduled_Entries
-                    or else not Completion_Unique (Scheduled_Tok, Actual_Tok)
-                  then
-                     return Fail
-                       (Line_No, "duplicate or excessive COMPLETION evidence");
+                  if Result.Lifecycle.Comp_Count = Max_Scheduled_Entries then
+                     return Fail (Capacity_Exceeded, Line_No, "exceeded maximum COMPLETION entries");
+                  elsif not Completion_Unique (Scheduled_Tok, Actual_Tok) then
+                     return Fail (Duplicate_Target, Line_No, "duplicate COMPLETION evidence");
                   end if;
                   Result.Lifecycle.Comp_Count := Result.Lifecycle.Comp_Count + 1;
                   Result.Lifecycle.Comp_Items (Result.Lifecycle.Comp_Count) :=
@@ -472,9 +475,9 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
       end loop;
 
       if not Expect ("BEGIN" & ASCII.HT & "Retirement") then
-         return Fail (Line_No, "expected Retirement section");
+         return Fail (Syntax_Error, Line_No, "expected Retirement section");
       elsif not Expect (Retirement_Header) then
-         return Fail (Line_No, "unsupported Retirement memory header");
+         return Fail (Malformed_Header, Line_No, "unsupported Retirement memory header");
       end if;
 
       loop
@@ -484,7 +487,7 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
          begin
             Read_Line (Raw, Ok);
             if not Ok then
-               return Fail (Line_No + 1, "unterminated Retirement section");
+               return Fail (Syntax_Error, Line_No + 1, "unterminated Retirement section");
             end if;
             declare
                Line : constant String := US.To_String (Raw);
@@ -499,21 +502,20 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
                if Overflow or else Count /= 2
                  or else US.To_String (Fields (1)) /= "RETIREMENT"
                then
-                  return Fail (Line_No, "malformed RETIREMENT row");
+                  return Fail (Syntax_Error, Line_No, "malformed RETIREMENT row");
                end if;
                declare
                   Scheduled_Text : constant String := US.To_String (Fields (2));
                   Scheduled_Tok  : Token_Text;
                begin
                   if not Valid_Token (Scheduled_Text) then
-                     return Fail (Line_No, "invalid RETIREMENT token");
+                     return Fail (Invalid_Token, Line_No, "invalid RETIREMENT token");
                   end if;
                   Scheduled_Tok := Make_Token (Scheduled_Text);
-                  if Result.Lifecycle.Ret_Count = Max_Scheduled_Entries
-                    or else not Retirement_Unique (Scheduled_Tok)
-                  then
-                     return Fail
-                       (Line_No, "duplicate or excessive RETIREMENT evidence");
+                  if Result.Lifecycle.Ret_Count = Max_Scheduled_Entries then
+                     return Fail (Capacity_Exceeded, Line_No, "exceeded maximum RETIREMENT entries");
+                  elsif not Retirement_Unique (Scheduled_Tok) then
+                     return Fail (Duplicate_Target, Line_No, "duplicate RETIREMENT evidence");
                   end if;
                   Result.Lifecycle.Ret_Count := Result.Lifecycle.Ret_Count + 1;
                   Result.Lifecycle.Ret_Items (Result.Lifecycle.Ret_Count) :=
@@ -524,9 +526,9 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
       end loop;
 
       if not Expect ("BEGIN" & ASCII.HT & "Replacement") then
-         return Fail (Line_No, "expected Replacement section");
+         return Fail (Syntax_Error, Line_No, "expected Replacement section");
       elsif not Expect (Replacement_Header) then
-         return Fail (Line_No, "unsupported Replacement memory header");
+         return Fail (Malformed_Header, Line_No, "unsupported Replacement memory header");
       end if;
 
       loop
@@ -536,7 +538,7 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
          begin
             Read_Line (Raw, Ok);
             if not Ok then
-               return Fail (Line_No + 1, "unterminated Replacement section");
+               return Fail (Syntax_Error, Line_No + 1, "unterminated Replacement section");
             end if;
             declare
                Line : constant String := US.To_String (Raw);
@@ -551,7 +553,7 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
                if Overflow or else Count /= 3
                  or else US.To_String (Fields (1)) /= "REPLACEMENT"
                then
-                  return Fail (Line_No, "malformed REPLACEMENT row");
+                  return Fail (Syntax_Error, Line_No, "malformed REPLACEMENT row");
                end if;
                declare
                   Source_Text : constant String := US.To_String (Fields (2));
@@ -562,15 +564,14 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
                   if not Valid_Token (Source_Text)
                     or else not Valid_Token (Target_Text)
                   then
-                     return Fail (Line_No, "invalid REPLACEMENT endpoint token");
+                     return Fail (Invalid_Token, Line_No, "invalid REPLACEMENT endpoint token");
                   end if;
                   Source_Tok := Make_Token (Source_Text);
                   Target_Tok := Make_Token (Target_Text);
-                  if Result.Lifecycle.Repl_Count = Max_Scheduled_Entries
-                    or else not Replacement_Unique (Source_Tok, Target_Tok)
-                  then
-                     return Fail
-                       (Line_No, "duplicate or excessive REPLACEMENT evidence");
+                  if Result.Lifecycle.Repl_Count = Max_Scheduled_Entries then
+                     return Fail (Capacity_Exceeded, Line_No, "exceeded maximum REPLACEMENT entries");
+                  elsif not Replacement_Unique (Source_Tok, Target_Tok) then
+                     return Fail (Duplicate_Target, Line_No, "duplicate REPLACEMENT evidence");
                   end if;
                   Result.Lifecycle.Repl_Count := Result.Lifecycle.Repl_Count + 1;
                   Result.Lifecycle.Repl_Items (Result.Lifecycle.Repl_Count) :=
@@ -583,35 +584,51 @@ package body HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader is
 
       if Position <= Content'Last then
          return Fail
-           (Line_No + 1, "unexpected bytes after Replacement section");
+           (Unexpected_Trailing_Bytes, Line_No + 1, "unexpected bytes after Replacement section");
       end if;
 
-      Result.Success := True;
       return Result;
 
    exception
       when others =>
          return Fail
-           (Line_No, "unexpected LOAM Scheduled lifecycle reader failure");
+           (Syntax_Error, Line_No, "unexpected LOAM Scheduled lifecycle reader failure");
    end Read_Content;
 
    function Read_File (Path : String) return Read_Result is
       Exact : constant HRA_N.Storage.Exact_File.Read_Result :=
         HRA_N.Storage.Exact_File.Read_All (Path);
-      Result : Read_Result;
       Msg : constant String := "cannot read LOAM Scheduled lifecycle file";
    begin
       if not Exact.Success then
-         Result.Error_Len := Msg'Length;
-         Result.Error_Reason (1 .. Msg'Length) := Msg;
-         return Result;
+         return Make_Failure (IO_Error, 0, Msg);
       end if;
       return Read_Content (US.To_String (Exact.Content));
    exception
       when others =>
-         Result.Error_Len := Msg'Length;
-         Result.Error_Reason (1 .. Msg'Length) := Msg;
-         return Result;
+         return Make_Failure (IO_Error, 0, Msg);
    end Read_File;
+
+   function Format_Error (Result : Read_Result) return String is
+   begin
+      if Result.Success then
+         return "";
+      elsif Result.Error_Len > 0 then
+         return Result.Error_Reason (1 .. Result.Error_Len);
+      else
+         case Result.Status is
+            when Document_Empty             => return "LOAM Scheduled lifecycle document is empty";
+            when Missing_Final_Newline      => return "LOAM Scheduled lifecycle document does not end with LF";
+            when Malformed_Header           => return "malformed LOAM Scheduled lifecycle header";
+            when Syntax_Error               => return "syntax error in LOAM Scheduled lifecycle document";
+            when Invalid_Token              => return "invalid token in LOAM Scheduled lifecycle document";
+            when Capacity_Exceeded          => return "exceeded maximum Scheduled entries";
+            when Unconserved_Scheduled      => return "unconserved Scheduled occurrence";
+            when Duplicate_Target           => return "duplicate Scheduled lifecycle target";
+            when Unexpected_Trailing_Bytes  => return "unexpected bytes after Replacement section";
+            when IO_Error                   => return "cannot read LOAM Scheduled lifecycle file";
+         end case;
+      end if;
+   end Format_Error;
 
 end HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader;

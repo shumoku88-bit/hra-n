@@ -332,18 +332,24 @@ package body HRA_N.Application.Scheduled_Query is
                       HRA_N.Storage.Loam_Scheduled_Lifecycle_Reader.Read_File
                         (Canonical_Path);
                   SR : Scheduled_Journal_Result;
-                  Error_Len : constant Natural :=
-                    Natural'Min
-                      (Canonical.Error_Len, SR.Error_Reason'Length);
                begin
                   SR.Success := Canonical.Success;
-                  SR.Lifecycle := Canonical.Lifecycle;
-                  SR.Error_Line := Canonical.Error_Line;
-                  SR.Error_Len := Error_Len;
-                  SR.Error_Reason := [others => ' '];
-                  if Error_Len > 0 then
-                     SR.Error_Reason (1 .. Error_Len) :=
-                       Canonical.Error_Reason (1 .. Error_Len);
+                  if Canonical.Success then
+                     SR.Lifecycle := Canonical.Lifecycle;
+                  else
+                     declare
+                        Error_Len : constant Natural :=
+                          Natural'Min
+                            (Canonical.Error_Len, SR.Error_Reason'Length);
+                     begin
+                        SR.Error_Line := Canonical.Error_Line;
+                        SR.Error_Len := Error_Len;
+                        SR.Error_Reason := [others => ' '];
+                        if Error_Len > 0 then
+                           SR.Error_Reason (1 .. Error_Len) :=
+                             Canonical.Error_Reason (1 .. Error_Len);
+                        end if;
+                     end;
                   end if;
 
                   declare
