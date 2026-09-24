@@ -1969,7 +1969,48 @@ class TestHraNCli(unittest.TestCase):
         self.assertNotEqual(reinit.returncode, 0)
         self.assertIn("already exists", reinit.stdout)
 
+    def test_canonical_locus_and_role_publication(self):
+        # 1. Initialize canonical authority
+        self.assertEqual(self.run_cmd("init", "--canonical").returncode, 0)
+
+        # 2. Admit new locus
+        res = self.run_cmd("locus", "add", "crypto")
+        self.assertEqual(res.returncode, 0, f"locus add failed: {res.stdout}")
+        self.assertIn("[OK] Admitted Canonical Locus: crypto", res.stdout)
+
+        locus_path = os.path.join(self.test_dir, "locus-admission.loam")
+        with open(locus_path, "r", encoding="utf-8") as f:
+            locus_content = f.read()
+        self.assertIn("LOCUS\tcrypto\n", locus_content)
+
+        # Duplicate locus addition must fail-closed
+        dup = self.run_cmd("locus", "add", "crypto")
+        self.assertNotEqual(dup.returncode, 0)
+        self.assertIn("already admitted", dup.stdout + dup.stderr)
+
+        # 3. Assign role to unadmitted locus must fail-closed
+        unadmitted = self.run_cmd("role", "assign", "unknown-locus", "ASSET")
+        self.assertNotEqual(unadmitted.returncode, 0)
+        self.assertIn("not admitted", unadmitted.stdout + unadmitted.stderr)
+
+        # 4. Assign role to admitted locus
+        res = self.run_cmd("role", "assign", "crypto", "ASSET")
+        self.assertEqual(res.returncode, 0, f"role assign failed: {res.stdout}")
+        self.assertIn("[OK] Committed Canonical Role Assignment: crypto -> ASSET", res.stdout)
+
+        role_path = os.path.join(self.test_dir, "accounting-role.loam")
+        with open(role_path, "r", encoding="utf-8") as f:
+            role_content = f.read()
+        self.assertIn("ROLE\tcrypto\tASSET\n", role_content)
+
+        # 5. Role list inspects new role
+        role_list = self.run_cmd("role", "list")
+        self.assertEqual(role_list.returncode, 0)
+        self.assertIn("crypto", role_list.stdout)
+        self.assertIn("ASSET", role_list.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

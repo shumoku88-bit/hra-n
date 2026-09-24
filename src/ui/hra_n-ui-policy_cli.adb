@@ -12,6 +12,7 @@ with HRA_N.Core.Accounting_Role;       use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Types;                 use HRA_N.Core.Types;
 with HRA_N.Core.Validity;              use HRA_N.Core.Validity;
 with HRA_N.Core.Window_Policy;         use HRA_N.Core.Window_Policy;
+with HRA_N.Storage.Loam_Accounting_Role_Writer;
 with HRA_N.UI.Output;                  use HRA_N.UI.Output;
 
 package body HRA_N.UI.Policy_CLI is
@@ -112,38 +113,65 @@ package body HRA_N.UI.Policy_CLI is
                Has_Replaces   => Has_Rep,
                Replaces_Id    => Make_Token (Rep_Str (1 .. Rep_Len)));
 
-            declare
-               Prop_Res : constant Proposal_Result :=
-                 Propose_Role (Paths, Intent);
-            begin
-               if not Prop_Res.Success then
-                  Put_Error_Line ("hra-n role assign rejected:");
-                  if Prop_Res.Error_Len > 0 then
-                     Put_Error_Line ("  " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                  end if;
-                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                  return;
-               end if;
-
+            if Paths.Is_Canonical then
                declare
-                  Receipt : constant Policy_Receipt :=
-                    Commit (Prop_Res.Proposal);
+                  Data_Dir : constant String := Data_Dir_Str (Paths);
+                  Draft : constant
+                    HRA_N.Storage.Loam_Accounting_Role_Writer.Role_Draft :=
+                      (Locus => (Token => Make_Token (Locus_Str)),
+                       Role  => Role_Val);
+                  Pub_Res : constant
+                    HRA_N.Storage.Loam_Accounting_Role_Writer.Publish_Result :=
+                      HRA_N.Storage.Loam_Accounting_Role_Writer.Publish_Role
+                        (Data_Dir, Draft);
                begin
-                  if not Receipt.Success then
-                     Put_Error_Line ("hra-n role assign commit failed:");
-                     if Receipt.Error_Len > 0 then
-                        Put_Error_Line ("  " & Receipt.Error (1 .. Receipt.Error_Len));
+                  if not Pub_Res.Success then
+                     Put_Error_Line ("hra-n role assign rejected:");
+                     if Pub_Res.Error_Len > 0 then
+                        Put_Error_Line ("  " & Pub_Res.Error_Reason (1 .. Pub_Res.Error_Len));
                      end if;
                      Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
                      return;
                   end if;
 
-                  Put_Line ("[OK] Committed Role Assignment: " &
-                            Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                  Put_Line ("SNAPSHOT: " &
-                            Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                  Put_Line ("[OK] Committed Canonical Role Assignment: " &
+                            Locus_Str & " -> " & Role_Str_Arg);
+                  Put_Line ("AUTHORITY: accounting-role.loam");
                end;
-            end;
+            else
+               declare
+                  Prop_Res : constant Proposal_Result :=
+                    Propose_Role (Paths, Intent);
+               begin
+                  if not Prop_Res.Success then
+                     Put_Error_Line ("hra-n role assign rejected:");
+                     if Prop_Res.Error_Len > 0 then
+                        Put_Error_Line ("  " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
+                     end if;
+                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                     return;
+                  end if;
+
+                  declare
+                     Receipt : constant Policy_Receipt :=
+                       Commit (Prop_Res.Proposal);
+                  begin
+                     if not Receipt.Success then
+                        Put_Error_Line ("hra-n role assign commit failed:");
+                        if Receipt.Error_Len > 0 then
+                           Put_Error_Line ("  " & Receipt.Error (1 .. Receipt.Error_Len));
+                        end if;
+                        Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                        return;
+                     end if;
+
+                     Put_Line ("[OK] Committed Role Assignment: " &
+                               Receipt.Primary_Id (1 .. Receipt.Primary_Len));
+                     Put_Line ("SNAPSHOT: " &
+                               Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                  end;
+               end;
+            end if;
          end;
       else
          --  Listing active roles
