@@ -59,6 +59,25 @@ package body Test_Loam_Attention_Reader is
                    "back\slash" & ASCII.HT & "tab" & ASCII.LF & "line" & ASCII.CR & "return",
                  "LOAM context escapes decode exactly");
       end;
+      declare
+         Overflow : Unbounded_String := To_Unbounded_String (H);
+      begin
+         for I in 1 .. Max_Attention_Items + 1 loop
+            Append (Overflow, "ITEM" & T & "item-" &
+              Integer'Image (I) & T & "NO_DUE_DATE" & T & "-" & T & "x" & N);
+         end loop;
+         Assert (not Reader.Read_Content (To_String (Overflow)).Success,
+                 "Attention item capacity overflow rejects");
+      end;
+      declare
+         Overflow : Unbounded_String := To_Unbounded_String (H & A);
+      begin
+         for I in 1 .. Max_Attention_Items + 1 loop
+            Append (Overflow, "CLOSE" & T & "a" & T & "2026-09-21" & T & "RESOLVED" & N);
+         end loop;
+         Assert (not Reader.Read_Content (To_String (Overflow)).Success,
+                 "Attention closure capacity overflow rejects");
+      end;
       for I in Bad'Range loop
          declare
             R : constant Reader.Read_Result := Reader.Read_Content (To_String (Bad (I)));
