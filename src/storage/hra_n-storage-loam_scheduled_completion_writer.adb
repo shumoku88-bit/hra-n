@@ -21,6 +21,37 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Writer is
    NL : constant String := [1 => ASCII.LF];
    Completion_Prefix : constant String := "scheduled-completion:";
 
+   function Make_Failure
+     (Status    : Completion_Claim_Status;
+      Actual_Id : Event_Id;
+      Message   : String) return Publish_Result
+   is
+      Result : Publish_Result (Success => False);
+      Len    : constant Natural :=
+        Natural'Min (Message'Length, Result.Error_Reason'Length);
+   begin
+      Result.State := Claim_Not_Ready;
+      Result.Actual_Id := Actual_Id;
+      Result.Status := Status;
+      Result.Error_Len := Len;
+      if Len > 0 then
+         Result.Error_Reason (1 .. Len) :=
+           Message (Message'First .. Message'First + Len - 1);
+      end if;
+      return Result;
+   end Make_Failure;
+
+   function Make_Success
+     (State     : Completion_Claim_State;
+      Actual_Id : Event_Id) return Publish_Result
+   is
+      Result : Publish_Result (Success => True);
+   begin
+      Result.State := State;
+      Result.Actual_Id := Actual_Id;
+      return Result;
+   end Make_Success;
+
    function Valid_Token (Value : Token_Text) return Boolean is
    begin
       if Value.Length = 0 then
@@ -104,7 +135,6 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Writer is
      (Root_Path : String;
       Scheduled : Scheduled_Id) return Publish_Result
    is
-      Result : Publish_Result;
       Scheduled_Path : constant String :=
         Ada.Directories.Compose (Root_Path, "scheduled.loam");
       Actual_Path : constant String :=
@@ -115,25 +145,6 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Writer is
       Actual_Lock_Path : constant String :=
         Actual_Path & ".loam-writer-lock";
       Ownership : HRA_N.Storage.File_Lock.Ordered_Lock_Pair;
-
-      procedure Set_Error (Message : String) is
-         Len : constant Natural :=
-           Natural'Min (Message'Length, Result.Error_Reason'Length);
-      begin
-         Result.State := Claim_Not_Ready;
-         Result.Error_Reason := [others => ' '];
-         Result.Error_Len := Len;
-         if Len > 0 then
-            Result.Error_Reason (1 .. Len) :=
-              Message (Message'First .. Message'First + Len - 1);
-         end if;
-      end Set_Error;
-
-      function Fail (Message : String) return Publish_Result is
-      begin
-         Set_Error (Message);
-         return Result;
-      end Fail;
 
       procedure Release_All is
       begin
@@ -155,14 +166,22 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Writer is
 
    begin
       if Root_Path'Length = 0 then
-         return Fail ("LOAM data root must not be empty");
+         return Make_Failure
+           (Invalid_Root_Directory,
+            (Token => (Length => 0, Value => [others => ' '])),
+            "LOAM data root must not be empty");
       elsif not Valid_Token (Scheduled.Token) then
-         return Fail ("Scheduled completion requires a valid Scheduled identity");
+         return Make_Failure
+           (Invalid_Scheduled_Token,
+            (Token => (Length => 0, Value => [others => ' '])),
+            "Scheduled completion requires a valid Scheduled identity");
       elsif Natural (Scheduled.Token.Length) + Completion_Prefix'Length >
         Max_Token_Length
       then
-         return Fail
-           ("deterministic Scheduled completion Actual identity exceeds HRA-N token capacity");
+         return Make_Failure
+           (Deterministic_Identity_Exceeds_Capacity,
+            (Token => (Length => 0, Value => [others => ' '])),
+            "deterministic Scheduled completion Actual identity exceeds HRA-N token capacity");
       end if;
 
       declare
@@ -172,13 +191,22 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Writer is
            Completion_Prefix & Scheduled_Text;
          Expected_Actual : constant Event_Id :=
            (Token => Make_Token (Actual_Text));
-      begin
-         Result.Actual_Id := Expected_Actual;
 
+         function Fail
+           (Status  : Completion_Claim_Status;
+            Message : String) return Publish_Result
+         is
+         begin
+            Remove_Stage;
+            Release_All;
+            return Make_Failure (Status, Expected_Actual, Message);
+         end Fail;
+
+      begin
          if not HRA_N.Storage.File_Lock.Acquire_Ordered_Pair
            (Scheduled_Lock_Path, Actual_Lock_Path, Ownership)
          then
-            return Fail ("cannot acquire shared LOAM Scheduled/Actual ownership");
+            return Fail (Lock_Failure, "cannot acquire shared LOAM Scheduled/Actual ownership");
          end if;
 
          declare
@@ -188,11 +216,9 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Writer is
               HRA_N.Storage.Exact_File.Read_All (Actual_Path);
          begin
             if not Scheduled_Bytes.Success then
-               Release_All;
-               return Fail ("cannot read current scheduled.loam authority");
+               return Fail (Cannot_Read_Scheduled, "cannot read current scheduled.loam authority");
             elsif not Actual_Bytes.Success then
-               Release_All;
-               return Fail ("cannot read current actual.loam authority");
+               return Fail (Cannot_Read_Actual, "cannot read current actual.loam authority");
             end if;
 
             declare
@@ -205,17 +231,17 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Writer is
                    (US.To_String (Actual_Bytes.Content));
             begin
                if not Current.Success then
-                  Release_All;
                   return Fail
-                    ("current scheduled.loam is malformed, unsupported, or over capacity");
+                    (Corrupt_Scheduled,
+                     "current scheduled.loam is malformed, unsupported, or over capacity");
                elsif not Actual.Success then
-                  Release_All;
                   return Fail
-                    ("current actual.loam is malformed, unsupported, or over capacity");
+                    (Corrupt_Actual,
+                     "current actual.loam is malformed, unsupported, or over capacity");
                elsif not Lifecycle_Readable (Current.Lifecycle) then
-                  Release_All;
                   return Fail
-                    ("current Scheduled lifecycle is not application-readable");
+                    (Lifecycle_Not_Readable,
+                     "current Scheduled lifecycle is not application-readable");
                end if;
 
                declare
@@ -232,23 +258,21 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Writer is
                      if not Equal_Token
                        (Existing_Actual.Token, Expected_Actual.Token)
                      then
-                        Release_All;
                         return Fail
-                          ("retained Scheduled completion endpoint differs from canonical deterministic identity");
+                          (Claim_Endpoint_Differs,
+                           "retained Scheduled completion endpoint differs from canonical deterministic identity");
                      elsif Event_Exists (Actual, Expected_Actual) then
-                        Release_All;
                         return Fail
-                          ("selected Scheduled identity is already completed");
+                          (Already_Completed,
+                           "selected Scheduled identity is already completed");
                      else
-                        Result.State := Claim_Already_Inert;
-                        Result.Error_Len := 0;
                         Release_All;
-                        return Result;
+                        return Make_Success (Claim_Already_Inert, Expected_Actual);
                      end if;
                   elsif Event_Exists (Actual, Expected_Actual) then
-                     Release_All;
                      return Fail
-                       ("canonical Scheduled completion Actual identity already exists without its claim");
+                       (Actual_Identity_Exists_Without_Claim,
+                        "canonical Scheduled completion Actual identity already exists without its claim");
                   end if;
                end;
 
@@ -270,31 +294,36 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Writer is
                      Transition_Status);
 
                   if Transition_Status /= Completion_Transitioned then
-                     Release_All;
                      case Transition_Status is
                         when Source_Completions_Invalid =>
                            return Fail
-                             ("current Scheduled completion ownership is invalid");
+                             (Completion_Ownership_Invalid,
+                              "current Scheduled completion ownership is invalid");
                         when Source_Completion_Full =>
                            return Fail
-                             ("HRA-N Scheduled completion working-set capacity exceeded");
+                             (Working_Set_Exceeded,
+                              "HRA-N Scheduled completion working-set capacity exceeded");
                         when Unknown_Scheduled_Id =>
                            return Fail
-                             ("selected Scheduled identity is not retained");
+                             (Scheduled_Not_Retained,
+                              "selected Scheduled identity is not retained");
                         when Scheduled_Not_Current_Open =>
                            return Fail
-                             ("selected Scheduled identity is no longer current-open");
+                             (Scheduled_Not_Current_Open,
+                              "selected Scheduled identity is no longer current-open");
                         when Actual_Endpoint_Already_Claimed =>
                            return Fail
-                             ("Scheduled completion Actual identity belongs to another occurrence");
+                             (Actual_Endpoint_Already_Claimed,
+                              "Scheduled completion Actual identity belongs to another occurrence");
                         when Completion_Transitioned =>
                            return Fail
-                             ("unexpected Scheduled completion transition state");
+                             (Unexpected_Transition_State,
+                              "unexpected Scheduled completion transition state");
                      end case;
                   elsif Insert_At = 0 then
-                     Release_All;
                      return Fail
-                       ("Completion section insertion boundary is absent");
+                       (Insertion_Boundary_Absent,
+                        "Completion section insertion boundary is absent");
                   end if;
 
                   declare
@@ -315,18 +344,18 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Writer is
                      if not Candidate_Corresponds
                        (Current.Lifecycle, Admitted, Added)
                      then
-                        Release_All;
                         return Fail
-                          ("candidate Scheduled completion failed semantic correspondence");
+                          (Candidate_Correspondence_Failure,
+                           "candidate Scheduled completion failed semantic correspondence");
                      end if;
 
                      Remove_Stage;
                      if not HRA_N.Storage.Atomic_Writer.Write_Staging_File_Durably
                        (Stage_Path, Candidate, Error, Error_Len)
                      then
-                        Release_All;
                         return Fail
-                          ("cannot durably stage canonical Scheduled completion candidate");
+                          (Staging_Write_Failure,
+                           "cannot durably stage canonical Scheduled completion candidate");
                      end if;
 
                      declare
@@ -336,10 +365,9 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Writer is
                         if not Staged.Success
                           or else US.To_String (Staged.Content) /= Candidate
                         then
-                           Remove_Stage;
-                           Release_All;
                            return Fail
-                             ("staged Scheduled completion bytes do not match candidate generation");
+                             (Staging_Mismatch,
+                              "staged Scheduled completion bytes do not match candidate generation");
                         end if;
 
                         declare
@@ -350,10 +378,9 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Writer is
                            if not Candidate_Corresponds
                              (Current.Lifecycle, Staged_Image, Added)
                            then
-                              Remove_Stage;
-                              Release_All;
                               return Fail
-                                ("staged Scheduled completion failed semantic admission");
+                                (Staging_Admission_Failure,
+                                 "staged Scheduled completion failed semantic admission");
                            end if;
                         end;
                      end;
@@ -361,26 +388,90 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Writer is
                      if not HRA_N.Storage.Atomic_Writer.Publish_Staged_File_Atomically
                        (Stage_Path, Scheduled_Path, Error, Error_Len)
                      then
-                        Release_All;
                         return Fail
-                          ("failed to switch canonical Scheduled completion authority");
+                          (Authority_Switch_Failure,
+                           "failed to switch canonical Scheduled completion authority");
                      end if;
 
-                     Result.State := Claim_Published_Fresh;
-                     Result.Error_Len := 0;
                      Release_All;
-                     return Result;
+                     return Make_Success (Claim_Published_Fresh, Expected_Actual);
                   end;
                end;
             end;
          end;
+      exception
+         when others =>
+            return Fail (Internal_Error, "unexpected LOAM Scheduled completion writer failure");
       end;
 
    exception
       when others =>
-         Remove_Stage;
-         Release_All;
-         return Fail ("unexpected LOAM Scheduled completion writer failure");
+         return Make_Failure
+           (Internal_Error,
+            (Token => (Length => 0, Value => [others => ' '])),
+            "unexpected LOAM Scheduled completion writer failure");
    end Publish_Completion_Claim;
+
+   function Format_Error (Result : Publish_Result) return String is
+   begin
+      if Result.Success then
+         return "";
+      elsif Result.Error_Len > 0 then
+         return Result.Error_Reason (1 .. Result.Error_Len);
+      else
+         case Result.Status is
+            when Invalid_Root_Directory =>
+               return "LOAM data root must not be empty";
+            when Invalid_Scheduled_Token =>
+               return "Scheduled completion requires a valid Scheduled identity";
+            when Deterministic_Identity_Exceeds_Capacity =>
+               return "deterministic Scheduled completion Actual identity exceeds HRA-N token capacity";
+            when Lock_Failure =>
+               return "cannot acquire shared LOAM Scheduled/Actual ownership";
+            when Cannot_Read_Scheduled =>
+               return "cannot read current scheduled.loam authority";
+            when Cannot_Read_Actual =>
+               return "cannot read current actual.loam authority";
+            when Corrupt_Scheduled =>
+               return "current scheduled.loam is malformed, unsupported, or over capacity";
+            when Corrupt_Actual =>
+               return "current actual.loam is malformed, unsupported, or over capacity";
+            when Lifecycle_Not_Readable =>
+               return "current Scheduled lifecycle is not application-readable";
+            when Claim_Endpoint_Differs =>
+               return "retained Scheduled completion endpoint differs from canonical deterministic identity";
+            when Already_Completed =>
+               return "selected Scheduled identity is already completed";
+            when Actual_Identity_Exists_Without_Claim =>
+               return "canonical Scheduled completion Actual identity already exists without its claim";
+            when Completion_Ownership_Invalid =>
+               return "current Scheduled completion ownership is invalid";
+            when Working_Set_Exceeded =>
+               return "HRA-N Scheduled completion working-set capacity exceeded";
+            when Scheduled_Not_Retained =>
+               return "selected Scheduled identity is not retained";
+            when Scheduled_Not_Current_Open =>
+               return "selected Scheduled identity is no longer current-open";
+            when Actual_Endpoint_Already_Claimed =>
+               return "Scheduled completion Actual identity belongs to another occurrence";
+            when Unexpected_Transition_State =>
+               return "unexpected Scheduled completion transition state";
+            when Insertion_Boundary_Absent =>
+               return "Completion section insertion boundary is absent";
+            when Candidate_Correspondence_Failure =>
+               return "candidate Scheduled completion failed semantic correspondence";
+            when Staging_Write_Failure =>
+               return "cannot durably stage canonical Scheduled completion candidate";
+            when Staging_Mismatch =>
+               return "staged Scheduled completion bytes do not match candidate generation";
+            when Staging_Admission_Failure =>
+               return "staged Scheduled completion failed semantic admission";
+            when Authority_Switch_Failure =>
+               return "failed to switch canonical Scheduled completion authority";
+            when Internal_Error =>
+               return "unexpected LOAM Scheduled completion writer failure";
+         end case;
+      end if;
+   end Format_Error;
 
 end HRA_N.Storage.Loam_Scheduled_Completion_Writer;

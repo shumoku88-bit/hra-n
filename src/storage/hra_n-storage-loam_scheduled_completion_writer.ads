@@ -16,17 +16,52 @@ with HRA_N.Core.Types;     use HRA_N.Core.Types;
 
 package HRA_N.Storage.Loam_Scheduled_Completion_Writer is
 
+   type Completion_Claim_Status is
+     (Invalid_Root_Directory,
+      Invalid_Scheduled_Token,
+      Deterministic_Identity_Exceeds_Capacity,
+      Lock_Failure,
+      Cannot_Read_Scheduled,
+      Cannot_Read_Actual,
+      Corrupt_Scheduled,
+      Corrupt_Actual,
+      Lifecycle_Not_Readable,
+      Claim_Endpoint_Differs,
+      Already_Completed,
+      Actual_Identity_Exists_Without_Claim,
+      Completion_Ownership_Invalid,
+      Working_Set_Exceeded,
+      Scheduled_Not_Retained,
+      Scheduled_Not_Current_Open,
+      Actual_Endpoint_Already_Claimed,
+      Unexpected_Transition_State,
+      Insertion_Boundary_Absent,
+      Candidate_Correspondence_Failure,
+      Staging_Write_Failure,
+      Staging_Mismatch,
+      Staging_Admission_Failure,
+      Authority_Switch_Failure,
+      Internal_Error);
+
    type Completion_Claim_State is
      (Claim_Not_Ready,
       Claim_Published_Fresh,
       Claim_Already_Inert);
 
-   type Publish_Result is record
-      State        : Completion_Claim_State := Claim_Not_Ready;
-      Actual_Id    : Event_Id;
-      Error_Reason : String (1 .. 192) := [others => ' '];
-      Error_Len    : Natural := 0;
+   type Publish_Result (Success : Boolean := True) is record
+      State     : Completion_Claim_State := Claim_Not_Ready;
+      Actual_Id : Event_Id;
+      case Success is
+         when True =>
+            null;
+         when False =>
+            Status       : Completion_Claim_Status := Internal_Error;
+            Error_Reason : String (1 .. 192)       := [others => ' '];
+            Error_Len    : Natural                 := 0;
+      end case;
    end record;
+
+   function Format_Error (Result : Publish_Result) return String;
 
    --  Publish or recover the canonical completion claim for one retained
    --  Scheduled identity.

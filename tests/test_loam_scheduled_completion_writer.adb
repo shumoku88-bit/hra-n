@@ -103,6 +103,9 @@ package body Test_Loam_Scheduled_Completion_Writer is
            Publish_Completion_Claim (Root, Target);
       begin
          Assert
+           (Published.Success,
+            "fresh canonical Scheduled completion claim succeeds");
+         Assert
            (Published.State = Claim_Published_Fresh,
             "fresh canonical Scheduled completion claim publishes");
          Assert
@@ -146,6 +149,9 @@ package body Test_Loam_Scheduled_Completion_Writer is
            Publish_Completion_Claim (Root, Target);
       begin
          Assert
+           (Retry.Success,
+            "reusable retry succeeds");
+         Assert
            (Retry.State = Claim_Already_Inert,
             "same retained claim with missing Actual is reusable for retry");
          Assert
@@ -160,8 +166,18 @@ package body Test_Loam_Scheduled_Completion_Writer is
            Publish_Completion_Claim (Root, Target);
       begin
          Assert
-           (Rejected.State = Claim_Not_Ready,
+           (not Rejected.Success,
             "effective completion cannot be claimed again");
+         Assert
+           (Rejected.Status = Already_Completed,
+            "already completed status reported");
+         Assert
+           (Format_Error (Rejected) =
+              "selected Scheduled identity is already completed",
+            "already completed error formatted");
+         Assert
+           (Rejected.State = Claim_Not_Ready,
+            "effective completion state is not ready");
          Assert
            (Read_Exact (Scheduled) = Before,
             "already-completed rejection leaves Scheduled authority untouched");
@@ -177,8 +193,18 @@ package body Test_Loam_Scheduled_Completion_Writer is
              (Root, (Token => Make_Token ("scheduled-1")));
       begin
          Assert
-           (Rejected.State = Claim_Not_Ready,
+           (not Rejected.Success,
             "retired Scheduled identity cannot receive completion claim");
+         Assert
+           (Rejected.Status = Scheduled_Not_Current_Open,
+            "retired Scheduled status is not current open");
+         Assert
+           (Format_Error (Rejected) =
+              "selected Scheduled identity is no longer current-open",
+            "retired Scheduled error formatted");
+         Assert
+           (Rejected.State = Claim_Not_Ready,
+            "retired Scheduled claim state is not ready");
          Assert
            (Read_Exact (Scheduled) = Before,
             "retirement rejection leaves Scheduled authority untouched");
@@ -214,11 +240,54 @@ package body Test_Loam_Scheduled_Completion_Writer is
            Publish_Completion_Claim (Root, Target);
       begin
          Assert
-           (Rejected.State = Claim_Not_Ready,
+           (not Rejected.Success,
             "Actual completion endpoint owned by another Scheduled source is rejected");
+         Assert
+           (Rejected.Status = Actual_Endpoint_Already_Claimed,
+            "actual endpoint already claimed status reported");
+         Assert
+           (Format_Error (Rejected) =
+              "Scheduled completion Actual identity belongs to another occurrence",
+            "actual endpoint already claimed error formatted");
+         Assert
+           (Rejected.State = Claim_Not_Ready,
+            "conflicting claim state is not ready");
          Assert
            (Read_Exact (Scheduled) = Before,
             "endpoint-ownership rejection leaves Scheduled authority untouched");
+      end;
+
+      declare
+         Empty_Root_Result : constant Publish_Result :=
+           Publish_Completion_Claim ("", Target);
+      begin
+         Assert
+           (not Empty_Root_Result.Success,
+            "empty root directory is rejected");
+         Assert
+           (Empty_Root_Result.Status = Invalid_Root_Directory,
+            "invalid root directory status reported");
+         Assert
+           (Format_Error (Empty_Root_Result) =
+              "LOAM data root must not be empty",
+            "invalid root directory error formatted");
+      end;
+
+      declare
+         Invalid_Token_Result : constant Publish_Result :=
+           Publish_Completion_Claim
+             (Root, (Token => (Length => 0, Value => [others => ' '])));
+      begin
+         Assert
+           (not Invalid_Token_Result.Success,
+            "invalid Scheduled token is rejected");
+         Assert
+           (Invalid_Token_Result.Status = Invalid_Scheduled_Token,
+            "invalid Scheduled token status reported");
+         Assert
+           (Format_Error (Invalid_Token_Result) =
+              "Scheduled completion requires a valid Scheduled identity",
+            "invalid Scheduled token error formatted");
       end;
 
       Assert
