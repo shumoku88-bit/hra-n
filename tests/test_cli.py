@@ -47,6 +47,22 @@ class TestHraNCli(unittest.TestCase):
             with open(os.path.join(self.test_dir, name), "w", encoding="utf-8") as f:
                 f.write(text)
 
+    def test_retired_legacy_interactive_prompt_cannot_write(self) -> None:
+        self.write_report_fixture('TX e1 2026-09-10 cash:-1 food:1 "legacy"\n')
+        legacy = os.path.join(self.test_dir, 'journal.hra')
+        before = open(legacy, 'rb').read()
+        rejected = self.run_cmd('record', '--cli')
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn('Legacy interactive prompt retired', rejected.stdout)
+        self.assertEqual(open(legacy, 'rb').read(), before)
+        with open(os.path.join(self.test_dir, 'actual.loam'), 'w', encoding='utf-8') as f:
+            f.write('LOAM-NORMALIZED-ACTUAL\t1\n')
+        rejected = self.run_cmd('record', '--cli')
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertEqual(open(legacy, 'rb').read(), before)
+        self.assertEqual(open(os.path.join(self.test_dir, 'actual.loam'), 'rb').read(),
+                         b'LOAM-NORMALIZED-ACTUAL\t1\n')
+
     def test_attention_independent_authority_and_read_only(self) -> None:
         self.write_report_fixture('TX legacy 2026-09-10 cash:-2 food:2 "Legacy"\n')
         policy = os.path.join(self.test_dir, "policy.hra")

@@ -31,7 +31,6 @@ with HRA_N.UI.Split_CLI;
 with HRA_N.UI.Policy_CLI;
 with HRA_N.UI.Routing_CLI;
 with HRA_N.UI.Locus_CLI;
-with HRA_N.UI.Interactive_Movement;
 with HRA_N.UI.TUI_Dispatcher;
 
 procedure HRA_N_Main is
@@ -71,7 +70,7 @@ procedure HRA_N_Main is
       Put_Line ("  actual FILE [DATE]     Read Loam canonical actual.loam directly (read-only)");
       Put_Line ("  status                 Print household authority status & canonical balances");
       Put_Line ("  record, movement       Record transaction: <FROM> <TO> <AMOUNT> [DATE] [DESC]");
-      Put_Line ("                         (without arguments: opens TUI form, or --cli for prompt)");
+      Put_Line ("                         (without arguments: opens TUI form)");
       Put_Line ("  correct                Correct transaction: <TARGET_ID> <FROM> <TO> <AMT> [DATE] [DESC]");
       Put_Line ("                         (canonical actual.loam inherits target DATE; supplied DATE must match)");
       Put_Line ("  revert                 Revert transaction: <EVENT_ID> [DATE] [REASON]");
@@ -546,13 +545,8 @@ begin
                return;
             end;
          elsif Rem_Args = 1 and then Ada.Command_Line.Argument (Command_Idx + 1) = "--cli" then
-            HRA_N.UI.Interactive_Movement.Run_Interactive
-              (Authority_Dir => Data_Dir,
-               Catalog_Path  => "",
-               Success       => Success);
-            if not Success then
-               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-            end if;
+            Put_Line ("[ERROR] Legacy interactive prompt retired; use record (TUI) or scripted movement on a canonical household.");
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
             return;
          end if;
 
