@@ -147,10 +147,10 @@ def test_month_end_budget(foreign_capacity: bool = False) -> None:
             read_until(fd, output, b'Esc/q: back')
             diagnostic = b'budget queries support jpy capacity only; no conversion is implied'
             cases = [(key, diagnostic, re.escape(diagnostic)) for key in [b'2', b'4', b'7', b'2']] if foreign_capacity else [
-                (b'2', b'Liquid Assets (Funding)', rb'Total Budget Envelopes\s+120\s+10\s+110'),
-                (b'4', b'PURPOSE PACING BREAKDOWN', rb'Spent So Far\s*:\s*10 JPY'),
-                (b'7', b'Liquidity Deficit', rb'Active Envelope Requirements\s*:\s*110 JPY'),
-                (b'2', b'Liquid Assets (Funding)', rb'Total Budget Envelopes\s+120\s+10\s+110'),
+                (b'2', b'FUNDING & BACKING', rb'Total Budget Envelopes\s+120\s+10\s+110'),
+                (b'4', b'PURPOSE REMAINING CAPACITY', rb'Spent So Far\s*:\s*10 JPY'),
+                (b'7', b'Unavailable: no selected funding coordinates', rb'Unavailable: no selected funding coordinates'),
+                (b'2', b'FUNDING & BACKING', rb'Total Budget Envelopes\s+120\s+10\s+110'),
             ]
             for key, marker, expected in cases:
                 start = len(output)
@@ -159,6 +159,8 @@ def test_month_end_budget(foreign_capacity: bool = False) -> None:
                 # Rendered ASCII fields may be separated by cursor positioning.
                 text = re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]', b' ', bytes(output[start:]))
                 assert re.search(expected, text), text
+                if not foreign_capacity:
+                    assert b'SOLVENT' not in text and b'SAFE DAILY TARGET' not in text, text
                 if foreign_capacity:
                     assert b'[PASS]' not in text and b'Unallocated Funds' not in text, text
                     # ncurses does not re-emit identical diagnostic text when
@@ -761,19 +763,19 @@ def main() -> None:
             os.write(fd, b"p")
             read_until(fd, output, b"Statement")
             assert b"HRA-N FINANCIAL REPORT WORKSPACE" in output
-            # Switch to Tab 2: Budget Envelopes (verifying Backing Solvency)
+            # Switch to Tab 2: Budget Envelopes (funding remains unavailable)
             os.write(fd, b"2")
-            read_until(fd, output, b"SOLVENCY & ENVELOPE BACKING")
+            read_until(fd, output, b"FUNDING & BACKING")
             assert b"BUDGET & ENVELOPE PROJECTION" in output
             # Switch to Tab 3: Balances
             os.write(fd, b"3")
             read_until(fd, output, b"COORDINATE BALANCES")
             # Switch to Tab 4: Spending Pace
             os.write(fd, b"4")
-            read_until(fd, output, b"DAILY SPENDING PACE & TARGET")
+            read_until(fd, output, b"MONTHLY CAPACITY OBSERVATION")
             # Switch to Tab 5: MoM Comparison
             os.write(fd, b"5")
-            read_until(fd, output, b"MONTH-OVER-MONTH COMPARISON")
+            read_until(fd, output, b"OVER-MONTH COMPARISON")
             # Switch to Tab 6: Daily Cash Flow Timeline
             os.write(fd, b"6")
             read_until(fd, output, b"DAILY INCOME / EXPENSE FLOW TIMELINE")
