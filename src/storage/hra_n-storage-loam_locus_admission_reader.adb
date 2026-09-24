@@ -4,7 +4,6 @@
 -------------------------------------------------------------------------------
 
 with Ada.Strings.Unbounded;
-with HRA_N.Core.Admission; use HRA_N.Core.Admission;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Storage.Exact_File;
 
@@ -14,6 +13,25 @@ package body HRA_N.Storage.Loam_Locus_Admission_Reader is
 
    Header : constant String :=
      "LOAM-LOCUS-ADMISSION-VOCABULARY" & ASCII.HT & "1";
+
+   function Make_Failure
+     (Status  : Locus_Read_Status;
+      At_Line : Natural;
+      Message : String) return Read_Result
+   is
+      Result : Read_Result (Success => False);
+      N      : constant Natural :=
+        Natural'Min (Message'Length, Result.Error_Reason'Length);
+   begin
+      Result.Status     := Status;
+      Result.Error_Line := At_Line;
+      Result.Error_Len  := N;
+      if N > 0 then
+         Result.Error_Reason (1 .. N) :=
+           Message (Message'First .. Message'First + N - 1);
+      end if;
+      return Result;
+   end Make_Failure;
 
    procedure Next_Line
      (Content  : String;
@@ -65,42 +83,27 @@ package body HRA_N.Storage.Loam_Locus_Admission_Reader is
    end Valid_Token;
 
    function Read_Content (Content : String) return Read_Result is
-      Result   : Read_Result;
+      Result   : Read_Result (Success => True);
       Loci     : Locus_Array;
       Count    : Locus_Count_Type := 0;
       Position : Natural :=
         (if Content'Length = 0 then 0 else Content'First);
       Line_No  : Natural := 0;
 
-      procedure Set_Error (At_Line : Natural; Message : String) is
-         Len : constant Natural :=
-           Natural'Min (Message'Length, Result.Error_Reason'Length);
-      begin
-         Result.Success := False;
-         Result.Error_Line := At_Line;
-         Result.Error_Reason := [others => ' '];
-         Result.Error_Len := Len;
-         if Len > 0 then
-            Result.Error_Reason (1 .. Len) :=
-              Message (Message'First .. Message'First + Len - 1);
-         end if;
-      end Set_Error;
-
       function Fail
-        (At_Line : Natural;
-         Message : String) return Read_Result
-      is
+        (Status  : Locus_Read_Status;
+         At_Line : Natural;
+         Message : String) return Read_Result is
       begin
-         Set_Error (At_Line, Message);
-         return Result;
+         return Make_Failure (Status, At_Line, Message);
       end Fail;
 
    begin
       if Content'Length = 0 then
-         return Fail (0, "LOAM Locus admission document is empty");
+         return Fail (Document_Empty, 0, "LOAM Locus admission document is empty");
       elsif Content (Content'Last) /= ASCII.LF then
          return Fail
-           (0, "LOAM Locus admission document must end with newline");
+           (Missing_Final_Newline, 0, "LOAM Locus admission document must end with newline");
       end if;
 
       declare
@@ -109,11 +112,11 @@ package body HRA_N.Storage.Loam_Locus_Admission_Reader is
       begin
          Next_Line (Content, Position, First, Have_Line);
          if not Have_Line then
-            return Fail (0, "LOAM Locus admission document is empty");
+            return Fail (Document_Empty, 0, "LOAM Locus admission document is empty");
          end if;
          Line_No := 1;
          if US.To_String (First) /= Header then
-            return Fail (1, "unsupported LOAM Locus admission header");
+            return Fail (Unsupported_Header, 1, "unsupported LOAM Locus admission header");
          end if;
       end;
 
@@ -124,7 +127,7 @@ package body HRA_N.Storage.Loam_Locus_Admission_Reader is
          begin
             Next_Line (Content, Position, Raw, Have_Line);
             if not Have_Line then
-               return Fail (Line_No + 1, "unterminated LOCUS row");
+               return Fail (Syntax_Error, Line_No + 1, "unterminated LOCUS row");
             end if;
             Line_No := Line_No + 1;
 
@@ -135,7 +138,7 @@ package body HRA_N.Storage.Loam_Locus_Admission_Reader is
                  or else Line (Line'First .. Line'First + 4) /= "LOCUS"
                  or else Line (Line'First + 5) /= ASCII.HT
                then
-                  return Fail (Line_No, "expected LOCUS row");
+                  return Fail (Syntax_Error, Line_No, "expected LOCUS row");
                end if;
 
                declare
@@ -143,10 +146,10 @@ package body HRA_N.Storage.Loam_Locus_Admission_Reader is
                     Line (Line'First + 6 .. Line'Last);
                begin
                   if not Valid_Token (Token) then
-                     return Fail (Line_No, "invalid LOAM Locus token");
+                     return Fail (Invalid_Token, Line_No, "invalid LOAM Locus token");
                   elsif Count = Max_Admitted_Loci then
                      return Fail
-                       (Line_No, "HRA-N Locus admission capacity exceeded");
+                       (Capacity_Exceeded, Line_No, "HRA-N Locus admission capacity exceeded");
                   end if;
 
                   for I in 1 .. Count loop
@@ -154,7 +157,7 @@ package body HRA_N.Storage.Loam_Locus_Admission_Reader is
                        (Loci (I).Token, Make_Token (Token))
                      then
                         return Fail
-                          (Line_No, "duplicate LOAM Locus admission token");
+                          (Duplicate_Token, Line_No, "duplicate LOAM Locus admission token");
                      end if;
                   end loop;
 
@@ -168,35 +171,49 @@ package body HRA_N.Storage.Loam_Locus_Admission_Reader is
       Result.Vocabulary := Make_Vocabulary (Loci, Count);
       if not Loci_Are_Unique (Result.Vocabulary) then
          return Fail
-           (Line_No, "duplicate LOAM Locus admission token");
+           (Duplicate_Token, Line_No, "duplicate LOAM Locus admission token");
       end if;
 
-      Result.Success := True;
       return Result;
 
    exception
       when others =>
          return Fail
-           (Line_No, "unexpected LOAM Locus admission reader failure");
+           (Syntax_Error, Line_No, "unexpected LOAM Locus admission reader failure");
    end Read_Content;
 
    function Read_File (Path : String) return Read_Result is
       Exact : constant HRA_N.Storage.Exact_File.Read_Result :=
         HRA_N.Storage.Exact_File.Read_All (Path);
-      Result : Read_Result;
-      Msg    : constant String := "cannot read LOAM Locus admission file";
+      Msg   : constant String := "cannot read LOAM Locus admission file";
    begin
       if not Exact.Success then
-         Result.Error_Len := Msg'Length;
-         Result.Error_Reason (1 .. Msg'Length) := Msg;
-         return Result;
+         return Make_Failure (IO_Error, 0, Msg);
       end if;
       return Read_Content (US.To_String (Exact.Content));
    exception
       when others =>
-         Result.Error_Len := Msg'Length;
-         Result.Error_Reason (1 .. Msg'Length) := Msg;
-         return Result;
+         return Make_Failure (IO_Error, 0, Msg);
    end Read_File;
+
+   function Format_Error (Result : Read_Result) return String is
+   begin
+      if Result.Success then
+         return "";
+      elsif Result.Error_Len > 0 then
+         return Result.Error_Reason (1 .. Result.Error_Len);
+      else
+         case Result.Status is
+            when Document_Empty        => return "LOAM Locus admission document is empty";
+            when Missing_Final_Newline => return "LOAM Locus admission document must end with newline";
+            when Unsupported_Header    => return "unsupported LOAM Locus admission header";
+            when Syntax_Error          => return "syntax error in LOAM Locus admission document";
+            when Invalid_Token         => return "invalid LOAM Locus token";
+            when Capacity_Exceeded     => return "HRA-N Locus admission capacity exceeded";
+            when Duplicate_Token       => return "duplicate LOAM Locus admission token";
+            when IO_Error              => return "cannot read LOAM Locus admission file";
+         end case;
+      end if;
+   end Format_Error;
 
 end HRA_N.Storage.Loam_Locus_Admission_Reader;

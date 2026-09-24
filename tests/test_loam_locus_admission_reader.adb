@@ -9,6 +9,7 @@ package body Test_Loam_Locus_Admission_Reader is
 
    procedure Run is
       package Reader renames HRA_N.Storage.Loam_Locus_Admission_Reader;
+      use type Reader.Locus_Read_Status;
       HT : constant String := [1 => ASCII.HT];
       NL : constant String := [1 => ASCII.LF];
       Header : constant String :=
@@ -25,6 +26,10 @@ package body Test_Loam_Locus_Admission_Reader is
       begin
          Assert (not R.Success and then R.Error_Len > 0,
                  "missing canonical Locus admission authority rejects");
+         Assert (R.Status = Reader.IO_Error,
+                 "missing authority status is IO_Error");
+         Assert (Reader.Format_Error (R)'Length > 0,
+                 "formatted error is non-empty for IO_Error");
       end;
 
       declare
@@ -32,6 +37,8 @@ package body Test_Loam_Locus_Admission_Reader is
       begin
          Assert (R.Success and then R.Vocabulary.Count = 0,
                  "header-only canonical Locus admission is valid empty policy");
+         Assert (Reader.Format_Error (R) = "",
+                 "formatted error is empty on success");
       end;
 
       declare
@@ -49,26 +56,38 @@ package body Test_Loam_Locus_Admission_Reader is
       end;
 
       declare
-         type Case_Array is array (Positive range <>) of Unbounded_String;
+         type Case_Record is record
+            Text   : Unbounded_String;
+            Status : Reader.Locus_Read_Status;
+         end record;
+         type Case_Array is array (Positive range <>) of Case_Record;
          Cases : constant Case_Array :=
-           [To_Unbounded_String ("WRONG" & NL),
-            To_Unbounded_String (Header & "BROKEN" & NL),
-            To_Unbounded_String
-              (Header & "LOCUS" & HT & "cash" & HT & "extra" & NL),
-            To_Unbounded_String
-              (Header & "LOCUS" & HT & "bad" & ASCII.CR & NL),
-            To_Unbounded_String
-              (Header & "LOCUS" & HT & "cash" & NL &
-               "LOCUS" & HT & "cash" & NL)];
+           [(Text => To_Unbounded_String ("WRONG" & NL),
+             Status => Reader.Unsupported_Header),
+            (Text => To_Unbounded_String (Header & "BROKEN" & NL),
+             Status => Reader.Syntax_Error),
+            (Text => To_Unbounded_String
+               (Header & "LOCUS" & HT & "cash" & HT & "extra" & NL),
+             Status => Reader.Invalid_Token),
+            (Text => To_Unbounded_String
+               (Header & "LOCUS" & HT & "bad" & ASCII.CR & NL),
+             Status => Reader.Invalid_Token),
+            (Text => To_Unbounded_String
+               (Header & "LOCUS" & HT & "cash" & NL &
+                "LOCUS" & HT & "cash" & NL),
+             Status => Reader.Duplicate_Token)];
       begin
          for I in Cases'Range loop
             declare
                R : constant Reader.Read_Result :=
-                 Reader.Read_Content (To_String (Cases (I)));
+                 Reader.Read_Content (To_String (Cases (I).Text));
             begin
                Assert (not R.Success and then R.Error_Len > 0,
                        "malformed canonical Locus admission case" &
                        Positive'Image (I) & " rejects");
+               Assert (R.Status = Cases (I).Status,
+                       "malformed canonical Locus admission case" &
+                       Positive'Image (I) & " matches expected status");
             end;
          end loop;
       end;
@@ -86,6 +105,8 @@ package body Test_Loam_Locus_Admission_Reader is
          begin
             Assert (not R.Success and then R.Error_Len > 0,
                     "canonical Locus admission capacity overflow rejects");
+            Assert (R.Status = Reader.Capacity_Exceeded,
+                    "capacity overflow status is Capacity_Exceeded");
          end;
       end;
    end Run;
