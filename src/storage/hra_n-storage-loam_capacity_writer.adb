@@ -20,6 +20,36 @@ package body HRA_N.Storage.Loam_Capacity_Writer is
    HT : constant String := [1 => ASCII.HT];
    NL : constant String := [1 => ASCII.LF];
 
+   function Make_Failure
+     (Status  : Capacity_Publish_Status;
+      Message : String) return Publish_Result
+   is
+      Result : Publish_Result (Success => False);
+      Len    : constant Natural :=
+        Natural'Min (Message'Length, Result.Error_Reason'Length);
+   begin
+      Result.Status := Status;
+      Result.Error_Len := Len;
+      if Len > 0 then
+         Result.Error_Reason (1 .. Len) :=
+           Message (Message'First .. Message'First + Len - 1);
+      end if;
+      return Result;
+   end Make_Failure;
+
+   function Make_Success (Id : String) return Publish_Result is
+      Result : Publish_Result (Success => True);
+      Len    : constant Natural :=
+        Natural'Min (Id'Length, Result.Movement_Id'Length);
+   begin
+      Result.Movement_Len := Len;
+      if Len > 0 then
+         Result.Movement_Id (1 .. Len) :=
+           Id (Id'First .. Id'First + Len - 1);
+      end if;
+      return Result;
+   end Make_Success;
+
    function Make_Transfer_Draft
      (Source       : Capacity_Coordinate;
       Destination  : Capacity_Coordinate;
@@ -55,25 +85,6 @@ package body HRA_N.Storage.Loam_Capacity_Writer is
      (Root_Path : String;
       Draft     : Capacity_Draft) return Publish_Result
    is
-      Result : Publish_Result :=
-        (Success      => False,
-         Movement_Id  => [others => ' '],
-         Movement_Len => 0,
-         Error_Reason => [others => ' '],
-         Error_Len    => 0);
-
-      procedure Set_Error (Msg : String) is
-         Len : constant Natural :=
-           Natural'Min (Msg'Length, Result.Error_Reason'Length);
-      begin
-         Result.Success := False;
-         Result.Error_Len := Len;
-         Result.Error_Reason := [others => ' '];
-         if Len > 0 then
-            Result.Error_Reason (1 .. Len) := Msg (Msg'First .. Msg'First + Len - 1);
-         end if;
-      end Set_Error;
-
       Target_Path : constant String :=
         Ada.Directories.Compose (Root_Path, "capacity.loam");
       Lock_Path   : constant String :=
@@ -88,6 +99,15 @@ package body HRA_N.Storage.Loam_Capacity_Writer is
          end if;
       end Release;
 
+      function Fail
+        (Status  : Capacity_Publish_Status;
+         Message : String) return Publish_Result
+      is
+      begin
+         Release;
+         return Make_Failure (Status, Message);
+      end Fail;
+
       Cur_Str : constant String :=
         (if Draft.Currency.Length > 0
          then Draft.Currency.Value (1 .. Draft.Currency.Length)
@@ -95,23 +115,18 @@ package body HRA_N.Storage.Loam_Capacity_Writer is
 
    begin
       if Root_Path'Length = 0 then
-         Set_Error ("canonical root directory must not be empty");
-         return Result;
+         return Fail (Invalid_Root_Directory, "canonical root directory must not be empty");
       elsif not Ada.Directories.Exists (Root_Path) then
-         Set_Error ("canonical root directory does not exist: " & Root_Path);
-         return Result;
+         return Fail (Invalid_Root_Directory, "canonical root directory does not exist: " & Root_Path);
       elsif Draft.Change_Count = 0 then
-         Set_Error ("Capacity movement changes must not be empty");
-         return Result;
+         return Fail (Empty_Changes, "Capacity movement changes must not be empty");
       elsif not Is_Valid_Date (Draft.Effective_On.Year,
                                Draft.Effective_On.Month,
                                Draft.Effective_On.Day)
       then
-         Set_Error ("Capacity effective date must be a real calendar date in YYYY-MM-DD form");
-         return Result;
+         return Fail (Invalid_Date, "Capacity effective date must be a real calendar date in YYYY-MM-DD form");
       elsif Cur_Str /= "jpy" then
-         Set_Error ("Capacity movement must be in jpy");
-         return Result;
+         return Fail (Unsupported_Currency, "Capacity movement must be in jpy");
       end if;
 
       --  Validate coordinates and amounts in draft
@@ -123,8 +138,7 @@ package body HRA_N.Storage.Loam_Capacity_Writer is
                C : constant Capacity_Change := Draft.Changes (I);
             begin
                if C.Amount = 0 then
-                  Set_Error ("Capacity movement changes must have non-zero quantities");
-                  return Result;
+                  return Fail (Zero_Amount, "Capacity movement changes must have non-zero quantities");
                end if;
                Sum := Sum + Long_Long_Integer (C.Amount);
 
@@ -134,8 +148,7 @@ package body HRA_N.Storage.Loam_Capacity_Writer is
                        C.Coord.Purpose.Value (1 .. C.Coord.Purpose.Length);
                   begin
                      if not Valid_Token_Syntax (P_Str) then
-                        Set_Error ("Capacity movement coordinate contains an invalid Purpose token");
-                        return Result;
+                        return Fail (Invalid_Purpose_Token, "Capacity movement coordinate contains an invalid Purpose token");
                      end if;
                   end;
                end if;
@@ -143,22 +156,19 @@ package body HRA_N.Storage.Loam_Capacity_Writer is
                --  Duplicate coordinate check
                for J in 1 .. I - 1 loop
                   if Equal_Coordinate (C.Coord, Draft.Changes (J).Coord) then
-                     Set_Error ("Capacity movement changes must not contain duplicate coordinates");
-                     return Result;
+                     return Fail (Duplicate_Coordinate, "Capacity movement changes must not contain duplicate coordinates");
                   end if;
                end loop;
             end;
          end loop;
 
          if Sum /= 0 then
-            Set_Error ("Capacity movement changes must balance to zero");
-            return Result;
+            return Fail (Unbalanced_Changes, "Capacity movement changes must balance to zero");
          end if;
       end;
 
       if not HRA_N.Storage.File_Lock.Acquire (Lock_Path, Lock_Handle) then
-         Set_Error ("could not acquire lock: " & Lock_Path);
-         return Result;
+         return Fail (Lock_Failure, "could not acquire lock: " & Lock_Path);
       end if;
 
       declare
@@ -172,10 +182,10 @@ package body HRA_N.Storage.Loam_Capacity_Writer is
                  Capacity_Reader.Read_File (Target_Path);
             begin
                if not Read_Res.Success then
-                  Release;
-                  Set_Error ("cannot read capacity.loam: "
-                             & Read_Res.Error_Reason (1 .. Read_Res.Error_Len));
-                  return Result;
+                  return Fail
+                    (Corrupt_Existing_File,
+                     "cannot read capacity.loam: "
+                     & Read_Res.Error_Reason (1 .. Read_Res.Error_Len));
                end if;
                Existing_Memory := Read_Res.Capacity;
 
@@ -227,12 +237,11 @@ package body HRA_N.Storage.Loam_Capacity_Writer is
                        C.Coord.Purpose.Value (1 .. C.Coord.Purpose.Length);
                   begin
                      if Resulting < 0 then
-                        Release;
-                        Set_Error
-                          ("Capacity Purpose '" & P_Str &
+                        return Fail
+                          (Negative_Entitlement,
+                           "Capacity Purpose '" & P_Str &
                            "' entitlement would become negative: " &
                            Trim (Long_Long_Integer'Image (Resulting), Ada.Strings.Both));
-                        return Result;
                      end if;
                   end;
                end if;
@@ -252,9 +261,7 @@ package body HRA_N.Storage.Loam_Capacity_Writer is
                     HRA_N.Storage.Exact_File.Read_All (Target_Path);
                begin
                   if not File_Read.Success then
-                     Release;
-                     Set_Error ("cannot read existing capacity.loam content");
-                     return Result;
+                     return Fail (Corrupt_Existing_File, "cannot read existing capacity.loam content");
                   end if;
                   New_Content := File_Read.Content;
                end;
@@ -300,19 +307,19 @@ package body HRA_N.Storage.Loam_Capacity_Writer is
                Write_Len : Natural := 0;
             begin
                if not Candidate_Check.Success then
-                  Release;
-                  Set_Error ("candidate capacity document failed verification: "
-                             & Candidate_Check.Error_Reason (1 .. Candidate_Check.Error_Len));
-                  return Result;
+                  return Fail
+                    (Verification_Failure,
+                     "candidate capacity document failed verification: "
+                     & Candidate_Check.Error_Reason (1 .. Candidate_Check.Error_Len));
                end if;
 
                if not HRA_N.Storage.Atomic_Writer.Write_File_Atomically
                  (Target_Path, Candidate, Write_Err, Write_Len)
                then
-                  Release;
-                  Set_Error ("failed atomic write to capacity.loam: "
-                             & Write_Err (1 .. Write_Len));
-                  return Result;
+                  return Fail
+                    (Atomic_Write_Failure,
+                     "failed atomic write to capacity.loam: "
+                     & Write_Err (1 .. Write_Len));
                end if;
             end;
 
@@ -323,10 +330,10 @@ package body HRA_N.Storage.Loam_Capacity_Writer is
                Found : Boolean := False;
             begin
                if not Verify_Read.Success then
-                  Release;
-                  Set_Error ("readback verification failed: "
-                             & Verify_Read.Error_Reason (1 .. Verify_Read.Error_Len));
-                  return Result;
+                  return Fail
+                    (Readback_Failure,
+                     "readback verification failed: "
+                     & Verify_Read.Error_Reason (1 .. Verify_Read.Error_Len));
                end if;
 
                for I in 1 .. Verify_Read.Capacity.Movement_Count loop
@@ -342,27 +349,48 @@ package body HRA_N.Storage.Loam_Capacity_Writer is
                end loop;
 
                if not Found then
-                  Release;
-                  Set_Error ("readback verification failed: published capacity movement not found");
-                  return Result;
+                  return Fail (Readback_Failure, "readback verification failed: published capacity movement not found");
                end if;
             end;
 
             Release;
-            Result.Success := True;
-            Result.Movement_Len := Natural'Min (New_Id'Length, Result.Movement_Id'Length);
-            Result.Movement_Id (1 .. Result.Movement_Len) :=
-              New_Id (New_Id'First .. New_Id'First + Result.Movement_Len - 1);
-            return Result;
+            return Make_Success (New_Id);
          end;
       end;
 
    exception
       when E : others =>
-         Release;
-         Set_Error ("unexpected exception in publish capacity: "
-                    & Ada.Exceptions.Exception_Message (E));
-         return Result;
+         return Fail
+           (Internal_Error,
+            "unexpected exception in publish capacity: "
+            & Ada.Exceptions.Exception_Message (E));
    end Publish_Capacity;
+
+   function Format_Error (Result : Publish_Result) return String is
+   begin
+      if Result.Success then
+         return "";
+      elsif Result.Error_Len > 0 then
+         return Result.Error_Reason (1 .. Result.Error_Len);
+      else
+         case Result.Status is
+            when Invalid_Root_Directory => return "canonical root directory is invalid or does not exist";
+            when Empty_Changes          => return "Capacity movement changes must not be empty";
+            when Invalid_Date           => return "Capacity effective date must be a real calendar date in YYYY-MM-DD form";
+            when Unsupported_Currency   => return "Capacity movement must be in jpy";
+            when Zero_Amount            => return "Capacity movement changes must have non-zero quantities";
+            when Invalid_Purpose_Token  => return "Capacity movement coordinate contains an invalid Purpose token";
+            when Duplicate_Coordinate   => return "Capacity movement changes must not contain duplicate coordinates";
+            when Unbalanced_Changes     => return "Capacity movement changes must balance to zero";
+            when Lock_Failure           => return "could not acquire capacity writer lock";
+            when Corrupt_Existing_File  => return "cannot read capacity.loam";
+            when Negative_Entitlement   => return "Capacity Purpose entitlement would become negative";
+            when Verification_Failure   => return "candidate capacity document failed verification";
+            when Atomic_Write_Failure   => return "failed atomic write to capacity.loam";
+            when Readback_Failure       => return "readback verification failed";
+            when Internal_Error         => return "internal capacity writer error";
+         end case;
+      end if;
+   end Format_Error;
 
 end HRA_N.Storage.Loam_Capacity_Writer;

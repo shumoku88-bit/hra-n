@@ -28,13 +28,36 @@ package HRA_N.Storage.Loam_Capacity_Writer is
       Changes      : Draft_Change_Array := [others => Empty_Change];
    end record;
 
-   type Publish_Result is record
-      Success      : Boolean := False;
-      Movement_Id  : String (1 .. 64) := [others => ' '];
-      Movement_Len : Natural := 0;
-      Error_Reason : String (1 .. 192) := [others => ' '];
-      Error_Len    : Natural := 0;
+   type Capacity_Publish_Status is
+     (Invalid_Root_Directory,
+      Empty_Changes,
+      Invalid_Date,
+      Unsupported_Currency,
+      Zero_Amount,
+      Invalid_Purpose_Token,
+      Duplicate_Coordinate,
+      Unbalanced_Changes,
+      Lock_Failure,
+      Corrupt_Existing_File,
+      Negative_Entitlement,
+      Verification_Failure,
+      Atomic_Write_Failure,
+      Readback_Failure,
+      Internal_Error);
+
+   type Publish_Result (Success : Boolean := True) is record
+      case Success is
+         when True =>
+            Movement_Id  : String (1 .. 64) := [others => ' '];
+            Movement_Len : Natural := 0;
+         when False =>
+            Status       : Capacity_Publish_Status := Internal_Error;
+            Error_Reason : String (1 .. 192) := [others => ' '];
+            Error_Len    : Natural := 0;
+      end case;
    end record;
+
+   function Format_Error (Result : Publish_Result) return String;
 
    --  Create a transfer draft from Source to Destination.
    function Make_Transfer_Draft
