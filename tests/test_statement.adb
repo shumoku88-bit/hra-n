@@ -3,6 +3,7 @@ with Ada.Text_IO;
 with Ada.Strings.Fixed;
 with Test_Support; use Test_Support;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
+with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
@@ -17,6 +18,21 @@ package body Test_Statement is
       Paths     : constant Path_Config := Resolve_Paths (Test_Dir);
       Error     : String (1 .. 160) := [others => ' '];
       Error_Len : Natural := 0;
+
+      function Has_Account
+        (Report : Statement_Report;
+         Name   : String) return Boolean
+      is
+      begin
+         for I in 1 .. Report.Account_Count loop
+            if Equal_Token
+              (Report.Accounts (I).Locus.Token, Make_Token (Name))
+            then
+               return True;
+            end if;
+         end loop;
+         return False;
+      end Has_Account;
    begin
       if Ada.Directories.Exists (Test_Dir) then
          Ada.Directories.Delete_Tree (Test_Dir);
@@ -220,6 +236,7 @@ package body Test_Statement is
                  "ROLE r0001 2026-01-01 cash ASSET" & ASCII.LF &
                  "ROLE r0002 2026-02-01 cash LIABILITY REPLACES r0001" & ASCII.LF &
                  "ROLE r0003 2026-01-01 food INCOME" & ASCII.LF &
+                 "LOCUS legacy-only" & ASCII.LF &
                  "ZERO-ORIGIN legacy-only:jpy" & ASCII.LF,
                  Error, Error_Len), "mixed Statement legacy policy installs");
       Assert (Write_File_Atomically
@@ -230,7 +247,9 @@ package body Test_Statement is
       Assert (Write_File_Atomically
                 (Test_Dir & "/locus-admission.loam",
                  "LOAM-LOCUS-ADMISSION-VOCABULARY" & ASCII.HT & "1" & ASCII.LF &
-                 "LOCUS" & ASCII.HT & "cash" & ASCII.LF,
+                 "LOCUS" & ASCII.HT & "cash" & ASCII.LF &
+                 "LOCUS" & ASCII.HT & "food" & ASCII.LF &
+                 "LOCUS" & ASCII.HT & "future-policy-only" & ASCII.LF,
                  Error, Error_Len), "partial canonical marker installs");
       declare
          Rep : constant Statement_Report := Execute_Statement_Query (Paths);
@@ -288,8 +307,9 @@ package body Test_Statement is
                     and then Current.Conflict_Count = 0,
                     "zero conflicts is not affirmative canonical assertion evidence");
             Assert (Current.Actual_Snapshot.Kind = Snapshot_Unversioned
-                    and then Current.Role_Snapshot.Kind = Snapshot_Unversioned,
-                    "canonical transaction and role sources have independent identities");
+                    and then Current.Role_Snapshot.Kind = Snapshot_Unversioned
+                    and then Current.Locus_Snapshot.Kind = Snapshot_Unversioned,
+                    "canonical Actual, Role, and Locus sources are independently unversioned");
             Assert (not Current.Role_History_Available
                     and then Current.Role_Assignment_Count = 2,
                     "canonical role evidence is current-only with exact count");
@@ -301,8 +321,16 @@ package body Test_Statement is
                               "legacy liability role does not leak");
             Assert_Equal_Int (0, Current.Summary.Total_Income,
                               "legacy income role does not leak");
-            Assert_Equal_Int (1, Long_Long_Integer (Current.Unresolved_Count),
-                              "unassigned canonical mystery locus remains unresolved");
+            Assert_Equal_Int (2, Long_Long_Integer (Current.Unresolved_Count),
+                              "Actual mystery and current admission-only locus remain unresolved");
+            Assert (Current.Current_Locus_Admission_Applied
+                    and then Current.Locus_Admission_Count = 3,
+                    "current Statement applies exact canonical Locus admission");
+            Assert (Has_Account (Current, "cash")
+                    and then Has_Account (Current, "food")
+                    and then Has_Account (Current, "future-policy-only")
+                    and then not Has_Account (Current, "legacy-only"),
+                    "canonical Locus admission wins without legacy vocabulary leakage");
             Assert_Equal_Int (1, Long_Long_Integer (Current.Zero_Origin_Count),
                               "canonical coverage excludes legacy-only coordinate");
             Assert (Current.Coverage_Snapshot.Kind = Snapshot_Unversioned
@@ -313,6 +341,10 @@ package body Test_Statement is
                     and then not Historical.Role_History_Available
                     and then Historical.Unresolved_Count >= 2,
                     "current canonical roles are not applied to historical as-of");
+            Assert (not Historical.Current_Locus_Admission_Applied
+                    and then Historical.Locus_Admission_Count = 3
+                    and then not Has_Account (Historical, "future-policy-only"),
+                    "current Locus admission does not pre-populate historical frontier");
             Assert_Equal_Int (0, Historical.Summary.Total_Assets,
                               "historical assets remain unclassified without role history");
             Assert_Equal_Int (0, Historical.Summary.Total_Expense,
@@ -322,6 +354,71 @@ package body Test_Statement is
                        "role history unavailable") > 0,
                     "historical canonical Statement diagnoses missing role history");
          end;
+
+         --  Canonical Statement does not read or validate legacy policy.hra.
+         Assert (Write_File_Atomically
+                   (Policy_Path_Str (Paths), "LOCUS bad extra" & NL,
+                    Error, Error_Len), "malformed legacy policy installs");
+         declare
+            Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+         begin
+            Assert (Rep.Status = Query_Partial
+                    and then Rep.Total_Events = 2
+                    and then Rep.Locus_Admission_Count = 3,
+                    "canonical Statement is independent of malformed legacy policy");
+         end;
+         Assert (Write_File_Atomically
+                   (Policy_Path_Str (Paths),
+                    "ROLE r0001 2026-01-01 cash ASSET" & NL &
+                    "ROLE r0002 2026-02-01 cash LIABILITY REPLACES r0001" & NL &
+                    "ROLE r0003 2026-01-01 food INCOME" & NL &
+                    "LOCUS legacy-only" & NL &
+                    "ZERO-ORIGIN legacy-only:jpy" & NL,
+                    Error, Error_Len), "legacy policy restored");
+
+         --  Canonical Locus admission is required, with no policy.hra fallback.
+         Ada.Directories.Delete_File (Test_Dir & "/locus-admission.loam");
+         declare
+            Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+         begin
+            Assert (Rep.Status = Query_Rejected
+                    and then Ada.Strings.Fixed.Index
+                      (Rep.Diagnostic (1 .. Rep.Diagnostic_Len),
+                       "locus-admission.loam") > 0,
+                    "missing canonical Locus admission rejects without fallback");
+         end;
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/locus-admission.loam", "BROKEN" & NL,
+                    Error, Error_Len), "malformed canonical Locus admission installs");
+         declare
+            Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+         begin
+            Assert (Rep.Status = Query_Rejected,
+                    "malformed canonical Locus admission rejects without fallback");
+         end;
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/locus-admission.loam",
+                    "LOAM-LOCUS-ADMISSION-VOCABULARY" & HT & "1" & NL,
+                    Error, Error_Len), "present-empty canonical Locus admission installs");
+         declare
+            Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+         begin
+            Assert (Rep.Status = Query_Partial
+                    and then Rep.Current_Locus_Admission_Applied
+                    and then Rep.Locus_Admission_Count = 0
+                    and then not Has_Account (Rep, "future-policy-only")
+                    and then Rep.Total_Events = 2
+                    and then Rep.Role_Assignment_Count = 2,
+                    "present-empty Locus admission preserves independent canonical evidence");
+         end;
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/locus-admission.loam",
+                    "LOAM-LOCUS-ADMISSION-VOCABULARY" & HT & "1" & NL &
+                    "LOCUS" & HT & "cash" & NL &
+                    "LOCUS" & HT & "food" & NL &
+                    "LOCUS" & HT & "future-policy-only" & NL,
+                    Error, Error_Len), "canonical Locus admission restored");
+
          --  Home uses the same Statement authority, not a second legacy
          --  transaction stream. Scheduled is present to complete probe selection.
          Assert (Write_File_Atomically
@@ -345,8 +442,8 @@ package body Test_Statement is
               HRA_N.Application.Home_Query.Execute
                 (Paths, (Selected_Day => (2026, 9, 20)));
          begin
-            Assert (Home.Status = Query_Partial and then Home.Unresolved_Loci = 1,
-                    "Home classification follows canonical Statement transactions");
+            Assert (Home.Status = Query_Partial and then Home.Unresolved_Loci = 2,
+                    "Home classification follows canonical Statement and current Locus frontier");
             Assert (Home.Statement_Actual_Snapshot.Kind = Snapshot_Unversioned,
                     "Home exposes canonical Statement source separately");
             Assert_Equal_Int (1, Long_Long_Integer (Home.Zero_Origins),
@@ -354,6 +451,34 @@ package body Test_Statement is
             Assert_Equal_Int (2, Long_Long_Integer (Home.Role_Assignments),
                               "Home counts canonical roles, not three legacy history rows");
          end;
+
+         --  Home observes transitional Attention policy separately: its Policy
+         --  failure may reject Home, but does not become a Statement failure.
+         Assert (Write_File_Atomically
+                   (Policy_Path_Str (Paths), "LOCUS bad extra" & NL,
+                    Error, Error_Len), "malformed Home legacy policy installs");
+         declare
+            Rep : constant Statement_Report := Execute_Statement_Query (Paths);
+            Home : constant HRA_N.Application.Home_Query.Home_View :=
+              HRA_N.Application.Home_Query.Execute
+                (Paths, (Selected_Day => (2026, 9, 20)));
+         begin
+            Assert (Rep.Status = Query_Partial
+                    and then Rep.Total_Events = 2,
+                    "canonical Statement remains available beside malformed Home policy");
+            Assert (Home.Status = Query_Rejected
+                    and then Ada.Strings.Fixed.Index
+                      (Home.Diagnostic (1 .. Home.Diagnostic_Len), "policy.hra") > 0,
+                    "Home reports legacy Attention policy failure independently");
+         end;
+         Assert (Write_File_Atomically
+                   (Policy_Path_Str (Paths),
+                    "ROLE r0001 2026-01-01 cash ASSET" & NL &
+                    "ROLE r0002 2026-02-01 cash LIABILITY REPLACES r0001" & NL &
+                    "ROLE r0003 2026-01-01 food INCOME" & NL &
+                    "LOCUS legacy-only" & NL &
+                    "ZERO-ORIGIN legacy-only:jpy" & NL,
+                    Error, Error_Len), "Home legacy policy restored");
 
          --  Canonical Role is required and never falls back to legacy history.
          Ada.Directories.Delete_File (Test_Dir & "/accounting-role.loam");

@@ -151,19 +151,27 @@ proof that adjacent counterexamples are covered:
   `Scheduled_Query` observation per reload. Canonical `scheduled.loam` wins over
   retained legacy `scheduled.hra`; unresolved completion targets remain open
   until the named Actual endpoint is retained.
-- Statement transaction evidence now follows canonical `actual.loam` when any
+- Statement transaction evidence follows canonical `actual.loam` when any
   canonical marker exists; the legacy-only `journal.hra` path retains its
-  prior assertion/role/as-of semantics. One Statement/Balance projection is
-  shared across both by adapting the admitted canonical semantic image, not
-  legacy journal bytes. Canonical Actual has no qualified balance assertion
-  authority: its Statement is always partial (or rejects on unreadable data),
-  even when zero conflicts are counted. Statement labels Actual and transitional
-  Policy sources independently; Home carries a separate Statement Actual source
-  alongside Actual/Scheduled and transitional Policy identity. `UNVERSIONED`
-  does not prove cross-source atomicity. Home no longer reads `journal.hra`
-  directly; Statement still reads it on the legacy-only path. Home still reads
-  `policy.hra` for roles, coverage, attention and classification. Report tabs
-  remain transitional and are not qualified by this slice.
+  prior assertion/role/as-of semantics. Canonical Statement composes only
+  `actual.loam`, `zero-origin-coverage.loam`, `accounting-role.loam`, and the
+  required current `locus-admission.loam`; missing or malformed canonical Locus
+  authority rejects without `policy.hra` fallback, while a header-only vocabulary
+  is valid empty policy. Current queries may expose admitted Loci as a current
+  unresolved frontier. Historical as-of queries do not pre-populate accounts
+  from this current new-write policy. One Statement/Balance projection is shared
+  across legacy and canonical evidence by adapting the admitted canonical
+  semantic image, not legacy journal bytes. Canonical Actual has no qualified
+  balance assertion authority, so its Statement remains partial (or rejects on
+  unreadable canonical data), even when zero conflicts are counted. Canonical
+  Actual/Coverage/Role/Locus sources are independently `UNVERSIONED`; this does
+  not prove cross-source atomicity. Home acquires canonical Statement separately
+  from transitional `policy.hra`: malformed legacy Policy does not reject the
+  Statement, although Home may separately reject its Attention/Policy observation.
+  Home no longer reads `journal.hra` directly; Statement reads it only on the
+  legacy-only path. Home still reads `policy.hra` for Attention and other
+  transitional fields. Report tabs remain transitional and are not qualified by
+  this slice.
 - Full three-stream admission, overflow propagation through all report tabs,
   and snapshot/completeness propagation need dedicated cross-surface evidence.
 
@@ -296,16 +304,16 @@ an adopted or qualified equivalence baseline.
 
 | Field | Current evidence |
 |---|---|
-| Review time | 2026-09-13 UTC; user-directed isolated transaction-log representation experiment |
-| HRA-N source | `e1e5f120d5cbafa63bb65a3b39af05ee0d94dcad` plus isolated representation/POSIX experiment, CI and documentation changes; production source unchanged |
+| Review time | 2026-09-24 UTC; canonical Statement Locus-admission authority slice |
+| HRA-N source | `5a8c6185e063b4173e638b3034c3ab609e7554db` plus the canonical Locus Statement working change |
 | Prior audit comparison | Loam `6869de2`; numerical audit evidence remains pinned there |
-| Pinned Loam review tip | `3e3c96e72d46368b68d8f61aaa0785dd34728d8c` |
-| Repository scope | Local `../loam`, observed `main`, clean at initial check; review pinned independently of ongoing Loam work |
-| Remote/CI | Not fetched/queried in this review; no latest-remote or CI-success claim |
-| Review scope | Delta inventory `8b3b814..3e3c96e`; CurrentQuantityAnchor and CurrentQuantityAnchorPublisher source; CLI/TUI and RoleBalance integration inventoried, not independently qualified |
-| Executed qualification | HRA-N production/test-project builds; isolated log suite 9 tests pass (including 4 offline tests, 7 synthetic generations and 2,138 byte-prefix cuts); POSIX child exits, immediate receipt retry, interrupted tail repair, short writes, admission/sync failure, 5 two-process races. Existing Generation_Transaction 37 assertions pass. Full production suites, PTY, SPARK/Alloy/TLC/SPIN and Loam tests not rerun; matched fault-harness qualification remains pending |
-| Adopted parity baseline | None at whole-system level; local month-window and budget-measure contracts scoped in P0, no differential Loam execution |
-| Next review | Next HRA-N session checks newer local/remote scope as available; focused review before affected slice/merge; at least weekly during active work |
+| Pinned Loam review tip | remote `eeaaf67eab7853f075103f43c807821499a81230`; focused source read at local `6fdb058eda787414078cffa4597bb4583e93d62c`, with no later changes on the reviewed Locus-admission paths |
+| Repository scope | Local `../loam` main was clean; remote was fetched without changing the checkout |
+| Remote/CI | GitHub main and latest workflow runs queried; the five latest listed runs were successful. This is not whole-system HRA-N/Loam parity evidence |
+| Review scope | Current `LocusAdmissionVocabulary`, v1 persistence, Movement world composition, and G2-020/G2-021 obligation DAGs. The boundary remains current new-write policy, independent of historical readable evidence; missing/malformed selected authority fails closed |
+| Executed qualification | HRA-N focused Statement, Home, and direct Locus-reader tests during implementation. Loam tests were not rerun because no Loam source changed; broader HRA-N qualification is recorded by the implementing PR |
+| Adopted parity baseline | Canonical Locus format and current-policy boundary adopted for this Statement slice; no whole-system parity baseline. HRA-N additionally refuses to apply current admission as historical as-of account evidence |
+| Next review | Recheck relevant Loam authority/persistence deltas before merge and at the next affected slice; classify broader unreviewed Loam deltas separately rather than treating this focused review as exhaustive |
 
 ### Open adoption decisions
 

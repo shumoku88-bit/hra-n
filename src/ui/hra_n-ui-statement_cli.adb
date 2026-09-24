@@ -125,17 +125,15 @@ package body HRA_N.UI.Statement_Cli is
 
       Put_Line ("  Sources             : actual=" &
                 HRA_N.UI.Snapshot_Label.Format (Report.Actual_Snapshot) &
-                " / policy=" &
-                HRA_N.UI.Snapshot_Label.Format
-                  ((if Report.Is_Versioned
-                    then (Kind => Snapshot_Versioned, Identity => Report.Snapshot)
-                    else (Kind => Snapshot_Unversioned))));
+                " / coverage=" &
+                HRA_N.UI.Snapshot_Label.Format (Report.Coverage_Snapshot) &
+                " / role=" &
+                HRA_N.UI.Snapshot_Label.Format (Report.Role_Snapshot) &
+                " / locus=" &
+                HRA_N.UI.Snapshot_Label.Format (Report.Locus_Snapshot));
       if Report.Is_Versioned and then Report.Snapshot.Length > 0 then
-         Put_Line
-           ((if Report.Actual_Snapshot.Kind = Snapshot_Unversioned
-             then "  Policy Snapshot     : "
-             else "  Snapshot            : ") &
-            Report.Snapshot.Value (1 .. Report.Snapshot.Length));
+         Put_Line ("  Snapshot            : " &
+                   Report.Snapshot.Value (1 .. Report.Snapshot.Length));
       end if;
 
       if Report.Has_As_Of then

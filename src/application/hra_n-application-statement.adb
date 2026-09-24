@@ -7,6 +7,7 @@ with Ada.Directories;
 with HRA_N.Application.Canonical_Authority;
 with HRA_N.Storage.Loam_Zero_Origin_Coverage_Reader;
 with HRA_N.Storage.Loam_Accounting_Role_Reader;
+with HRA_N.Storage.Loam_Locus_Admission_Reader;
 with HRA_N.Core.Event;                use HRA_N.Core.Event;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 
@@ -91,7 +92,8 @@ package body HRA_N.Application.Statement is
       As_Of        : Date_Type := (Year => 2026, Month => 1, Day => 1);
       Has_As_Of    : Boolean   := False;
       Snapshot     : Token_Text := (Length => 0, Value => [others => ' ']);
-      Is_Versioned : Boolean := False) return Statement_Report
+      Is_Versioned : Boolean := False;
+      Apply_Locus_Admission : Boolean := True) return Statement_Report
    is
       use type Balance_Query.Balance_Epistemic_Status;
       Result : Statement_Report;
@@ -149,6 +151,9 @@ package body HRA_N.Application.Statement is
       Result.Role_Snapshot := Result.Actual_Snapshot;
       Result.Role_Assignment_Count := Evidence_Assignment_Count (Roles);
       Result.Role_History_Available := Role_History_Available (Roles);
+      Result.Locus_Snapshot := Result.Actual_Snapshot;
+      Result.Locus_Admission_Count := Natural (Loci.Count);
+      Result.Current_Locus_Admission_Applied := Apply_Locus_Admission;
       Result.Has_As_Of := Has_As_Of;
       Result.As_Of_Date := As_Of;
 
@@ -204,14 +209,17 @@ package body HRA_N.Application.Statement is
          end;
       end loop;
 
-      --  Pre-populate from admitted Loci in policy
-      for I in 1 .. Loci.Count loop
-         declare
-            Idx : Natural;
-         begin
-            Ensure_Account (Loci.Values (I), Idx);
-         end;
-      end loop;
+      --  Current Locus admission is a present new-write policy, not historical
+      --  Event evidence. It may extend only the current account frontier.
+      if Apply_Locus_Admission then
+         for I in 1 .. Loci.Count loop
+            declare
+               Idx : Natural;
+            begin
+               Ensure_Account (Loci.Values (I), Idx);
+            end;
+         end loop;
+      end if;
 
       Balances := Balance_Query.Project_With_Evidence
         (Journal, Roles, Coverage,
@@ -408,14 +416,13 @@ package body HRA_N.Application.Statement is
       Loci         : Locus_Vocabulary;
       Coverage_File_Present : Boolean;
       As_Of        : Date_Type := (Year => 2026, Month => 1, Day => 1);
-      Has_As_Of    : Boolean := False;
-      Policy_Snapshot : Snapshot_Reference := (Kind => Snapshot_Unversioned))
+      Has_As_Of    : Boolean := False)
       return Statement_Report
    is
       Journal : Journal_Result;
       Result  : Statement_Report;
       Gap     : constant String :=
-        "balance assertion evidence unavailable; Actual/Coverage/Role/Policy snapshots unbound";
+        "balance assertion evidence unavailable; Actual/Coverage/Role/Locus snapshots unbound";
    begin
       Result.Role_Snapshot := (Kind => Snapshot_Unversioned);
       Result.Role_Assignment_Count := Natural (Current_Entry_Count (Roles));
@@ -423,6 +430,9 @@ package body HRA_N.Application.Statement is
       Result.Coverage_Snapshot := (Kind => Snapshot_Unversioned);
       Result.Coverage_File_Present := Coverage_File_Present;
       Result.Zero_Origin_Count := Natural (Coordinate_Count (Coverage));
+      Result.Locus_Snapshot := (Kind => Snapshot_Unversioned);
+      Result.Locus_Admission_Count := Natural (Loci.Count);
+      Result.Current_Locus_Admission_Applied := not Has_As_Of;
       if not Actual.Success then
          Result.Status := Query_Rejected;
          declare
@@ -450,13 +460,13 @@ package body HRA_N.Application.Statement is
       Result := Project_With_Evidence
         (Journal, (Kind => Current_Role_Evidence, Current => Roles),
          Coverage, Loci, As_Of, Has_As_Of,
-         (if Policy_Snapshot.Kind = Snapshot_Versioned
-          then Policy_Snapshot.Identity else (Length => 0, Value => [others => ' '])),
-         Policy_Snapshot.Kind = Snapshot_Versioned);
+         (Length => 0, Value => [others => ' ']), False,
+         Apply_Locus_Admission => not Has_As_Of);
       Result.Actual_Snapshot := (Kind => Snapshot_Unversioned);
       Result.Coverage_Snapshot := (Kind => Snapshot_Unversioned);
       Result.Coverage_File_Present := Coverage_File_Present;
       Result.Role_Snapshot := (Kind => Snapshot_Unversioned);
+      Result.Locus_Snapshot := (Kind => Snapshot_Unversioned);
       Result.Assertion_Evidence_Available := False;
       if Result.Status /= Query_Rejected then
          declare
@@ -497,18 +507,6 @@ package body HRA_N.Application.Statement is
             Result.Diagnostic (1 .. Message'Length) := Message;
          end;
          return Result;
-      elsif not Policy.Success then
-         Result.Status := Query_Rejected;
-         declare
-            Message : constant String := "cannot read policy for statement: " &
-              Policy.Error_Reason (1 .. Policy.Error_Len);
-         begin
-            Result.Diagnostic_Len :=
-              Natural'Min (Message'Length, Result.Diagnostic'Length);
-            Result.Diagnostic (1 .. Result.Diagnostic_Len) :=
-              Message (1 .. Result.Diagnostic_Len);
-         end;
-         return Result;
       end if;
 
       declare
@@ -527,6 +525,11 @@ package body HRA_N.Application.Statement is
                       HRA_N.Storage.Loam_Accounting_Role_Reader.Read_File
                         (Ada.Directories.Compose
                            (Data_Dir_Str (Paths), "accounting-role.loam"));
+                  Locus_Result : constant
+                    HRA_N.Storage.Loam_Locus_Admission_Reader.Read_Result :=
+                      HRA_N.Storage.Loam_Locus_Admission_Reader.Read_File
+                        (Ada.Directories.Compose
+                           (Data_Dir_Str (Paths), "locus-admission.loam"));
                begin
                   if not Role_Result.Success then
                      Result.Status := Query_Rejected;
@@ -561,12 +564,35 @@ package body HRA_N.Application.Statement is
                           Message (1 .. Result.Diagnostic_Len);
                      end;
                      return Result;
+                  elsif not Locus_Result.Success then
+                     Result.Status := Query_Rejected;
+                     Result.Role_Snapshot := (Kind => Snapshot_Unversioned);
+                     Result.Role_Assignment_Count :=
+                       Natural (Current_Entry_Count (Role_Result.Roles));
+                     Result.Role_History_Available := False;
+                     Result.Coverage_Snapshot := (Kind => Snapshot_Unversioned);
+                     Result.Coverage_File_Present := Coverage_Result.Present;
+                     Result.Zero_Origin_Count :=
+                       Natural (Coordinate_Count (Coverage_Result.Coverage));
+                     Result.Locus_Snapshot := (Kind => Snapshot_Unversioned);
+                     Result.Assertion_Evidence_Available := False;
+                     declare
+                        Message : constant String := "locus-admission.loam: " &
+                          Locus_Result.Error_Reason (1 .. Locus_Result.Error_Len);
+                     begin
+                        Result.Diagnostic_Len :=
+                          Natural'Min (Message'Length, Result.Diagnostic'Length);
+                        Result.Diagnostic (1 .. Result.Diagnostic_Len) :=
+                          Message (1 .. Result.Diagnostic_Len);
+                     end;
+                     return Result;
                   end if;
                   return Project_Canonical
                     (HRA_N.Storage.Loam_Actual_Reader.Read_Loam_Actual_File
                        (Ada.Directories.Compose (Data_Dir_Str (Paths), "actual.loam")),
-                     Role_Result.Roles, Coverage_Result.Coverage, Policy.Loci,
-                     Coverage_Result.Present, As_Of, Has_As_Of, Snap);
+                     Role_Result.Roles, Coverage_Result.Coverage,
+                     Locus_Result.Vocabulary, Coverage_Result.Present,
+                     As_Of, Has_As_Of);
                end;
             when Legacy_Only =>
                return Project
@@ -596,12 +622,28 @@ package body HRA_N.Application.Statement is
       As_Of     : Date_Type := (Year => 2026, Month => 1, Day => 1);
       Has_As_Of : Boolean := False) return Statement_Report
    is
+      use HRA_N.Application.Canonical_Authority;
    begin
       if not Paths.Resolution_Ok then
          return Execute_With_Policy (Paths, (others => <>), As_Of, Has_As_Of);
       end if;
-      return Execute_With_Policy
-        (Paths, Read_Policy_File (Policy_Path_Str (Paths)), As_Of, Has_As_Of);
+
+      --  Select authority before touching transitional policy.hra. Canonical
+      --  Statement has no legacy Policy prerequisite; Execute_With_Policy
+      --  retains its argument only for the Legacy_Only branch.
+      declare
+         Authority : constant Authority_Probe := Probe (Data_Dir_Str (Paths));
+      begin
+         case Authority.State is
+            when Canonical_Present | Probe_Failed =>
+               return Execute_With_Policy
+                 (Paths, (others => <>), As_Of, Has_As_Of);
+            when Legacy_Only =>
+               return Execute_With_Policy
+                 (Paths, Read_Policy_File (Policy_Path_Str (Paths)),
+                  As_Of, Has_As_Of);
+         end case;
+      end;
    end Execute_Statement_Query;
 
 end HRA_N.Application.Statement;

@@ -208,10 +208,10 @@ package body HRA_N.Application.Home_Query is
               (Scope        => HRA_N.Application.Actual_Query.Scope_All,
                Selected_Day => Query.Selected_Day,
                Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First));
+         Statement : constant HRA_N.Application.Statement.Statement_Report :=
+           HRA_N.Application.Statement.Execute_Statement_Query (Paths);
          PR : constant HRA_N.Storage.Policy_Reader.Policy_Result :=
            HRA_N.Storage.Policy_Reader.Read_Policy_File (Policy_Path_Str (Paths));
-         Statement : constant HRA_N.Application.Statement.Statement_Report :=
-           HRA_N.Application.Statement.Execute_With_Policy (Paths, PR);
          Scheduled : constant HRA_N.Application.Scheduled_Query.Scheduled_View :=
            HRA_N.Application.Scheduled_Query.Execute
              (Paths,

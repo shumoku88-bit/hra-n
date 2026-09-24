@@ -42,8 +42,9 @@ package HRA_N.Application.Home_Query is
       Diagnostic_Len      : Frontend_Types.Diagnostic_Length := 0;
    end record;
 
-   --  Project independently acquired shared observations with the remaining
-   --  transitional Statement/Policy evidence. No Scheduled storage reads.
+   --  Project independently acquired shared observations. PR supplies only
+   --  transitional Home fields such as Attention; Statement owns its selected
+   --  canonical or legacy evidence. No Scheduled storage reads.
    function Project_With_Views
      (Statement : HRA_N.Application.Statement.Statement_Report;
       PR        : HRA_N.Storage.Policy_Reader.Policy_Result;
@@ -53,8 +54,8 @@ package HRA_N.Application.Home_Query is
       Snapshot  : Frontend_Types.Snapshot_Reference :=
         (Kind => Frontend_Types.Snapshot_Unversioned)) return Home_View;
 
-   --  Acquire transitional Statement/Policy and independent shared Actual
-   --  and Scheduled observations. Snapshot identifies only legacy evidence.
+   --  Acquire Statement and transitional Policy independently alongside shared
+   --  Actual and Scheduled observations. Snapshot identifies only legacy evidence.
    function Execute
      (Paths : HRA_N.Application.Path_Resolver.Path_Config;
       Query : Home_Query) return Home_View;
