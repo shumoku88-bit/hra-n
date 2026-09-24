@@ -13,7 +13,8 @@ with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Description; use HRA_N.Core.Description;
-with HRA_N.Core.Attention; use HRA_N.Core.Attention;
+with HRA_N.Application.Attention_Query;
+with HRA_N.Core.Attention; use type HRA_N.Core.Attention.Due_Kind;
 with HRA_N.Application.Actual_Query;
 with HRA_N.Application.Scheduled_Query;
 use type HRA_N.Application.Scheduled_Query.Scheduled_Status_Kind;
@@ -31,7 +32,7 @@ with HRA_N.UI.Balance_TUI;
 with HRA_N.UI.Record_TUI;
 with HRA_N.UI.Report_TUI;
 with HRA_N.Application.Statement;
-with HRA_N.Storage.Policy_Reader;
+
 with HRA_N.UI.Snapshot_Label;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with HRA_N.UI.Terminal_Style;
@@ -86,7 +87,7 @@ package body HRA_N.UI.Home_TUI is
      (Paths        : HRA_N.Application.Path_Resolver.Path_Config;
       Statement    : HRA_N.Application.Statement.Statement_Report;
       Actual       : HRA_N.Application.Actual_Query.Actual_View;
-      PR           : HRA_N.Storage.Policy_Reader.Policy_Result;
+      Attention    : HRA_N.Application.Attention_Query.Attention_View;
       Scheduled    : HRA_N.Application.Scheduled_Query.Scheduled_View;
       Selected_Day : Date_Type;
       Healthy      : out Boolean)
@@ -105,7 +106,7 @@ package body HRA_N.UI.Home_TUI is
          View : constant HRA_N.Application.Home_Query.Home_View :=
            HRA_N.Application.Home_Query.Project_With_Views
              (Statement => Statement,
-              PR        => PR,
+              Attention => Attention,
               Actual    => Actual,
               Scheduled => Scheduled,
               Query     => (Selected_Day => Selected_Day),
@@ -207,13 +208,12 @@ package body HRA_N.UI.Home_TUI is
                end loop;
 
                --  Populate Attention flags
-               for Index in 1 .. PR.Attention.Item_Count loop
+               for Index in 1 .. Attention.Count loop
                   declare
-                     Item : constant HRA_N.Core.Attention.Attention_Item :=
-                       PR.Attention.Items (Index);
+                     Item : constant HRA_N.Application.Attention_Query.Attention_Row :=
+                       Attention.Rows (Index);
                   begin
-                     if HRA_N.Core.Attention.Is_Open (PR.Attention, Item.Id)
-                       and then Item.Due.Kind = HRA_N.Core.Attention.Due_On_Date
+                     if Item.Due.Kind = HRA_N.Core.Attention.Due_On_Date
                      then
                         declare
                            D_Date : constant Date_Type := Item.Due.Due_Date;
@@ -319,14 +319,8 @@ package body HRA_N.UI.Home_TUI is
             Put_Clipped
               (Next_Row,
                "Attention  " &
-               (if View.Open_Attentions > 0
-                then Image (View.Open_Attentions) & " open" &
-                  (if View.Unresolved_Loci > 0
-                   then " / " & Image (View.Unresolved_Loci) & " unclassified"
-                   else "")
-                elsif View.Unresolved_Loci = 0
-                then "none from this projection"
-                else Image (View.Unresolved_Loci) & " unclassified loci"));
+               (if View.Attention_Available then Image (View.Open_Attentions) & " open"
+                else "unavailable"));
             Next_Row := Next_Row + 1;
 
             Put_Clipped
@@ -478,7 +472,7 @@ package body HRA_N.UI.Home_TUI is
 
       Statement : HRA_N.Application.Statement.Statement_Report;
       Actual : HRA_N.Application.Actual_Query.Actual_View;
-      PR     : HRA_N.Storage.Policy_Reader.Policy_Result;
+      Attention : HRA_N.Application.Attention_Query.Attention_View;
       Scheduled : HRA_N.Application.Scheduled_Query.Scheduled_View;
 
       procedure Reload is
@@ -491,8 +485,7 @@ package body HRA_N.UI.Home_TUI is
                Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First));
          Statement := HRA_N.Application.Statement.Execute_Statement_Query
            (Current_Paths);
-         PR := HRA_N.Storage.Policy_Reader.Read_Policy_File
-                 (HRA_N.Application.Path_Resolver.Policy_Path_Str (Current_Paths));
+         Attention := HRA_N.Application.Attention_Query.Execute (Current_Paths);
          Scheduled := HRA_N.Application.Scheduled_Query.Execute
            (Current_Paths,
             (Scope        => HRA_N.Application.Scheduled_Query.Scope_All,
@@ -515,7 +508,7 @@ package body HRA_N.UI.Home_TUI is
       Reload;
 
       while Running loop
-         Draw (Current_Paths, Statement, Actual, PR, Scheduled, Selected, Query_Healthy);
+         Draw (Current_Paths, Statement, Actual, Attention, Scheduled, Selected, Query_Healthy);
          declare
             Evt : constant HRA_N.UI.TUI_Input.Event := HRA_N.UI.TUI_Input.Read;
             Previous_Day : constant Date_Type := Selected;

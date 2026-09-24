@@ -3,10 +3,11 @@
 -------------------------------------------------------------------------------
 
 with HRA_N.Core.Types;           use HRA_N.Core.Types;
-with HRA_N.Core.Attention;
+with HRA_N.Application.Attention_Query;
 with HRA_N.Application.Statement; use HRA_N.Application.Statement;
 
 package body HRA_N.Application.Home_Query is
+   use type HRA_N.Application.Attention_Query.Attention_Availability;
 
    function Same_Snapshot
      (Left, Right : Frontend_Types.Snapshot_Reference) return Boolean
@@ -26,7 +27,7 @@ package body HRA_N.Application.Home_Query is
 
    function Project_With_Views
      (Statement : HRA_N.Application.Statement.Statement_Report;
-      PR        : HRA_N.Storage.Policy_Reader.Policy_Result;
+      Attention : HRA_N.Application.Attention_Query.Attention_View;
       Actual    : HRA_N.Application.Actual_Query.Actual_View;
       Scheduled : HRA_N.Application.Scheduled_Query.Scheduled_View;
       Query     : Home_Query;
@@ -51,6 +52,8 @@ package body HRA_N.Application.Home_Query is
          Zero_Origins       => 0,
          Unresolved_Loci    => 0,
          Open_Attentions    => 0,
+         Attention_Available => Attention.Availability = HRA_N.Application.Attention_Query.Attention_Available,
+         Attention_Snapshot => Attention.Snapshot,
          Diagnostic         => [others => ' '],
          Diagnostic_Len     => 0);
 
@@ -65,10 +68,7 @@ package body HRA_N.Application.Home_Query is
 
    begin
 
-      if not PR.Success then
-         Set_Diagnostic ("policy.hra: " & PR.Error_Reason (1 .. PR.Error_Len));
-         return Result;
-      elsif Scheduled.Status = Query_Rejected then
+      if Scheduled.Status = Query_Rejected then
          Set_Diagnostic
            ("Scheduled observation rejected: "
             & Scheduled.Diagnostic (1 .. Scheduled.Diagnostic_Len));
@@ -94,8 +94,7 @@ package body HRA_N.Application.Home_Query is
       --  Count the coverage authority already selected by Statement. In
       --  canonical mode this cannot leak legacy policy.hra ZERO-ORIGIN rows.
       Result.Zero_Origins     := Statement.Zero_Origin_Count;
-      Result.Open_Attentions  :=
-        Natural (HRA_N.Core.Attention.Open_Count (PR.Attention));
+      Result.Open_Attentions := Attention.Count;
 
       for Index in 1 .. Natural (Actual.Row_Count) loop
          if Actual.Rows (Index).Has_Date
@@ -124,6 +123,17 @@ package body HRA_N.Application.Home_Query is
          Result.Status := Query_Partial;
          Set_Diagnostic
            (Statement.Diagnostic (1 .. Statement.Diagnostic_Len));
+      end if;
+
+      if Attention.Status = Query_Rejected then
+         Result.Status := Query_Rejected;
+         Set_Diagnostic ("Attention observation rejected: " &
+           Attention.Diagnostic (1 .. Attention.Diagnostic_Len));
+         return Result;
+      elsif Attention.Availability = HRA_N.Application.Attention_Query.Attention_Unavailable then
+         Result.Status := Query_Partial;
+         Set_Diagnostic ("Attention unavailable: " &
+           Attention.Diagnostic (1 .. Attention.Diagnostic_Len));
       end if;
 
       if Scheduled.Status = Query_Partial then
@@ -193,6 +203,8 @@ package body HRA_N.Application.Home_Query is
             Zero_Origins       => 0,
             Unresolved_Loci    => 0,
             Open_Attentions    => 0,
+            Attention_Available => False,
+            Attention_Snapshot => (Kind => Snapshot_Unversioned),
             Diagnostic         => Paths.Error_Reason,
             Diagnostic_Len     => Paths.Error_Len);
       elsif Paths.Is_Versioned then
@@ -210,8 +222,8 @@ package body HRA_N.Application.Home_Query is
                Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First));
          Statement : constant HRA_N.Application.Statement.Statement_Report :=
            HRA_N.Application.Statement.Execute_Statement_Query (Paths);
-         PR : constant HRA_N.Storage.Policy_Reader.Policy_Result :=
-           HRA_N.Storage.Policy_Reader.Read_Policy_File (Policy_Path_Str (Paths));
+         Attention : constant HRA_N.Application.Attention_Query.Attention_View :=
+           HRA_N.Application.Attention_Query.Execute (Paths);
          Scheduled : constant HRA_N.Application.Scheduled_Query.Scheduled_View :=
            HRA_N.Application.Scheduled_Query.Execute
              (Paths,
@@ -221,7 +233,7 @@ package body HRA_N.Application.Home_Query is
       begin
          return Project_With_Views
            (Statement => Statement,
-            PR        => PR,
+            Attention => Attention,
             Actual    => Actual,
             Scheduled => Scheduled,
             Query     => Query,

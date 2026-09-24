@@ -1153,7 +1153,7 @@ def test_canonical_actual_tui() -> None:
             assert b"Canonical Bento" in home_screen, home_screen
             assert b"Actual     2 selected / 2 total" in home_screen, home_screen
             assert b"Evidence   PARTIAL" in home_screen, home_screen
-            assert b"Attention  none from this projection" in home_screen, home_screen
+            assert b"Attention  unavailable" in home_screen, home_screen
             assert b"Sources    actual=UNVERSIONED / scheduled=UNVERSIONED / statement=UNVERSIONED / other=g00000001" in home_screen, home_screen
 
             # 'a' opens Actual TUI in Scope_All
@@ -1465,8 +1465,58 @@ def test_scheduled_detail_probe_failure() -> None:
         shutil.rmtree(household + "_probe_fail", ignore_errors=True)
 
 
+def test_canonical_attention_read_only() -> None:
+    """Canonical display never opens a legacy Attention editor or modifies policy bytes."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    harness = os.path.join(root, "tests", "bin", "tui_harness")
+    with tempfile.TemporaryDirectory(prefix="hra_n_attention_pty_") as household:
+        fixtures = {
+            "journal.hra": "",
+            "policy.hra": 'ATTENTION legacy-attention "Legacy matter" nodue\n',
+            "scheduled.hra": "",
+            "attention.loam": "LOAM-ATTENTION-MEMORY\t1\nITEM\tcanonical-attention\tNO_DUE_DATE\t-\tCanonical matter\n",
+        }
+        for name, text in fixtures.items():
+            with open(os.path.join(household, name), "w", encoding="utf-8") as stream:
+                stream.write(text)
+        policy_path = os.path.join(household, "policy.hra")
+        before = open(policy_path, "rb").read()
+        pid, fd = pty.fork()
+        if pid == 0:
+            env = os.environ.copy()
+            env["TERM"] = "xterm-256color"
+            os.execve(harness, [harness, household], env)
+        reaped = False
+        try:
+            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 80, 160, 0, 0))
+            output = bytearray()
+            read_until(fd, output, b"Markers:")
+            os.write(fd, b"i")
+            read_until(fd, output, b"canonical Attention: read-only")
+            assert b"canonical-attention" in output
+            assert b"legacy-attention" not in output
+            mark = len(output)
+            os.write(fd, b"nrx")
+            time.sleep(0.15)
+            os.write(fd, b"R")
+            time.sleep(0.15)
+            while select.select([fd], [], [], 0)[0]:
+                output.extend(os.read(fd, 4096))
+            assert b"Matter:" not in output[mark:]
+            assert b"Mark canonical-attention" not in output[mark:]
+            assert open(policy_path, "rb").read() == before
+            #  Other PTY tests qualify clean quit; this specimen asserts the
+            #  read-only boundary and byte identity before teardown.
+        finally:
+            if not reaped:
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+            os.close(fd)
+
+
 if __name__ == "__main__":
     main()
+    test_canonical_attention_read_only()
     test_canonical_actual_tui()
     test_canonical_scheduled_tui()
     test_scheduled_unresolved_completion_tui()

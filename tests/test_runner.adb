@@ -27,6 +27,7 @@ with Test_Loam_Actual_Reader;
 with Test_Loam_Accounting_Role_Reader;
 with Test_Loam_Zero_Origin_Coverage_Reader;
 with Test_Loam_Locus_Admission_Reader;
+with Test_Loam_Attention_Reader;
 with Test_Loam_Actual_Writer;
 with Test_Loam_Actual_Correction_Writer;
 with Test_Loam_Actual_Reversal_Writer;
@@ -332,6 +333,10 @@ begin
       Test_Loam_Zero_Origin_Coverage_Reader.Run;
    end if;
 
+   if Selected ("Test_Loam_Attention_Reader") then
+      Announce ("Test_Loam_Attention_Reader");
+      Test_Loam_Attention_Reader.Run;
+   end if;
    if Selected ("Test_Loam_Locus_Admission_Reader") then
       Announce ("Test_Loam_Locus_Admission_Reader");
       Test_Loam_Locus_Admission_Reader.Run;

@@ -26,7 +26,12 @@ package HRA_N.Application.Attention_Query is
 
    type Row_Array is array (Positive range 1 .. Max_Query_Rows) of Attention_Row;
 
+   type Attention_Source is (Legacy_Attention, Canonical_Attention, Canonical_Unavailable);
+   type Attention_Availability is (Attention_Unavailable, Attention_Available);
+
    type Attention_View is record
+      Source    : Attention_Source := Legacy_Attention;
+      Availability : Attention_Availability := Attention_Unavailable;
       Status    : Frontend_Types.Query_Status :=
         Frontend_Types.Query_Rejected;
       Success   : Boolean := False;

@@ -44,6 +44,10 @@ package body HRA_N.UI.Attention_CLI is
          Put_Line ("[ERROR] " & View.Diagnostic (1 .. View.Diagnostic_Len));
          return;
       end if;
+      if View.Availability = Attention_Unavailable then
+         Put_Line ("Attention unavailable");
+         return;
+      end if;
       Put_Line ("============================================================");
       Put_Line (" HRA-N Attention (" & Natural'Image (View.Count) & " open)");
       Put_Line ("============================================================");
@@ -70,7 +74,17 @@ package body HRA_N.UI.Attention_CLI is
 
       declare
          Sub : constant String := Ada.Command_Line.Argument (Command_Idx + 1);
+         View : constant Attention_View := Execute (Paths);
       begin
+         if Sub = "raise" or else Sub = "resolve" or else Sub = "drop" then
+            if not View.Success then
+               Put_Line ("[ERROR] " & View.Diagnostic (1 .. View.Diagnostic_Len));
+               return;
+            elsif View.Source /= Legacy_Attention then
+               Put_Line ("[ERROR] canonical Attention mutation is not implemented by HRA-N");
+               return;
+            end if;
+         end if;
          if Sub = "raise" then
             if Rem_Args < 2 then
                Put_Line ("Usage: hra-n attention raise ""<context>"" [YYYY-MM-DD|none]");

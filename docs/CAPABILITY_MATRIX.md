@@ -55,7 +55,7 @@ required.
 | Capacity/Budget | separate capacity plane, per-movement effective evidence, non-negative purpose guard, effective-only consumption; window stays a query coordinate | append-only TRANSFER/REBALANCE/EFFECTIVE facts via generation transaction | `Capacity_Command` transfer/rebalance Intents, `Capacity_Query` readout, and `Budget_Query` current-window answer over one snapshot | `hra-n capacity` / `transfer` / `rebalance` and `hra-n budget` | Capacity workspace (`e`, shared transfer/rebalance editors with preview and reload) and Budget surface (`c`, grant/rebalance delegation, display-only badges) | transfer/rebalance-law, stale-proposal, retry, wire-admission, E2E CLI, and PTY tests + Alloy capacity shape model + SPARK green | **V2** |
 | Actual routing | retained `(locus, effective)` assertions; effective is `initial` or a real date; target is managed Purpose or explicit unmanaged; coordinate uniqueness and date-aware projection, no row-order authority | append-only historical `ROUTE` facts via generation transaction; legacy grouped rows decode as initial managed evidence | `Policy_Command.Propose_Routing` -> snapshot-bound Proposal -> Receipt; `Policy_Query.Execute_Routing_Query`; movement, scheduled completion, and budget projection resolve at occurrence date | `hra-n route set/clear/list [--as-of/--history]` | Routing workspace (`r` from Home) with managed/unmanaged editor, selected-day effective default, history toggle, preview, and reload | coordinate-law, managed/unmanaged transition, as-of/history, stale-proposal, retry, E2E CLI, and PTY tests + Alloy historical routing model | **V2** |
 | Relations/discharges | directional claim anchored to a source event with household-side guard; one discharge row per (settlement, claim); aggregate never above face; open requires effective source and settlement | append-only RELATION/DISCHARGE facts in `journal.hra` admitted via generation transaction | `Relation_Command` raise/discharge Intents -> snapshot-bound Proposal -> Receipt; `Relation_Query` open answer plus per-event links | `hra-n relation` / `raise` / `discharge` | Actual detail renders linked claims/discharges with `l` raise and `d` discharge-via-picker actions (no separate lifecycle screen by design); reversal of referenced events refused | raise/discharge-law, stale-proposal, retry, wire-admission, reversal-guard, E2E CLI, and PTY tests + Alloy shape model | **V2** |
-| Attention | retained matters with explicit due (dated/none/undetermined) and one closure each; provenance never closes | append-only ATTENTION/ATTENTION-CLOSE facts in `policy.hra` admitted via generation transaction | `Attention_Command` raise/close Intents -> snapshot-bound Proposal -> Receipt; `Attention_Query` open answer in retained order | `hra-n attention` / `raise` / `resolve` / `drop` | Attention workspace (`i`, shared raise/resolve/drop editors with preview and reload); Home shows open count | raise/close-law, stale-proposal, retry, wire-admission, E2E CLI, and PTY tests + Alloy shape model | **V2** |
+| Attention | retained matters with three due meanings, one closure each; provenance never closes | read-only `attention.loam` admission; legacy `policy.hra` mutations only when no canonical authority | `Attention_Query` independently selects canonical/legacy/unavailable; legacy `Attention_Command` unchanged | canonical list; mutations explicitly refused outside legacy-only | canonical workspace read-only; legacy editors retained; Home shares open observation | direct Ada escape/lifecycle/admission tests; CLI and PTY source/mutation tests; SPARK Core | **Canonical read slice; writer blocked** |
 | Reports | explicit snapshot and effective interval; no implicit conversion; supersession and reversal exclusion, fail-closed unclassified frontier | versioned snapshot reading (`policy.hra`, `journal.hra`) | `Statement.Execute_Statement_Query` (`Paths`, `As_Of`, `Has_As_Of`, deterministic ordering, complete/partial classification), `Daily_Flow_Query` (`Execute`, `Project`, gross/refund/net flows), `MoM_Query` (`Execute`, `Project`, monthly flow vs month-end stock), & `Budget_Query.Project_Month` (shared half-open budget projection) | `hra-n statement [--as-of DATE]`, `hra-n report [--flow/--pace/--audit/--mom/--budget/--balances/--statement] [-m MM] [-y YYYY]` | Financial report workspace (`R` from Home, Tab 1..7: Statement, Budget, Balances, Pace, MoM, Flow, Audit) with mouse wheel scroll and in-memory caching | unit, E2E CLI, and PTY tests | **V2** |
 | Policy administration | versioned role/routing facts with effective coordinates, and explicit add-only Locus admission vocabulary; fail-closed admission via core and Alloy laws | append-only policy.hra via generation transaction with exact selected-candidate comparison | `Policy_Command` (Propose_Role, Propose_Window, Propose_Routing, Propose_Locus, Commit) & `Policy_Query` (`Execute_Locus_Query`) | `hra-n role assign`, `hra-n window add`, `hra-n route set/clear`, `hra-n locus [add/list]` | Actual routing workspace (`r`), Locus workspace (`v`) | unit, proposal/commit/stale/retry, E2E CLI, PTY, and formal tests | **V2** |
 | Machine-readable adapter | same Query/Intent semantics | no direct storage access | schema not defined | optional JSON absent | n/a | none | **Missing** |
@@ -166,12 +166,14 @@ proof that adjacent counterexamples are covered:
   unreadable canonical data), even when zero conflicts are counted. Canonical
   Actual/Coverage/Role/Locus sources are independently `UNVERSIONED`; this does
   not prove cross-source atomicity. Home acquires canonical Statement separately
-  from transitional `policy.hra`: malformed legacy Policy does not reject the
-  Statement, although Home may separately reject its Attention/Policy observation.
-  Home no longer reads `journal.hra` directly; Statement reads it only on the
-  legacy-only path. Home still reads `policy.hra` for Attention and other
-  transitional fields. Report tabs remain transitional and are not qualified by
-  this slice.
+  from its independent Attention observation: malformed legacy Policy does not
+  reject canonical Statement. Home no longer reads `journal.hra` or `policy.hra`
+  directly; Statement reads the former only on its legacy-only path. Canonical
+  Attention alone does not select canonical Statement. Missing canonical Attention
+  under canonical accounting authority is unavailable, not empty and never falls
+  back to legacy; header-only is available empty, malformed rejects. Canonical
+  Attention is read-only in CLI/TUI until a separate writer slice. Report tabs
+  remain transitional and are not qualified by this slice.
 - Full three-stream admission, overflow propagation through all report tabs,
   and snapshot/completeness propagation need dedicated cross-surface evidence.
 
@@ -304,15 +306,15 @@ an adopted or qualified equivalence baseline.
 
 | Field | Current evidence |
 |---|---|
-| Review time | 2026-09-24 UTC; canonical Statement Locus-admission authority slice |
-| HRA-N source | `5a8c6185e063b4173e638b3034c3ab609e7554db` plus the canonical Locus Statement working change |
+| Review time | 2026-09-24 UTC; canonical Attention read authority slice |
+| HRA-N source | `062636cc56d430b82fd2c4c29d8942c201525c76` plus canonical Attention read change |
 | Prior audit comparison | Loam `6869de2`; numerical audit evidence remains pinned there |
-| Pinned Loam review tip | remote `eeaaf67eab7853f075103f43c807821499a81230`; focused source read at local `6fdb058eda787414078cffa4597bb4583e93d62c`, with no later changes on the reviewed Locus-admission paths |
+| Pinned Loam review tip | remote/local `7221f182dd8afe62e7cd98e59096c946a51c5328`; focused AttentionPersistence, TextEscape, AttentionInspection/Review, Publisher and TUI Administration review; previous tip to this tip has no Attention path changes |
 | Repository scope | Local `../loam` main was clean; remote was fetched without changing the checkout |
 | Remote/CI | GitHub main and latest workflow runs queried; the five latest listed runs were successful. This is not whole-system HRA-N/Loam parity evidence |
-| Review scope | Current `LocusAdmissionVocabulary`, v1 persistence, Movement world composition, and G2-020/G2-021 obligation DAGs. The boundary remains current new-write policy, independent of historical readable evidence; missing/malformed selected authority fails closed |
-| Executed qualification | HRA-N focused Statement, Home, and direct Locus-reader tests during implementation. Loam tests were not rerun because no Loam source changed; broader HRA-N qualification is recorded by the implementing PR |
-| Adopted parity baseline | Canonical Locus format and current-policy boundary adopted for this Statement slice; no whole-system parity baseline. HRA-N additionally refuses to apply current admission as historical as-of account evidence |
+| Review scope | Attention v1 frame/escaping, missing vs empty review, closure inspection, complete-image writer protocol; HRA-N adopts only read authority and fail-closed CLI/TUI write refusal |
+| Executed qualification | HRA-N Ada unit, CLI and PTY suite, build and SPARK; Loam code unchanged and tests not rerun locally; GitHub CI to be checked on PR |
+| Adopted parity baseline | Attention v1 reader and open-only inspection on bounded admitted memory, independent of accounting authority; no canonical writer or whole-system parity claim |
 | Next review | Recheck relevant Loam authority/persistence deltas before merge and at the next affected slice; classify broader unreviewed Loam deltas separately rather than treating this focused review as exhaustive |
 
 ### Open adoption decisions
