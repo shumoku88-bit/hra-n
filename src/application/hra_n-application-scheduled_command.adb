@@ -346,26 +346,15 @@ package body HRA_N.Application.Scheduled_Command is
                if Published.State =
                  Completion_Publisher.Completion_Not_Published
                then
-                  if Published.Error_Len > 0 then
-                     Set_Diagnostic
-                       (Published.Error_Reason (1 .. Published.Error_Len));
-                  else
-                     Set_Diagnostic
-                       ("canonical Scheduled completion was rejected");
-                  end if;
+                  Set_Diagnostic
+                    (Completion_Publisher.Format_Error (Published));
                   return Result;
                elsif Published.State =
                  Completion_Publisher.Completion_Claim_Inert
                then
                   Result.State := Canonical_Completion_Claim_Inert;
-                  if Published.Error_Len > 0 then
-                     Set_Diagnostic
-                       (Published.Error_Reason (1 .. Published.Error_Len));
-                  else
-                     Set_Diagnostic
-                       ("Scheduled completion claim is retained but its "
-                        & "Actual endpoint is not yet published");
-                  end if;
+                  Set_Diagnostic
+                    (Completion_Publisher.Format_Error (Published));
                   return Result;
                end if;
 

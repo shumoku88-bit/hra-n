@@ -186,8 +186,11 @@ package body Test_Loam_Scheduled_Completion_Publisher is
            Publish_Completion (Root, Draft);
       begin
          Assert
-           (Published.State = Completion_Published_Fresh_Claim,
+           (Published.Success,
             "fresh relation-first completion succeeds");
+         Assert
+           (Published.State = Completion_Published_Fresh_Claim,
+            "fresh relation-first completion state");
          Assert
            (Equal_Token
               (Published.Actual_Id.Token,
@@ -203,6 +206,16 @@ package body Test_Loam_Scheduled_Completion_Publisher is
          Rejected : constant Publish_Result :=
            Publish_Completion (Root, Draft);
       begin
+         Assert
+           (not Rejected.Success,
+            "already effective completion is not successful");
+         Assert
+           (Rejected.Status = Already_Completed,
+            "already effective completion status reported");
+         Assert
+           (Format_Error (Rejected) =
+              "selected Scheduled identity is already completed",
+            "already effective completion formats error");
          Assert
            (Rejected.State = Completion_Not_Published,
             "already effective completion is rejected");
@@ -229,6 +242,16 @@ package body Test_Loam_Scheduled_Completion_Publisher is
            Read_Loam_Actual_File (Actual);
       begin
          Assert
+           (not Interrupted.Success,
+            "interrupted completion is not successful");
+         Assert
+           (Interrupted.Status = Actual_Staging_Write_Failure,
+            "actual staging failure status reported");
+         Assert
+           (Format_Error (Interrupted) =
+              "Actual Event was not published; retained Scheduled completion claim remains inert",
+            "actual staging failure formats error");
+         Assert
            (Interrupted.State = Completion_Claim_Inert,
             "Actual staging failure leaves explicit inert completion state");
          Assert
@@ -251,6 +274,9 @@ package body Test_Loam_Scheduled_Completion_Publisher is
            Publish_Completion (Root, Draft);
       begin
          Assert
+           (Retried.Success,
+            "retry succeeds");
+         Assert
            (Retried.State = Completion_Published_Resumed_Claim,
             "retry resumes retained inert claim");
          Assert
@@ -260,6 +286,40 @@ package body Test_Loam_Scheduled_Completion_Publisher is
             "retry preserves deterministic endpoint");
       end;
       Assert_Effective;
+
+      declare
+         Empty_Root_Result : constant Publish_Result :=
+           Publish_Completion ("", Draft);
+      begin
+         Assert
+           (not Empty_Root_Result.Success,
+            "empty root directory is rejected");
+         Assert
+           (Empty_Root_Result.Status = Invalid_Root_Directory,
+            "invalid root directory status reported");
+         Assert
+           (Format_Error (Empty_Root_Result) =
+              "LOAM data root must not be empty",
+            "invalid root directory error formatted");
+      end;
+
+      declare
+         Bad_Draft : Completion_Draft := Draft;
+         Invalid_Token_Result : Publish_Result;
+      begin
+         Bad_Draft.Scheduled.Token := (Length => 0, Value => [others => ' ']);
+         Invalid_Token_Result := Publish_Completion (Root, Bad_Draft);
+         Assert
+           (not Invalid_Token_Result.Success,
+            "invalid Scheduled token is rejected");
+         Assert
+           (Invalid_Token_Result.Status = Invalid_Scheduled_Token,
+            "invalid Scheduled token status reported");
+         Assert
+           (Format_Error (Invalid_Token_Result) =
+              "Scheduled completion requires a valid Scheduled identity",
+            "invalid Scheduled token error formatted");
+      end;
 
       Assert
         (Ada.Directories.Exists (Scheduled & ".loam-writer-lock")

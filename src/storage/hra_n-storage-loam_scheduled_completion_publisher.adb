@@ -257,11 +257,45 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Publisher is
         and then Expected = After.Lifecycle;
    end Scheduled_Candidate_Corresponds;
 
+   function Make_Failure
+     (Status    : Scheduled_Completion_Publish_Status;
+      State     : Completion_Publication_State;
+      Actual_Id : Event_Id;
+      Message   : String) return Publish_Result
+   is
+      Result : Publish_Result (Success => False);
+      Len    : constant Natural :=
+        Natural'Min (Message'Length, Result.Error_Reason'Length);
+   begin
+      Result.State := State;
+      Result.Actual_Id := Actual_Id;
+      Result.Status := Status;
+      Result.Error_Reason := [others => ' '];
+      Result.Error_Len := Len;
+      if Len > 0 then
+         Result.Error_Reason (1 .. Len) :=
+           Message (Message'First .. Message'First + Len - 1);
+      end if;
+      return Result;
+   end Make_Failure;
+
+   function Make_Success
+     (State     : Completion_Publication_State;
+      Actual_Id : Event_Id) return Publish_Result
+   is
+      Result : Publish_Result (Success => True);
+   begin
+      Result.State := State;
+      Result.Actual_Id := Actual_Id;
+      return Result;
+   end Make_Success;
+
    function Publish_Completion
      (Root_Path : String;
       Draft     : Completion_Draft) return Publish_Result
    is
-      Result : Publish_Result;
+      Empty_Actual_Id : constant Event_Id :=
+        (Token => (Length => 0, Value => [others => ' ']));
       Scheduled_Path : constant String :=
         Ada.Directories.Compose (Root_Path, "scheduled.loam");
       Actual_Path : constant String :=
@@ -276,28 +310,6 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Publisher is
         Actual_Path & ".loam-writer-lock";
       Ownership : HRA_N.Storage.File_Lock.Ordered_Lock_Pair;
       Claim_Published : Boolean := False;
-
-      procedure Set_Error (Message : String) is
-         Len : constant Natural :=
-           Natural'Min (Message'Length, Result.Error_Reason'Length);
-      begin
-         Result.Error_Reason := [others => ' '];
-         Result.Error_Len := Len;
-         if Len > 0 then
-            Result.Error_Reason (1 .. Len) :=
-              Message (Message'First .. Message'First + Len - 1);
-         end if;
-      end Set_Error;
-
-      function Fail (Message : String) return Publish_Result is
-      begin
-         Result.State :=
-           (if Claim_Published
-            then Completion_Claim_Inert
-            else Completion_Not_Published);
-         Set_Error (Message);
-         return Result;
-      end Fail;
 
       procedure Release_All is
       begin
@@ -319,23 +331,42 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Publisher is
 
    begin
       if Root_Path'Length = 0 then
-         return Fail ("LOAM data root must not be empty");
+         return Make_Failure
+           (Invalid_Root_Directory,
+            Completion_Not_Published,
+            Empty_Actual_Id,
+            "LOAM data root must not be empty");
       elsif not Valid_Token (Draft.Scheduled.Token) then
-         return Fail ("Scheduled completion requires a valid Scheduled identity");
+         return Make_Failure
+           (Invalid_Scheduled_Token,
+            Completion_Not_Published,
+            Empty_Actual_Id,
+            "Scheduled completion requires a valid Scheduled identity");
       elsif not Valid_Description (Draft.Description) then
-         return Fail ("Scheduled completion description is not canonically encodable");
+         return Make_Failure
+           (Invalid_Description,
+            Completion_Not_Published,
+            Empty_Actual_Id,
+            "Scheduled completion description is not canonically encodable");
       elsif Draft.Has_Execution_Date
         and then not Is_Valid_Date
           (Draft.Execution_Date.Year,
            Draft.Execution_Date.Month,
            Draft.Execution_Date.Day)
       then
-         return Fail ("Scheduled completion occurrence date is invalid");
+         return Make_Failure
+           (Invalid_Occurrence_Date,
+            Completion_Not_Published,
+            Empty_Actual_Id,
+            "Scheduled completion occurrence date is invalid");
       elsif Natural (Draft.Scheduled.Token.Length)
         + Completion_Prefix'Length > Max_Token_Length
       then
-         return Fail
-           ("deterministic Scheduled completion Actual identity exceeds HRA-N token capacity");
+         return Make_Failure
+           (Deterministic_Identity_Exceeds_Capacity,
+            Completion_Not_Published,
+            Empty_Actual_Id,
+            "deterministic Scheduled completion Actual identity exceeds HRA-N token capacity");
       end if;
 
       declare
@@ -343,372 +374,475 @@ package body HRA_N.Storage.Loam_Scheduled_Completion_Publisher is
            Draft.Scheduled.Token.Value (1 .. Draft.Scheduled.Token.Length);
          Actual_Id : constant Event_Id :=
            (Token => Make_Token (Completion_Prefix & Scheduled_Text));
-      begin
-         Result.Actual_Id := Actual_Id;
 
+         function Fail
+           (Status  : Scheduled_Completion_Publish_Status;
+            Message : String) return Publish_Result
+         is
+         begin
+            Remove_Stage (Scheduled_Stage);
+            Remove_Stage (Actual_Stage);
+            Release_All;
+            return Make_Failure
+              (Status,
+               (if Claim_Published
+                then Completion_Claim_Inert
+                else Completion_Not_Published),
+               Actual_Id,
+               Message);
+         end Fail;
+
+      begin
          if not HRA_N.Storage.File_Lock.Acquire_Ordered_Pair
            (Scheduled_Lock_Path, Actual_Lock_Path, Ownership)
          then
-            return Fail ("cannot acquire shared LOAM Scheduled/Actual ownership");
+            return Make_Failure
+              (Lock_Failure,
+               Completion_Not_Published,
+               Actual_Id,
+               "cannot acquire shared LOAM Scheduled/Actual ownership");
          end if;
 
-         declare
-            Scheduled_Bytes : constant HRA_N.Storage.Exact_File.Read_Result :=
-              HRA_N.Storage.Exact_File.Read_All (Scheduled_Path);
-            Actual_Bytes : constant HRA_N.Storage.Exact_File.Read_Result :=
-              HRA_N.Storage.Exact_File.Read_All (Actual_Path);
-            Policy : constant Policy_Reader.Read_Result :=
-              Policy_Reader.Read_File (Policy_Path);
          begin
-            if not Scheduled_Bytes.Success then
-               Release_All;
-               return Fail ("cannot read current scheduled.loam authority");
-            elsif not Actual_Bytes.Success then
-               Release_All;
-               return Fail ("cannot read current actual.loam authority");
-            elsif not Policy.Success then
-               Release_All;
-               return Fail
-                 ("current locus-admission.loam is malformed or unsupported");
-            end if;
-
             declare
-               Scheduled_Text_Image : constant String :=
-                 US.To_String (Scheduled_Bytes.Content);
-               Actual_Text_Image : constant String :=
-                 US.To_String (Actual_Bytes.Content);
-               Current_Scheduled : constant Scheduled_Reader.Read_Result :=
-                 Scheduled_Reader.Read_Content (Scheduled_Text_Image);
-               Current_Actual : constant Actual_Reader.Loam_Actual_Result :=
-                 Actual_Reader.Read_Loam_Actual_Content (Actual_Text_Image);
+               Scheduled_Bytes : constant HRA_N.Storage.Exact_File.Read_Result :=
+                 HRA_N.Storage.Exact_File.Read_All (Scheduled_Path);
+               Actual_Bytes : constant HRA_N.Storage.Exact_File.Read_Result :=
+                 HRA_N.Storage.Exact_File.Read_All (Actual_Path);
+               Policy : constant Policy_Reader.Read_Result :=
+                 Policy_Reader.Read_File (Policy_Path);
             begin
-               if not Current_Scheduled.Success then
-                  Release_All;
+               if not Scheduled_Bytes.Success then
                   return Fail
-                    ("current scheduled.loam is malformed, unsupported, or over capacity");
-               elsif not Current_Actual.Success then
-                  Release_All;
+                    (Cannot_Read_Scheduled,
+                     "cannot read current scheduled.loam authority");
+               elsif not Actual_Bytes.Success then
                   return Fail
-                    ("current actual.loam is malformed, unsupported, or over capacity");
-               elsif not Lifecycle_Readable (Current_Scheduled.Lifecycle) then
-                  Release_All;
+                    (Cannot_Read_Actual,
+                     "cannot read current actual.loam authority");
+               elsif not Policy.Success then
                   return Fail
-                    ("current Scheduled lifecycle is not application-readable");
-               elsif Natural (Current_Actual.Events.Length) =
-                 Actual_Reader.Max_Admitted_Actual_Events
-               then
-                  Release_All;
-                  return Fail
-                    ("HRA-N Actual writer working-set capacity exceeded");
+                    (Corrupt_Policy,
+                     "current locus-admission.loam is malformed or unsupported");
                end if;
 
                declare
-                  Found_Occurrence : constant HRA_N.Core.Scheduled.Lookup_Result :=
-                    Find_Occurrence
-                      (Current_Scheduled.Lifecycle, Draft.Scheduled);
-                  Existing_Found : Boolean;
-                  Existing_Actual : Event_Id;
+                  Scheduled_Text_Image : constant String :=
+                    US.To_String (Scheduled_Bytes.Content);
+                  Actual_Text_Image : constant String :=
+                    US.To_String (Actual_Bytes.Content);
+                  Current_Scheduled : constant Scheduled_Reader.Read_Result :=
+                    Scheduled_Reader.Read_Content (Scheduled_Text_Image);
+                  Current_Actual : constant Actual_Reader.Loam_Actual_Result :=
+                    Actual_Reader.Read_Loam_Actual_Content (Actual_Text_Image);
                begin
-                  if not Found_Occurrence.Found then
-                     Release_All;
+                  if not Current_Scheduled.Success then
                      return Fail
-                       ("selected Scheduled identity is not retained");
-                  end if;
-
-                  Existing_Completion_For
-                    (Current_Scheduled.Lifecycle,
-                     Draft.Scheduled,
-                     Existing_Found,
-                     Existing_Actual);
-
-                  if Existing_Found then
-                     if not Equal_Token
-                       (Existing_Actual.Token, Actual_Id.Token)
-                     then
-                        Release_All;
-                        return Fail
-                          ("retained Scheduled completion endpoint differs from canonical deterministic identity");
-                     elsif Event_Exists (Current_Actual, Actual_Id) then
-                        Release_All;
-                        return Fail
-                          ("selected Scheduled identity is already completed");
-                     end if;
-                  elsif Is_Retired
-                    (Current_Scheduled.Lifecycle, Draft.Scheduled)
-                    or else Is_Replaced
-                      (Current_Scheduled.Lifecycle, Draft.Scheduled)
+                       (Corrupt_Scheduled,
+                        "current scheduled.loam is malformed, unsupported, or over capacity");
+                  elsif not Current_Actual.Success then
+                     return Fail
+                       (Corrupt_Actual,
+                        "current actual.loam is malformed, unsupported, or over capacity");
+                  elsif not Lifecycle_Readable (Current_Scheduled.Lifecycle) then
+                     return Fail
+                       (Lifecycle_Not_Readable,
+                        "current Scheduled lifecycle is not application-readable");
+                  elsif Natural (Current_Actual.Events.Length) =
+                    Actual_Reader.Max_Admitted_Actual_Events
                   then
-                     Release_All;
                      return Fail
-                       ("selected Scheduled identity is no longer current-open");
-                  elsif Event_Exists (Current_Actual, Actual_Id) then
-                     Release_All;
-                     return Fail
-                       ("canonical completion Actual exists without its Scheduled claim");
+                       (Actual_Working_Set_Exceeded,
+                        "HRA-N Actual writer working-set capacity exceeded");
                   end if;
 
                   declare
-                     Effects : constant Effect_List :=
-                       Effects_From (Found_Occurrence.Item);
-                     Valid_On : constant Date_Type :=
-                       (if Draft.Has_Execution_Date
-                        then Draft.Execution_Date
-                        else Found_Occurrence.Item.Expected_Day);
+                     Found_Occurrence : constant HRA_N.Core.Scheduled.Lookup_Result :=
+                       Find_Occurrence
+                         (Current_Scheduled.Lifecycle, Draft.Scheduled);
+                     Existing_Found : Boolean;
+                     Existing_Actual : Event_Id;
                   begin
-                     if not Effects_Are_Practical (Effects) then
-                        Release_All;
+                     if not Found_Occurrence.Found then
                         return Fail
-                          ("Scheduled occurrence is outside the practical balanced single-Measure completion entrance");
+                          (Scheduled_Not_Retained,
+                           "selected Scheduled identity is not retained");
                      end if;
 
-                     for I in 1 .. Effects.Count loop
-                        if not Admits_Locus
-                          (Policy.Vocabulary, Effects.Values (I).Locus)
+                     Existing_Completion_For
+                       (Current_Scheduled.Lifecycle,
+                        Draft.Scheduled,
+                        Existing_Found,
+                        Existing_Actual);
+
+                     if Existing_Found then
+                        if not Equal_Token
+                          (Existing_Actual.Token, Actual_Id.Token)
                         then
-                           Release_All;
                            return Fail
-                             ("Scheduled completion uses a Locus not approved for new publication");
+                             (Claim_Endpoint_Differs,
+                              "retained Scheduled completion endpoint differs from canonical deterministic identity");
+                        elsif Event_Exists (Current_Actual, Actual_Id) then
+                           return Fail
+                             (Already_Completed,
+                              "selected Scheduled identity is already completed");
                         end if;
-                     end loop;
+                     elsif Is_Retired
+                       (Current_Scheduled.Lifecycle, Draft.Scheduled)
+                       or else Is_Replaced
+                         (Current_Scheduled.Lifecycle, Draft.Scheduled)
+                     then
+                        return Fail
+                          (Scheduled_Not_Current_Open,
+                           "selected Scheduled identity is no longer current-open");
+                     elsif Event_Exists (Current_Actual, Actual_Id) then
+                        return Fail
+                          (Actual_Identity_Exists_Without_Claim,
+                           "canonical completion Actual exists without its Scheduled claim");
+                     end if;
 
                      declare
-                        Actual_Block : constant String :=
-                          Encode_Event_Block
-                            (Actual_Id,
-                             Valid_On,
-                             Draft.Description,
-                             Effects);
-                        Actual_Candidate : constant String :=
-                          Actual_Text_Image & Actual_Block;
-                        Actual_Admitted : constant Actual_Reader.Loam_Actual_Result :=
-                          Actual_Reader.Read_Loam_Actual_Content
-                            (Actual_Candidate);
+                        Effects : constant Effect_List :=
+                          Effects_From (Found_Occurrence.Item);
+                        Valid_On : constant Date_Type :=
+                          (if Draft.Has_Execution_Date
+                           then Draft.Execution_Date
+                           else Found_Occurrence.Item.Expected_Day);
                      begin
-                        --  Actual preflight happens before any authority switch.
-                        if not Actual_Candidate_Corresponds
-                          (Actual_Admitted,
-                           Natural (Current_Actual.Events.Length),
-                           Actual_Id,
-                           Valid_On,
-                           Draft.Description,
-                           Effects)
-                        then
-                           Release_All;
+                        if not Effects_Are_Practical (Effects) then
                            return Fail
-                             ("candidate Scheduled completion Actual failed semantic correspondence");
+                             (Effects_Not_Practical,
+                              "Scheduled occurrence is outside the practical balanced single-Measure completion entrance");
                         end if;
 
-                        if Existing_Found then
-                           Claim_Published := True;
-                        else
-                           declare
-                              Added : constant Completion_Record :=
-                                (Scheduled => Draft.Scheduled,
-                                 Actual    => Actual_Id);
-                              Expected : Scheduled_Lifecycle;
-                              Transition_Status : Completion_Transition_Status;
-                              Marker : constant String :=
-                                "END" & HT & "Completion" & NL;
-                              Insert_At : constant Natural :=
-                                Index (Scheduled_Text_Image, Marker);
-                           begin
-                              Append_Fresh_Completion
-                                (Current_Scheduled.Lifecycle,
-                                 Added,
-                                 Expected,
-                                 Transition_Status);
+                        for I in 1 .. Effects.Count loop
+                           if not Admits_Locus
+                             (Policy.Vocabulary, Effects.Values (I).Locus)
+                           then
+                              return Fail
+                                (Locus_Not_Approved,
+                                 "Scheduled completion uses a Locus not approved for new publication");
+                           end if;
+                        end loop;
 
-                              if Transition_Status /= Completion_Transitioned then
-                                 Release_All;
-                                 return Fail
-                                   ("Scheduled completion claim failed semantic preflight");
-                              elsif Insert_At = 0 then
-                                 Release_All;
-                                 return Fail
-                                   ("Completion section insertion boundary is absent");
-                              end if;
+                        declare
+                           Actual_Block : constant String :=
+                             Encode_Event_Block
+                               (Actual_Id,
+                                Valid_On,
+                                Draft.Description,
+                                Effects);
+                           Actual_Candidate : constant String :=
+                             Actual_Text_Image & Actual_Block;
+                           Actual_Admitted : constant Actual_Reader.Loam_Actual_Result :=
+                             Actual_Reader.Read_Loam_Actual_Content
+                               (Actual_Candidate);
+                        begin
+                           --  Actual preflight happens before any authority switch.
+                           if not Actual_Candidate_Corresponds
+                             (Actual_Admitted,
+                              Natural (Current_Actual.Events.Length),
+                              Actual_Id,
+                              Valid_On,
+                              Draft.Description,
+                              Effects)
+                           then
+                              return Fail
+                                (Actual_Candidate_Correspondence_Failure,
+                                 "candidate Scheduled completion Actual failed semantic correspondence");
+                           end if;
 
+                           if Existing_Found then
+                              Claim_Published := True;
+                           else
                               declare
-                                 Claim_Block : constant String :=
-                                   "COMPLETION" & HT & Scheduled_Text & HT
-                                   & Actual_Id.Token.Value
-                                     (1 .. Actual_Id.Token.Length)
-                                   & NL;
-                                 Scheduled_Candidate : constant String :=
-                                   Scheduled_Text_Image
-                                     (Scheduled_Text_Image'First .. Insert_At - 1)
-                                   & Claim_Block
-                                   & Scheduled_Text_Image
-                                     (Insert_At .. Scheduled_Text_Image'Last);
-                                 Scheduled_Admitted :
-                                   constant Scheduled_Reader.Read_Result :=
-                                     Scheduled_Reader.Read_Content
-                                       (Scheduled_Candidate);
-                                 Error : String (1 .. 192) := [others => ' '];
-                                 Error_Len : Natural := 0;
+                                 Added : constant Completion_Record :=
+                                   (Scheduled => Draft.Scheduled,
+                                    Actual    => Actual_Id);
+                                 Expected : Scheduled_Lifecycle;
+                                 Transition_Status : Completion_Transition_Status;
+                                 Marker : constant String :=
+                                   "END" & HT & "Completion" & NL;
+                                 Insert_At : constant Natural :=
+                                   Index (Scheduled_Text_Image, Marker);
                               begin
-                                 if not Scheduled_Candidate_Corresponds
+                                 Append_Fresh_Completion
                                    (Current_Scheduled.Lifecycle,
-                                    Scheduled_Admitted,
-                                    Added)
-                                 then
-                                    Release_All;
-                                    return Fail
-                                      ("candidate Scheduled completion claim failed semantic correspondence");
-                                 end if;
+                                    Added,
+                                    Expected,
+                                    Transition_Status);
 
-                                 Remove_Stage (Scheduled_Stage);
-                                 if not HRA_N.Storage.Atomic_Writer.Write_Staging_File_Durably
-                                   (Scheduled_Stage,
-                                    Scheduled_Candidate,
-                                    Error,
-                                    Error_Len)
-                                 then
-                                    Release_All;
+                                 if Transition_Status /= Completion_Transitioned then
                                     return Fail
-                                      ("cannot durably stage Scheduled completion claim");
+                                      (Scheduled_Claim_Preflight_Failure,
+                                       "Scheduled completion claim failed semantic preflight");
+                                 elsif Insert_At = 0 then
+                                    return Fail
+                                      (Completion_Insertion_Boundary_Absent,
+                                       "Completion section insertion boundary is absent");
                                  end if;
 
                                  declare
-                                    Staged : constant
-                                      HRA_N.Storage.Exact_File.Read_Result :=
-                                        HRA_N.Storage.Exact_File.Read_All
-                                          (Scheduled_Stage);
+                                    Claim_Block : constant String :=
+                                      "COMPLETION" & HT & Scheduled_Text & HT
+                                      & Actual_Id.Token.Value
+                                        (1 .. Actual_Id.Token.Length)
+                                      & NL;
+                                    Scheduled_Candidate : constant String :=
+                                      Scheduled_Text_Image
+                                        (Scheduled_Text_Image'First .. Insert_At - 1)
+                                      & Claim_Block
+                                      & Scheduled_Text_Image
+                                        (Insert_At .. Scheduled_Text_Image'Last);
+                                    Scheduled_Admitted :
+                                      constant Scheduled_Reader.Read_Result :=
+                                        Scheduled_Reader.Read_Content
+                                          (Scheduled_Candidate);
+                                    Error : String (1 .. 192) := [others => ' '];
+                                    Error_Len : Natural := 0;
                                  begin
-                                    if not Staged.Success
-                                      or else US.To_String (Staged.Content)
-                                        /= Scheduled_Candidate
+                                    if not Scheduled_Candidate_Corresponds
+                                      (Current_Scheduled.Lifecycle,
+                                       Scheduled_Admitted,
+                                       Added)
                                     then
-                                       Remove_Stage (Scheduled_Stage);
-                                       Release_All;
                                        return Fail
-                                         ("staged Scheduled completion claim bytes do not match candidate");
+                                         (Candidate_Correspondence_Failure,
+                                          "candidate Scheduled completion claim failed semantic correspondence");
+                                    end if;
+
+                                    Remove_Stage (Scheduled_Stage);
+                                    if not HRA_N.Storage.Atomic_Writer.Write_Staging_File_Durably
+                                      (Scheduled_Stage,
+                                       Scheduled_Candidate,
+                                       Error,
+                                       Error_Len)
+                                    then
+                                       return Fail
+                                         (Staging_Write_Failure,
+                                          "cannot durably stage Scheduled completion claim");
                                     end if;
 
                                     declare
-                                       Staged_Image :
-                                         constant Scheduled_Reader.Read_Result :=
-                                           Scheduled_Reader.Read_Content
-                                             (US.To_String (Staged.Content));
+                                       Staged : constant
+                                         HRA_N.Storage.Exact_File.Read_Result :=
+                                           HRA_N.Storage.Exact_File.Read_All
+                                             (Scheduled_Stage);
                                     begin
-                                       if not Scheduled_Candidate_Corresponds
-                                         (Current_Scheduled.Lifecycle,
-                                          Staged_Image,
-                                          Added)
+                                       if not Staged.Success
+                                         or else US.To_String (Staged.Content)
+                                           /= Scheduled_Candidate
                                        then
-                                          Remove_Stage (Scheduled_Stage);
-                                          Release_All;
                                           return Fail
-                                            ("staged Scheduled completion claim failed semantic admission");
+                                            (Staging_Mismatch,
+                                             "staged Scheduled completion claim bytes do not match candidate");
                                        end if;
+
+                                       declare
+                                          Staged_Image :
+                                            constant Scheduled_Reader.Read_Result :=
+                                              Scheduled_Reader.Read_Content
+                                                (US.To_String (Staged.Content));
+                                       begin
+                                          if not Scheduled_Candidate_Corresponds
+                                            (Current_Scheduled.Lifecycle,
+                                             Staged_Image,
+                                             Added)
+                                          then
+                                             return Fail
+                                               (Staging_Admission_Failure,
+                                                "staged Scheduled completion claim failed semantic admission");
+                                          end if;
+                                       end;
                                     end;
+
+                                    if not HRA_N.Storage.Atomic_Writer.Publish_Staged_File_Atomically
+                                      (Scheduled_Stage,
+                                       Scheduled_Path,
+                                       Error,
+                                       Error_Len)
+                                    then
+                                       return Fail
+                                         (Claim_Authority_Switch_Failure,
+                                          "failed to switch canonical Scheduled completion claim authority");
+                                    end if;
+
+                                    Claim_Published := True;
                                  end;
-
-                                 if not HRA_N.Storage.Atomic_Writer.Publish_Staged_File_Atomically
-                                   (Scheduled_Stage,
-                                    Scheduled_Path,
-                                    Error,
-                                    Error_Len)
-                                 then
-                                    Release_All;
-                                    return Fail
-                                      ("failed to switch canonical Scheduled completion claim authority");
-                                 end if;
-
-                                 Claim_Published := True;
                               end;
-                           end;
-                        end if;
-
-                        --  From this point onward, failure intentionally reports
-                        --  an inert retained claim.  The same deterministic
-                        --  endpoint can be retried later.
-                        declare
-                           Error : String (1 .. 192) := [others => ' '];
-                           Error_Len : Natural := 0;
-                        begin
-                           Remove_Stage (Actual_Stage);
-                           if not HRA_N.Storage.Atomic_Writer.Write_Staging_File_Durably
-                             (Actual_Stage,
-                              Actual_Candidate,
-                              Error,
-                              Error_Len)
-                           then
-                              Release_All;
-                              return Fail
-                                ("Actual Event was not published; retained Scheduled completion claim remains inert");
                            end if;
 
+                           --  From this point onward, failure intentionally reports
+                           --  an inert retained claim.  The same deterministic
+                           --  endpoint can be retried later.
                            declare
-                              Staged : constant
-                                HRA_N.Storage.Exact_File.Read_Result :=
-                                  HRA_N.Storage.Exact_File.Read_All
-                                    (Actual_Stage);
+                              Error : String (1 .. 192) := [others => ' '];
+                              Error_Len : Natural := 0;
                            begin
-                              if not Staged.Success
-                                or else US.To_String (Staged.Content)
-                                  /= Actual_Candidate
+                              Remove_Stage (Actual_Stage);
+                              if not HRA_N.Storage.Atomic_Writer.Write_Staging_File_Durably
+                                (Actual_Stage,
+                                 Actual_Candidate,
+                                 Error,
+                                 Error_Len)
                               then
-                                 Remove_Stage (Actual_Stage);
-                                 Release_All;
                                  return Fail
-                                   ("staged Actual completion bytes do not match candidate; retained claim remains inert");
+                                   (Actual_Staging_Write_Failure,
+                                    "Actual Event was not published; retained Scheduled completion claim remains inert");
                               end if;
 
                               declare
-                                 Staged_Image :
-                                   constant Actual_Reader.Loam_Actual_Result :=
-                                     Actual_Reader.Read_Loam_Actual_Content
-                                       (US.To_String (Staged.Content));
+                                 Staged : constant
+                                   HRA_N.Storage.Exact_File.Read_Result :=
+                                     HRA_N.Storage.Exact_File.Read_All
+                                       (Actual_Stage);
                               begin
-                                 if not Actual_Candidate_Corresponds
-                                   (Staged_Image,
-                                    Natural (Current_Actual.Events.Length),
-                                    Actual_Id,
-                                    Valid_On,
-                                    Draft.Description,
-                                    Effects)
+                                 if not Staged.Success
+                                   or else US.To_String (Staged.Content)
+                                     /= Actual_Candidate
                                  then
-                                    Remove_Stage (Actual_Stage);
-                                    Release_All;
                                     return Fail
-                                      ("staged Actual completion failed semantic admission; retained claim remains inert");
+                                      (Actual_Staging_Mismatch,
+                                       "staged Actual completion bytes do not match candidate; retained claim remains inert");
                                  end if;
+
+                                 declare
+                                    Staged_Image :
+                                      constant Actual_Reader.Loam_Actual_Result :=
+                                        Actual_Reader.Read_Loam_Actual_Content
+                                          (US.To_String (Staged.Content));
+                                 begin
+                                    if not Actual_Candidate_Corresponds
+                                      (Staged_Image,
+                                       Natural (Current_Actual.Events.Length),
+                                       Actual_Id,
+                                       Valid_On,
+                                       Draft.Description,
+                                       Effects)
+                                    then
+                                       return Fail
+                                         (Actual_Staging_Admission_Failure,
+                                          "staged Actual completion failed semantic admission; retained claim remains inert");
+                                    end if;
+                                 end;
                               end;
+
+                              if not HRA_N.Storage.Atomic_Writer.Publish_Staged_File_Atomically
+                                (Actual_Stage,
+                                 Actual_Path,
+                                 Error,
+                                 Error_Len)
+                              then
+                                 return Fail
+                                   (Actual_Authority_Switch_Failure,
+                                    "Actual Event authority switch failed; retained Scheduled completion claim remains inert");
+                              end if;
                            end;
 
-                           if not HRA_N.Storage.Atomic_Writer.Publish_Staged_File_Atomically
-                             (Actual_Stage,
-                              Actual_Path,
-                              Error,
-                              Error_Len)
-                           then
-                              Release_All;
-                              return Fail
-                                ("Actual Event authority switch failed; retained Scheduled completion claim remains inert");
-                           end if;
+                           Release_All;
+                           return Make_Success
+                             ((if Existing_Found
+                               then Completion_Published_Resumed_Claim
+                               else Completion_Published_Fresh_Claim),
+                              Actual_Id);
                         end;
-
-                        Result.State :=
-                          (if Existing_Found
-                           then Completion_Published_Resumed_Claim
-                           else Completion_Published_Fresh_Claim);
-                        Result.Error_Len := 0;
-                        Release_All;
-                        return Result;
                      end;
                   end;
                end;
             end;
+         exception
+            when others =>
+               return Fail
+                 (Internal_Error,
+                  "unexpected canonical Scheduled completion publication failure");
          end;
       end;
 
    exception
       when others =>
-         Remove_Stage (Scheduled_Stage);
-         Remove_Stage (Actual_Stage);
-         Release_All;
-         return Fail ("unexpected canonical Scheduled completion publication failure");
+         return Make_Failure
+           (Internal_Error,
+            Completion_Not_Published,
+            Empty_Actual_Id,
+            "unexpected canonical Scheduled completion publication failure");
    end Publish_Completion;
+
+   function Format_Error (Result : Publish_Result) return String is
+   begin
+      if Result.Success then
+         return "";
+      elsif Result.Error_Len > 0 then
+         return Result.Error_Reason (1 .. Result.Error_Len);
+      else
+         case Result.Status is
+            when Invalid_Root_Directory =>
+               return "LOAM data root must not be empty";
+            when Invalid_Scheduled_Token =>
+               return "Scheduled completion requires a valid Scheduled identity";
+            when Invalid_Description =>
+               return "Scheduled completion description is not canonically encodable";
+            when Invalid_Occurrence_Date =>
+               return "Scheduled completion occurrence date is invalid";
+            when Deterministic_Identity_Exceeds_Capacity =>
+               return "deterministic Scheduled completion Actual identity exceeds HRA-N token capacity";
+            when Lock_Failure =>
+               return "cannot acquire shared LOAM Scheduled/Actual ownership";
+            when Cannot_Read_Scheduled =>
+               return "cannot read current scheduled.loam authority";
+            when Cannot_Read_Actual =>
+               return "cannot read current actual.loam authority";
+            when Corrupt_Policy =>
+               return "current locus-admission.loam is malformed or unsupported";
+            when Corrupt_Scheduled =>
+               return "current scheduled.loam is malformed, unsupported, or over capacity";
+            when Corrupt_Actual =>
+               return "current actual.loam is malformed, unsupported, or over capacity";
+            when Lifecycle_Not_Readable =>
+               return "current Scheduled lifecycle is not application-readable";
+            when Actual_Working_Set_Exceeded =>
+               return "HRA-N Actual writer working-set capacity exceeded";
+            when Scheduled_Not_Retained =>
+               return "selected Scheduled identity is not retained";
+            when Claim_Endpoint_Differs =>
+               return "retained Scheduled completion endpoint differs from canonical deterministic identity";
+            when Already_Completed =>
+               return "selected Scheduled identity is already completed";
+            when Scheduled_Not_Current_Open =>
+               return "selected Scheduled identity is no longer current-open";
+            when Actual_Identity_Exists_Without_Claim =>
+               return "canonical completion Actual exists without its Scheduled claim";
+            when Effects_Not_Practical =>
+               return "Scheduled occurrence is outside the practical balanced single-Measure completion entrance";
+            when Locus_Not_Approved =>
+               return "Scheduled completion uses a Locus not approved for new publication";
+            when Actual_Candidate_Correspondence_Failure =>
+               return "candidate Scheduled completion Actual failed semantic correspondence";
+            when Scheduled_Claim_Preflight_Failure =>
+               return "Scheduled completion claim failed semantic preflight";
+            when Completion_Insertion_Boundary_Absent =>
+               return "Completion section insertion boundary is absent";
+            when Candidate_Correspondence_Failure =>
+               return "candidate Scheduled completion claim failed semantic correspondence";
+            when Staging_Write_Failure =>
+               return "cannot durably stage Scheduled completion claim";
+            when Staging_Mismatch =>
+               return "staged Scheduled completion claim bytes do not match candidate";
+            when Staging_Admission_Failure =>
+               return "staged Scheduled completion claim failed semantic admission";
+            when Claim_Authority_Switch_Failure =>
+               return "failed to switch canonical Scheduled completion claim authority";
+            when Actual_Staging_Write_Failure =>
+               return "Actual Event was not published; retained Scheduled completion claim remains inert";
+            when Actual_Staging_Mismatch =>
+               return "staged Actual completion bytes do not match candidate; retained claim remains inert";
+            when Actual_Staging_Admission_Failure =>
+               return "staged Actual completion failed semantic admission; retained claim remains inert";
+            when Actual_Authority_Switch_Failure =>
+               return "Actual Event authority switch failed; retained Scheduled completion claim remains inert";
+            when Internal_Error =>
+               return "unexpected canonical Scheduled completion publication failure";
+         end case;
+      end if;
+   end Format_Error;
 
 end HRA_N.Storage.Loam_Scheduled_Completion_Publisher;

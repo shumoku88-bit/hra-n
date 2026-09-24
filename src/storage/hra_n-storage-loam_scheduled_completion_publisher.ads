@@ -33,12 +33,55 @@ package HRA_N.Storage.Loam_Scheduled_Completion_Publisher is
       Description        : Description_Text;
    end record;
 
-   type Publish_Result is record
-      State        : Completion_Publication_State := Completion_Not_Published;
-      Actual_Id    : Event_Id;
-      Error_Reason : String (1 .. 192) := [others => ' '];
-      Error_Len    : Natural := 0;
+   type Scheduled_Completion_Publish_Status is
+     (Invalid_Root_Directory,
+      Invalid_Scheduled_Token,
+      Invalid_Description,
+      Invalid_Occurrence_Date,
+      Deterministic_Identity_Exceeds_Capacity,
+      Lock_Failure,
+      Cannot_Read_Scheduled,
+      Cannot_Read_Actual,
+      Corrupt_Policy,
+      Corrupt_Scheduled,
+      Corrupt_Actual,
+      Lifecycle_Not_Readable,
+      Actual_Working_Set_Exceeded,
+      Scheduled_Not_Retained,
+      Claim_Endpoint_Differs,
+      Already_Completed,
+      Scheduled_Not_Current_Open,
+      Actual_Identity_Exists_Without_Claim,
+      Effects_Not_Practical,
+      Locus_Not_Approved,
+      Actual_Candidate_Correspondence_Failure,
+      Scheduled_Claim_Preflight_Failure,
+      Completion_Insertion_Boundary_Absent,
+      Candidate_Correspondence_Failure,
+      Staging_Write_Failure,
+      Staging_Mismatch,
+      Staging_Admission_Failure,
+      Claim_Authority_Switch_Failure,
+      Actual_Staging_Write_Failure,
+      Actual_Staging_Mismatch,
+      Actual_Staging_Admission_Failure,
+      Actual_Authority_Switch_Failure,
+      Internal_Error);
+
+   type Publish_Result (Success : Boolean := True) is record
+      State     : Completion_Publication_State := Completion_Not_Published;
+      Actual_Id : Event_Id;
+      case Success is
+         when True =>
+            null;
+         when False =>
+            Status       : Scheduled_Completion_Publish_Status := Internal_Error;
+            Error_Reason : String (1 .. 192)                   := [others => ' '];
+            Error_Len    : Natural                             := 0;
+      end case;
    end record;
+
+   function Format_Error (Result : Publish_Result) return String;
 
    --  Publish one Scheduled realization as a canonical Actual Event.
    --
