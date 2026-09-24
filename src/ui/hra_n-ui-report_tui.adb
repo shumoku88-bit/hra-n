@@ -3,12 +3,14 @@
 --  Package body: HRA_N.UI.Report_TUI
 -------------------------------------------------------------------------------
 
+with Ada.Directories;
 with Ada.Strings;       use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Application.Actual_Query;
 with HRA_N.Application.Balance_Query;
 with HRA_N.Application.Budget_Window;
 with HRA_N.Application.Budget_Query;
+with HRA_N.Application.Canonical_Authority;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;  use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Review;
@@ -18,6 +20,10 @@ with HRA_N.Core.Types;                 use HRA_N.Core.Types;
 with HRA_N.Core.Validity;              use HRA_N.Core.Validity;
 with HRA_N.Storage.Journal_Reader;     use HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Policy_Reader;      use HRA_N.Storage.Policy_Reader;
+with HRA_N.Storage.Loam_Actual_Reader;
+with HRA_N.Storage.Loam_Accounting_Role_Reader;
+with HRA_N.Storage.Loam_Capacity_Reader;
+with HRA_N.Storage.Loam_Actual_Routing_Reader;
 with HRA_N.UI.Actual_TUI;
 with HRA_N.UI.Terminal;                use HRA_N.UI.Terminal;
 with Ada.Command_Line;
@@ -132,6 +138,92 @@ package body HRA_N.UI.Report_TUI is
       Text : String (1 .. 140) := [others => ' '];
    end record;
    type Report_Line_Array is array (1 .. Max_Report_Lines) of Report_Line;
+
+   procedure Load_Evidence
+     (Paths   : Path_Config;
+      Journal : out Journal_Result;
+      Policy  : out Policy_Result)
+   is
+      use HRA_N.Application.Canonical_Authority;
+      Root      : constant String := Data_Dir_Str (Paths);
+      Authority : constant Authority_Probe := Probe (Root);
+   begin
+      Journal.Success := False;
+      Policy.Success  := False;
+      case Authority.State is
+         when Canonical_Present =>
+            declare
+               Actual : constant HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result :=
+                 HRA_N.Storage.Loam_Actual_Reader.Read_Loam_Actual_File
+                   (Ada.Directories.Compose (Root, "actual.loam"));
+               Roles  : constant HRA_N.Storage.Loam_Accounting_Role_Reader.Read_Result :=
+                 HRA_N.Storage.Loam_Accounting_Role_Reader.Read_File
+                   (Ada.Directories.Compose (Root, "accounting-role.loam"));
+               Cap    : constant HRA_N.Storage.Loam_Capacity_Reader.Read_Result :=
+                 HRA_N.Storage.Loam_Capacity_Reader.Read_File
+                   (Ada.Directories.Compose (Root, "capacity.loam"));
+               Route  : constant HRA_N.Storage.Loam_Actual_Routing_Reader.Read_Result :=
+                 HRA_N.Storage.Loam_Actual_Routing_Reader.Read_File
+                   (Ada.Directories.Compose (Root, "actual-routing.loam"));
+            begin
+               if not Actual.Success then
+                  Journal.Success := False;
+                  Journal.Error_Len := Actual.Error_Len;
+                  Journal.Error_Reason (1 .. Actual.Error_Len) :=
+                    Actual.Error_Reason (1 .. Actual.Error_Len);
+                  return;
+               end if;
+
+               Journal.Success := True;
+               for E of Actual.Events loop
+                  Journal.Events.Append (E);
+               end loop;
+               Journal.Validities   := Actual.Validities;
+               Journal.Descriptions := Actual.Descriptions;
+               Journal.Metadata     := Actual.Metadata;
+
+               Policy.Success := True;
+               if Roles.Success then
+                  declare
+                     Count : constant Natural :=
+                       Natural (Current_Entry_Count (Roles.Roles));
+                  begin
+                     Policy.Roles.Count := Count;
+                     for I in 1 .. Count loop
+                        declare
+                           Entry_Val : constant Current_Role_Assignment :=
+                             Current_Entry_At (Roles.Roles, I);
+                        begin
+                           Policy.Roles.Entries (I) :=
+                             (Id             => (Length => 0, Value => [others => ' ']),
+                              Locus          => Entry_Val.Locus,
+                              Role           => Entry_Val.Role,
+                              Effective_From => (Year => 2026, Month => 1, Day => 1),
+                              Has_Replaces   => False,
+                              Replaces       => (Length => 0, Value => [others => ' ']));
+                        end;
+                     end loop;
+                  end;
+               end if;
+               if Cap.Success then
+                  Policy.Capacities := Cap.Capacity;
+               end if;
+               if Route.Success then
+                  Policy.Routing := Route.Routing;
+               end if;
+            end;
+
+         when Legacy_Only =>
+            Journal := Read_Journal_File (Journal_Path_Str (Paths));
+            Policy  := Read_Policy_File (Policy_Path_Str (Paths));
+
+         when Probe_Failed =>
+            Journal.Success := False;
+            Journal.Error_Len := Authority.Diagnostic_Len;
+            Journal.Error_Reason (1 .. Authority.Diagnostic_Len) :=
+              Authority.Diagnostic (1 .. Authority.Diagnostic_Len);
+      end case;
+   end Load_Evidence;
 
    procedure Generate_Report_Lines
      (Journal     : Journal_Result;
@@ -921,12 +1013,13 @@ package body HRA_N.UI.Report_TUI is
       Year  : Year_Type;
       Month : Month_Type)
    is
-      J_Res : constant Journal_Result := Read_Journal_File (Journal_Path_Str (Paths));
-      P_Res : constant Policy_Result := Read_Policy_File (Policy_Path_Str (Paths));
+      J_Res : Journal_Result;
+      P_Res : Policy_Result;
       Lines : Report_Line_Array;
       Total : Natural := 0;
       Result_Status : Query_Status;
    begin
+      Load_Evidence (Paths, J_Res, P_Res);
       Generate_Report_Lines
         (Journal     => J_Res,
          Policy      => P_Res,
@@ -1069,8 +1162,8 @@ package body HRA_N.UI.Report_TUI is
       Scroll_Offset   : Natural     := 0;
       Running         : Boolean     := True;
 
-      Current_Journal : Journal_Result := Read_Journal_File (Journal_Path_Str (Current_Paths));
-      Current_Policy  : Policy_Result  := Read_Policy_File (Policy_Path_Str (Current_Paths));
+      Current_Journal : Journal_Result;
+      Current_Policy  : Policy_Result;
 
       Lines         : Report_Line_Array;
       Total_Lines   : Natural     := 0;
@@ -1082,11 +1175,11 @@ package body HRA_N.UI.Report_TUI is
 
       procedure Reload is
       begin
-         Current_Journal := Read_Journal_File (Journal_Path_Str (Current_Paths));
-         Current_Policy  := Read_Policy_File (Policy_Path_Str (Current_Paths));
+         Load_Evidence (Current_Paths, Current_Journal, Current_Policy);
          Dirty := True;
       end Reload;
    begin
+      Load_Evidence (Current_Paths, Current_Journal, Current_Policy);
       HRA_N.UI.Terminal_Style.Initialize;
       HRA_N.UI.TUI_Input.Start_Mouse_Scroll;
 

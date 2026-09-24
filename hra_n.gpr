@@ -38,7 +38,7 @@ project HRA_N is
    end Builder;
 
    type Host_OS_Type is ("Darwin", "Linux", "Windows_NT", "Unknown");
-   Host_OS : Host_OS_Type := external ("HRA_TARGET_OS", "Unknown");
+   Host_OS : Host_OS_Type := external ("HRA_TARGET_OS", "Darwin");
 
    package Linker is
       case Host_OS is

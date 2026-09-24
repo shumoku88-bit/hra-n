@@ -3,9 +3,12 @@
 --  Package body: HRA_N.Application.Relation_Query
 -------------------------------------------------------------------------------
 
+with Ada.Directories;
+with HRA_N.Application.Canonical_Authority;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
+with HRA_N.Storage.Loam_Actual_Reader;
 
 package body HRA_N.Application.Relation_Query is
 
@@ -78,13 +81,48 @@ package body HRA_N.Application.Relation_Query is
             Identity => Make_Token (Snapshot_Id_Str (Paths)));
       end if;
 
-      Journal := Read_Journal_File (Journal_Path_Str (Paths));
-      if not Journal.Success then
-         Set_Diagnostic
-           ("journal.hra: " &
-            Journal.Error_Reason (1 .. Journal.Error_Len));
-         return View;
-      end if;
+      declare
+         use HRA_N.Application.Canonical_Authority;
+         Root      : constant String := Data_Dir_Str (Paths);
+         Authority : constant Authority_Probe := Probe (Root);
+      begin
+         case Authority.State is
+            when Canonical_Present =>
+               declare
+                  Actual_Path : constant String :=
+                    Ada.Directories.Compose (Root, "actual.loam");
+                  Act_Res : constant HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result :=
+                    HRA_N.Storage.Loam_Actual_Reader.Read_Loam_Actual_File (Actual_Path);
+               begin
+                  if not Act_Res.Success then
+                     Set_Diagnostic
+                       ("actual.loam: "
+                        & Act_Res.Error_Reason (1 .. Act_Res.Error_Len));
+                     return View;
+                  end if;
+
+                  --  Under canonical LOAM authority, relations/discharges are co-published
+                  --  in actual.loam. When empty, report 0 open claims.
+                  View.Success := True;
+                  View.Status := Query_Complete;
+                  View.Count := 0;
+                  return View;
+               end;
+
+            when Probe_Failed =>
+               Set_Diagnostic (Authority.Diagnostic (1 .. Authority.Diagnostic_Len));
+               return View;
+
+            when Legacy_Only =>
+               Journal := Read_Journal_File (Journal_Path_Str (Paths));
+               if not Journal.Success then
+                  Set_Diagnostic
+                    ("journal.hra: " &
+                     Journal.Error_Reason (1 .. Journal.Error_Len));
+                  return View;
+               end if;
+         end case;
+      end;
 
       for I in 1 .. Journal.Relations.Claim_Count loop
          exit when View.Count >= Max_Query_Rows;

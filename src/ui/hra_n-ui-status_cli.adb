@@ -5,14 +5,14 @@
 
 with Ada.Strings.Fixed;              use Ada.Strings.Fixed;
 with HRA_N.Core.Types;               use HRA_N.Core.Types;
-with HRA_N.Core.Scheduled;           use HRA_N.Core.Scheduled;
+with HRA_N.Core.Validity;            use HRA_N.Core.Validity;
 with HRA_N.Core.Accounting_Role;     use HRA_N.Core.Accounting_Role;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Statement;    use HRA_N.Application.Statement;
-with HRA_N.UI.Output;                use HRA_N.UI.Output;
-with HRA_N.Storage.Policy_Reader;
-with HRA_N.Storage.Scheduled_Journal_Reader;
+with HRA_N.Application.Home_Query;
 with HRA_N.Application.Balance_Query;
+with HRA_N.Application.Review;
+with HRA_N.UI.Output;                use HRA_N.UI.Output;
 
 package body HRA_N.UI.Status_CLI is
 
@@ -21,19 +21,17 @@ package body HRA_N.UI.Status_CLI is
 
    procedure Display_Status
      (Paths   : Path_Config;
-      Events  : Event_Vectors.Vector;
       Success : out Boolean)
    is
       Statement : Statement_Report;
-      PR        : constant HRA_N.Storage.Policy_Reader.Policy_Result :=
-        HRA_N.Storage.Policy_Reader.Read_Policy_File (Policy_Path_Str (Paths));
-      SR        : constant HRA_N.Storage.Scheduled_Journal_Reader.Scheduled_Journal_Result :=
-        HRA_N.Storage.Scheduled_Journal_Reader.Read_Scheduled_Journal_File (Scheduled_Path_Str (Paths));
+      Today     : constant Date_Type := HRA_N.Application.Review.Get_System_Date;
+      Home      : constant HRA_N.Application.Home_Query.Home_View :=
+        HRA_N.Application.Home_Query.Execute (Paths, (Selected_Day => Today));
    begin
       Success := False;
 
-      if not PR.Success or else not SR.Success then
-         Put_Error_Line ("hra-n: HRA status evidence could not be acquired");
+      if Home.Status = Query_Rejected then
+         Put_Error_Line ("hra-n: " & Home.Diagnostic (1 .. Home.Diagnostic_Len));
          return;
       end if;
 
@@ -47,7 +45,7 @@ package body HRA_N.UI.Status_CLI is
       Put_Line (" HRA-N Household Status (Canonical Storage)");
       Put_Line ("============================================================");
       Put_Line ("Authority : HEALTHY");
-      Put_Line ("Events    : " & Trim (Events.Length'Image, Ada.Strings.Both));
+      Put_Line ("Events    : " & Trim (Home.Total_Actual'Image, Ada.Strings.Both));
       if Is_Complete (Statement) then
          Put_Line ("Statement : COMPLETE");
          Put_Line ("Net worth : " & Img (Net_Worth (Statement.Summary)));
@@ -79,20 +77,9 @@ package body HRA_N.UI.Status_CLI is
          end loop;
       end;
 
-      --  Count open scheduled items
-      declare
-         Open_Count : Natural := 0;
-      begin
-         for I in 1 .. SR.Lifecycle.Sched_Count loop
-            if Is_Current_Open (SR.Lifecycle, SR.Lifecycle.Sched_Items (I).Id) then
-               Open_Count := Open_Count + 1;
-            end if;
-         end loop;
-
-         Put_Line ("------------------------------------------------------------");
-         Put_Line ("Scheduled Obligations: " & Trim (Open_Count'Image, Ada.Strings.Both) & " open");
-         Put_Line ("============================================================");
-      end;
+      Put_Line ("------------------------------------------------------------");
+      Put_Line ("Scheduled Obligations: " & Trim (Home.Open_Scheduled'Image, Ada.Strings.Both) & " open");
+      Put_Line ("============================================================");
 
       Success := True;
    end Display_Status;

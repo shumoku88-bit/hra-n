@@ -1,7 +1,13 @@
-with HRA_N.Core.Types; use HRA_N.Core.Types;
+with Ada.Directories;
+with HRA_N.Core.Types;    use HRA_N.Core.Types;
+with HRA_N.Application.Canonical_Authority;
+with HRA_N.Application.Review; use HRA_N.Application.Review;
 with HRA_N.Application.Statement;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
-with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
+with HRA_N.Storage.Policy_Reader;  use HRA_N.Storage.Policy_Reader;
+with HRA_N.Storage.Loam_Actual_Reader;
+with HRA_N.Storage.Loam_Capacity_Reader;
+with HRA_N.Storage.Loam_Actual_Routing_Reader;
 
 package body HRA_N.Application.Budget_Query is
    use HRA_N.Application.Frontend_Types;
@@ -104,27 +110,96 @@ package body HRA_N.Application.Budget_Query is
          Result.Snapshot :=
            (Kind => Snapshot_Versioned, Identity => Make_Token (Snapshot_Id_Str (Paths)));
       end if;
+
       declare
-         Journal : constant Journal_Result := Read_Journal_File (Journal_Path_Str (Paths));
-         Policy  : constant Policy_Result := Read_Policy_File (Policy_Path_Str (Paths));
-         Window  : Date_Interval := (Start_Date, End_Date);
+         use HRA_N.Application.Canonical_Authority;
+         Root      : constant String := Data_Dir_Str (Paths);
+         Authority : constant Authority_Probe := Probe (Root);
       begin
-         if Use_Policy_Window and then Journal.Success and then Policy.Success then
-            if not Policy.Has_Window then
-               Reject
-                 (Result, "no WINDOW preset in policy.hra;"
-                  & " use an explicit budget window for one-shot queries");
-               return Result;
-            end if;
-            Window := (Policy.Window_Start, Policy.Window_End);
-         end if;
-         Result := Project (Journal, Policy, Window, Result.Snapshot);
-         if Use_Policy_Window and then Result.Status /= Query_Rejected then
-            Result.Window_Len :=
-              Natural'Min (Policy.Window_Name.Length, Result.Window_Name'Length);
-            Result.Window_Name (1 .. Result.Window_Len) :=
-              Policy.Window_Name.Value (1 .. Result.Window_Len);
-         end if;
+         case Authority.State is
+            when Canonical_Present =>
+               declare
+                  Actual : constant HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result :=
+                    HRA_N.Storage.Loam_Actual_Reader.Read_Loam_Actual_File
+                      (Ada.Directories.Compose (Root, "actual.loam"));
+                  Cap    : constant HRA_N.Storage.Loam_Capacity_Reader.Read_Result :=
+                    HRA_N.Storage.Loam_Capacity_Reader.Read_File
+                      (Ada.Directories.Compose (Root, "capacity.loam"));
+                  Route  : constant HRA_N.Storage.Loam_Actual_Routing_Reader.Read_Result :=
+                    HRA_N.Storage.Loam_Actual_Routing_Reader.Read_File
+                      (Ada.Directories.Compose (Root, "actual-routing.loam"));
+                  Journal : Journal_Result;
+                  Policy  : Policy_Result;
+                  Window  : Date_Interval := (Start_Date, End_Date);
+               begin
+                  if not Actual.Success then
+                     Reject (Result, "actual.loam: " & Actual.Error_Reason (1 .. Actual.Error_Len));
+                     return Result;
+                  elsif not Cap.Success then
+                     Reject (Result, "capacity.loam: " & Cap.Error_Reason (1 .. Cap.Error_Len));
+                     return Result;
+                  elsif not Route.Success then
+                     Reject (Result, "actual-routing.loam: " & Route.Error_Reason (1 .. Route.Error_Len));
+                     return Result;
+                  end if;
+
+                  Journal.Success := True;
+                  for E of Actual.Events loop
+                     Journal.Events.Append (E);
+                  end loop;
+                  Journal.Validities   := Actual.Validities;
+                  Journal.Descriptions := Actual.Descriptions;
+                  Journal.Metadata     := Actual.Metadata;
+
+                  Policy.Success    := True;
+                  Policy.Capacities := Cap.Capacity;
+                  Policy.Routing    := Route.Routing;
+
+                  if Use_Policy_Window then
+                     declare
+                        Sys_D     : constant Date_Type := Get_System_Date;
+                        Start_D   : constant Date_Type := (Year => Sys_D.Year, Month => Sys_D.Month, Day => 1);
+                        End_D     : constant Date_Type :=
+                          Next_Day ((Sys_D.Year, Sys_D.Month, Days_In_Month (Sys_D.Year, Sys_D.Month)));
+                        Month_Str : constant String := Format_Iso_Date (Start_D);
+                     begin
+                        Window := (Start_D, End_D);
+                        Result.Window_Len := 7;
+                        Result.Window_Name (1 .. 7) := Month_Str (Month_Str'First .. Month_Str'First + 6);
+                     end;
+                  end if;
+
+                  Result := Project (Journal, Policy, Window, (Kind => Snapshot_Unversioned));
+                  return Result;
+               end;
+
+            when Legacy_Only =>
+               declare
+                  Journal : constant Journal_Result := Read_Journal_File (Journal_Path_Str (Paths));
+                  Policy  : constant Policy_Result := Read_Policy_File (Policy_Path_Str (Paths));
+                  Window  : Date_Interval := (Start_Date, End_Date);
+               begin
+                  if Use_Policy_Window and then Journal.Success and then Policy.Success then
+                     if not Policy.Has_Window then
+                        Reject
+                          (Result, "no WINDOW preset in policy.hra;"
+                           & " use an explicit budget window for one-shot queries");
+                        return Result;
+                     end if;
+                     Window := (Policy.Window_Start, Policy.Window_End);
+                  end if;
+                  Result := Project (Journal, Policy, Window, Result.Snapshot);
+                  if Use_Policy_Window and then Result.Status /= Query_Rejected then
+                     Result.Window_Len :=
+                       Natural'Min (Policy.Window_Name.Length, Result.Window_Name'Length);
+                     Result.Window_Name (1 .. Result.Window_Len) :=
+                       Policy.Window_Name.Value (1 .. Result.Window_Len);
+                  end if;
+               end;
+
+            when Probe_Failed =>
+               Reject (Result, Authority.Diagnostic (1 .. Authority.Diagnostic_Len));
+         end case;
       end;
       return Result;
    end Execute_Internal;
