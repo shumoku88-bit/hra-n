@@ -206,7 +206,6 @@ begin
                Target_Id : constant String :=
                  Ada.Command_Line.Argument (Arg_Offset + 1);
                Date_Val  : Date_Type := Get_System_Date;
-               Date_Was_Explicit : Boolean := False;
                Desc_Val  : String (1 .. 128) := [others => ' '];
                Desc_Len  : Natural := 0;
             begin
@@ -218,7 +217,6 @@ begin
                   begin
                      if Parse_Iso_Date (Arg_2, Parsed_D) then
                         Date_Val := Parsed_D;
-                        Date_Was_Explicit := True;
 
                         if Eff_Rem = 3 then
                            declare

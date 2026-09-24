@@ -3,7 +3,6 @@
 -------------------------------------------------------------------------------
 
 with HRA_N.Core.Types;           use HRA_N.Core.Types;
-with HRA_N.Application.Attention_Query;
 with HRA_N.Application.Statement; use HRA_N.Application.Statement;
 
 package body HRA_N.Application.Home_Query is

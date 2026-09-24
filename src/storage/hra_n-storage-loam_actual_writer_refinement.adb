@@ -10,7 +10,6 @@ use HRA_N.Core.Actual_Reader_Refinement;
 with HRA_N.Core.Actual_Writer_Transition;
 use HRA_N.Core.Actual_Writer_Transition;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
-with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Storage.Loam_Actual_Refinement;
 use HRA_N.Storage.Loam_Actual_Refinement;
 

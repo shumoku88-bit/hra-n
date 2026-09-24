@@ -7,7 +7,6 @@ with Ada.Command_Line;
 with Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
-with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Review; use HRA_N.Application.Review;
 with HRA_N.Application.Scheduled_Query; use HRA_N.Application.Scheduled_Query;
 with HRA_N.Application.Scheduled_Detail_Query; use HRA_N.Application.Scheduled_Detail_Query;

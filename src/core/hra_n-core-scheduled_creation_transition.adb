@@ -25,6 +25,8 @@ is
      (Source_Left, Source_Right : Scheduled_Occurrence;
       Target_Left, Target_Right : Scheduled_Occurrence)
    is
+      pragma Unreferenced (Source_Left, Source_Right);
+      pragma Unreferenced (Target_Left, Target_Right);
    begin
       null;
    end Prove_Id_Pair_Substitution;

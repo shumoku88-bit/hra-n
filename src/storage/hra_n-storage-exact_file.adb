@@ -1,5 +1,4 @@
 with Ada.Streams;
-with Ada.Streams.Stream_IO;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 
 package body HRA_N.Storage.Exact_File is

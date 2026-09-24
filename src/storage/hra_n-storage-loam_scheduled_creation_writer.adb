@@ -3,7 +3,6 @@ with Ada.Strings; use Ada.Strings;
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 with HRA_N.Core.Admission; use HRA_N.Core.Admission;
-with HRA_N.Core.Event;
 with HRA_N.Storage.Atomic_Writer;
 with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.File_Lock;
@@ -310,7 +309,7 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
       end loop;
 
       declare
-         Probe : Scheduled_Occurrence :=
+         Probe : constant Scheduled_Occurrence :=
            (Id           => (Token => Make_Token ("scheduled-probe")),
             Expected_Day => Draft.Expected_Day,
             Measure      => Draft.Measure,

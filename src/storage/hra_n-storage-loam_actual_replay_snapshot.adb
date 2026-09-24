@@ -5,10 +5,8 @@
 
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with HRA_N.Core.Description; use HRA_N.Core.Description;
-with HRA_N.Core.Event;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
-with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.Loam_Actual_Reader;
 use HRA_N.Storage.Loam_Actual_Reader;
 

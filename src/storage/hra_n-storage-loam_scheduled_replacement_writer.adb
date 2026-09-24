@@ -6,7 +6,6 @@ with HRA_N.Core.Admission; use HRA_N.Core.Admission;
 with HRA_N.Core.Event;
 with HRA_N.Core.Scheduled_Replacement_Transition;
 use HRA_N.Core.Scheduled_Replacement_Transition;
-with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Storage.Atomic_Writer;
 with HRA_N.Storage.Exact_File;
 with HRA_N.Storage.File_Lock;
