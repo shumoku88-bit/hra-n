@@ -2009,6 +2009,51 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("crypto", role_list.stdout)
         self.assertIn("ASSET", role_list.stdout)
 
+    def test_canonical_actual_routing(self):
+        # 1. Initialize canonical authority
+        self.assertEqual(self.run_cmd("init", "--canonical").returncode, 0)
+
+        # 2. Admit new locus
+        self.assertEqual(self.run_cmd("locus", "add", "bookstore").returncode, 0)
+
+        # 3. Route unadmitted locus must fail-closed
+        unadmitted = self.run_cmd("route", "set", "unadmitted-shop", "books")
+        self.assertNotEqual(unadmitted.returncode, 0)
+        self.assertIn("not admitted", unadmitted.stdout + unadmitted.stderr)
+
+        # 4. Set initial managed route for admitted locus
+        res = self.run_cmd("route", "set", "bookstore", "books", "initial")
+        self.assertEqual(res.returncode, 0, f"route set failed: {res.stdout}")
+        self.assertIn("[OK] Committed Canonical Actual Routing: bookstore -> books", res.stdout)
+        self.assertIn("AUTHORITY: actual-routing.loam", res.stdout)
+
+        routing_path = os.path.join(self.test_dir, "actual-routing.loam")
+        with open(routing_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("ROUTE\tbookstore\tINITIAL\tMANAGED\tbooks\n", content)
+
+        # 5. Duplicate coordinate must fail-closed
+        dup = self.run_cmd("route", "set", "bookstore", "other", "initial")
+        self.assertNotEqual(dup.returncode, 0)
+        self.assertIn("already has evidence", dup.stdout + dup.stderr)
+
+        # 6. Set dated unmanaged route (route clear)
+        res_clear = self.run_cmd("route", "clear", "bookstore", "2026-09-30")
+        self.assertEqual(res_clear.returncode, 0, f"route clear failed: {res_clear.stdout}")
+        self.assertIn("[OK] Committed Canonical Actual Routing: bookstore -> UNMANAGED", res_clear.stdout)
+        self.assertIn("EFFECTIVE: 2026-09-30", res_clear.stdout)
+
+        with open(routing_path, "r", encoding="utf-8") as f:
+            updated_content = f.read()
+        self.assertIn("ROUTE\tbookstore\tFROM\t2026-09-30\tUNMANAGED\n", updated_content)
+
+        # 7. Route list inspection
+        res_list = self.run_cmd("route", "list", "--history")
+        self.assertEqual(res_list.returncode, 0)
+        self.assertIn("bookstore", res_list.stdout)
+        self.assertIn("books", res_list.stdout)
+        self.assertIn("UNMANAGED", res_list.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

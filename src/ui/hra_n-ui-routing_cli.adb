@@ -11,6 +11,7 @@ with HRA_N.Application.Review;         use HRA_N.Application.Review;
 with HRA_N.Core.Actual_Routing;        use HRA_N.Core.Actual_Routing;
 with HRA_N.Core.Types;                 use HRA_N.Core.Types;
 with HRA_N.Core.Validity;              use HRA_N.Core.Validity;
+with HRA_N.Storage.Loam_Actual_Routing_Writer;
 with HRA_N.UI.Output;                  use HRA_N.UI.Output;
 
 package body HRA_N.UI.Routing_CLI is
@@ -64,49 +65,85 @@ package body HRA_N.UI.Routing_CLI is
                   end if;
                end if;
 
-               declare
-                  Intent : constant Routing_Intent :=
-                    (Locus          => (Token => Make_Token (Locus_Str)),
-                     Effective_Kind => Kind,
-                     Effective_On   => Date,
-                     Managed        => Set_Mode,
-                     Purpose        => Make_Token (Purpose_Str));
-                  Proposed : constant Proposal_Result :=
-                    Propose_Routing (Paths, Intent);
-               begin
-                  if not Proposed.Success then
-                     Put_Error_Line ("hra-n route rejected:");
-                     if Proposed.Error_Len > 0 then
-                        Put_Error_Line
-                          ("  " & Proposed.Error (1 .. Proposed.Error_Len));
-                     end if;
-                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                     return;
-                  end if;
+               if Paths.Is_Canonical then
                   declare
-                     Receipt : constant Policy_Receipt := Commit (Proposed.Proposal);
+                     Data_Dir : constant String := Data_Dir_Str (Paths);
+                     Draft    : constant
+                       HRA_N.Storage.Loam_Actual_Routing_Writer.Routing_Draft :=
+                         (Locus          => (Token => Make_Token (Locus_Str)),
+                          Effective_Kind => Kind,
+                          Effective_On   => Date,
+                          Managed        => Set_Mode,
+                          Purpose        => Make_Token (Purpose_Str));
+                     Pub_Res  : constant
+                       HRA_N.Storage.Loam_Actual_Routing_Writer.Publish_Result :=
+                         HRA_N.Storage.Loam_Actual_Routing_Writer.Publish_Route
+                           (Data_Dir, Draft);
                   begin
-                     if not Receipt.Success then
-                        Put_Error_Line ("hra-n route commit failed:");
-                        if Receipt.Error_Len > 0 then
+                     if not Pub_Res.Success then
+                        Put_Error_Line ("hra-n route rejected:");
+                        if Pub_Res.Error_Len > 0 then
                            Put_Error_Line
-                             ("  " & Receipt.Error (1 .. Receipt.Error_Len));
+                             ("  " & Pub_Res.Error_Reason (1 .. Pub_Res.Error_Len));
                         end if;
-                        Ada.Command_Line.Set_Exit_Status
-                          (Ada.Command_Line.Failure);
+                        Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
                         return;
                      end if;
+
                      Put_Line
-                       ("[OK] Committed Actual Routing: "
-                        & Receipt.Primary_Id (1 .. Receipt.Primary_Len));
+                       ("[OK] Committed Canonical Actual Routing: " & Locus_Str &
+                        (if Set_Mode then " -> " & Purpose_Str else " -> UNMANAGED"));
                      Put_Line
-                       ("EFFECTIVE: "
-                        & Receipt.Secondary_Id (1 .. Receipt.Secondary_Len));
-                     Put_Line
-                       ("SNAPSHOT: "
-                        & Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                       ("EFFECTIVE: " &
+                        (if Kind = Routing_Initial then "INITIAL"
+                         else Format_Iso_Date (Date)));
+                     Put_Line ("AUTHORITY: actual-routing.loam");
                   end;
-               end;
+               else
+                  declare
+                     Intent : constant Routing_Intent :=
+                       (Locus          => (Token => Make_Token (Locus_Str)),
+                        Effective_Kind => Kind,
+                        Effective_On   => Date,
+                        Managed        => Set_Mode,
+                        Purpose        => Make_Token (Purpose_Str));
+                     Proposed : constant Proposal_Result :=
+                       Propose_Routing (Paths, Intent);
+                  begin
+                     if not Proposed.Success then
+                        Put_Error_Line ("hra-n route rejected:");
+                        if Proposed.Error_Len > 0 then
+                           Put_Error_Line
+                             ("  " & Proposed.Error (1 .. Proposed.Error_Len));
+                        end if;
+                        Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                        return;
+                     end if;
+                     declare
+                        Receipt : constant Policy_Receipt := Commit (Proposed.Proposal);
+                     begin
+                        if not Receipt.Success then
+                           Put_Error_Line ("hra-n route commit failed:");
+                           if Receipt.Error_Len > 0 then
+                              Put_Error_Line
+                                ("  " & Receipt.Error (1 .. Receipt.Error_Len));
+                           end if;
+                           Ada.Command_Line.Set_Exit_Status
+                             (Ada.Command_Line.Failure);
+                           return;
+                        end if;
+                        Put_Line
+                          ("[OK] Committed Actual Routing: "
+                           & Receipt.Primary_Id (1 .. Receipt.Primary_Len));
+                        Put_Line
+                          ("EFFECTIVE: "
+                           & Receipt.Secondary_Id (1 .. Receipt.Secondary_Len));
+                        Put_Line
+                          ("SNAPSHOT: "
+                           & Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                     end;
+                  end;
+               end if;
             end;
          end;
       else
