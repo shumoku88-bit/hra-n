@@ -47,6 +47,25 @@ package body HRA_N.Storage.Loam_Actual_Reader is
       end if;
    end Finalize;
 
+   function Make_Failure
+     (Status  : Actual_Read_Status;
+      At_Line : Natural;
+      Message : String) return Loam_Actual_Result
+   is
+      Result : Loam_Actual_Result (Success => False);
+      N      : constant Natural :=
+        Natural'Min (Message'Length, Result.Error_Reason'Length);
+   begin
+      Result.Status     := Status;
+      Result.Error_Line := At_Line;
+      Result.Error_Len  := N;
+      if N > 0 then
+         Result.Error_Reason (1 .. N) :=
+           Message (Message'First .. Message'First + N - 1);
+      end if;
+      return Result;
+   end Make_Failure;
+
    Header : constant String := "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1";
 
    function Is_Row
@@ -202,39 +221,22 @@ package body HRA_N.Storage.Loam_Actual_Reader is
          Workspace.Data := new Reader_Workspace;
       end Allocate_Workspace;
 
-      procedure Set_Error
-        (At_Line : Natural;
-         Message : String)
-      is
-         N : constant Natural :=
-           Natural'Min (Message'Length, Workspace.Data.Result.Error_Reason'Length);
-      begin
-         Workspace.Data.Result.Success := False;
-         Workspace.Data.Result.Error_Line := At_Line;
-         Workspace.Data.Result.Error_Reason := [others => ' '];
-         Workspace.Data.Result.Error_Len := N;
-         if N > 0 then
-            Workspace.Data.Result.Error_Reason (1 .. N) :=
-              Message (Message'First .. Message'First + N - 1);
-         end if;
-      end Set_Error;
-
       function Fail
-        (At_Line : Natural;
+        (Status  : Actual_Read_Status;
+         At_Line : Natural;
          Message : String) return Loam_Actual_Result
       is
       begin
-         Set_Error (At_Line, Message);
-         return Workspace.Data.Result;
+         return Make_Failure (Status, At_Line, Message);
       end Fail;
 
    begin
       Allocate_Workspace;
 
       if Content'Length = 0 then
-         return Fail (0, "LOAM Actual document is empty");
+         return Fail (Document_Empty, 0, "LOAM Actual document is empty");
       elsif Content (Content'Last) /= ASCII.LF then
-         return Fail (0, "LOAM Actual document must end with newline");
+         return Fail (Missing_Final_Newline, 0, "LOAM Actual document must end with newline");
       end if;
 
       declare
@@ -243,12 +245,12 @@ package body HRA_N.Storage.Loam_Actual_Reader is
       begin
          Next_Line (Content, Position, First_Line, Have_Line);
          if not Have_Line then
-            return Fail (0, "LOAM Actual document is empty");
+            return Fail (Document_Empty, 0, "LOAM Actual document is empty");
          end if;
 
          Line_No := 1;
          if To_String (First_Line) /= Header then
-            return Fail (Line_No, "unsupported LOAM Actual header");
+            return Fail (Unsupported_Header, Line_No, "unsupported LOAM Actual header");
          end if;
       end;
 
@@ -257,7 +259,7 @@ package body HRA_N.Storage.Loam_Actual_Reader is
            or else Workspace.Data.Metadata_Entries.Count = Metadata_Count'Last
          then
             return Fail
-              (Line_No + 1, "HRA-N Actual bridge capacity exceeded");
+              (Capacity_Exceeded, Line_No + 1, "HRA-N Actual bridge capacity exceeded");
          end if;
 
          declare
@@ -267,7 +269,7 @@ package body HRA_N.Storage.Loam_Actual_Reader is
          begin
             Next_Line (Content, Position, First_Row, Have_Line);
             if not Have_Line then
-               return Fail (Line_No + 1, "missing final ENDTX");
+               return Fail (Syntax_Error, Line_No + 1, "missing final ENDTX");
             end if;
 
             declare
@@ -279,12 +281,12 @@ package body HRA_N.Storage.Loam_Actual_Reader is
                Line_No := Line_No + 1;
 
                if not Is_Row (First_Line, "TX") then
-                  return Fail (Line_No, "expected TX row");
+                  return Fail (Syntax_Error, Line_No, "expected TX row");
                end if;
 
                while not Starts_With (To_String (Last_Line), "ENDTX") loop
                   if Position > Content'Last then
-                     return Fail (Line_No, "missing final ENDTX");
+                     return Fail (Syntax_Error, Line_No, "missing final ENDTX");
                   end if;
 
                   declare
@@ -293,7 +295,7 @@ package body HRA_N.Storage.Loam_Actual_Reader is
                   begin
                      Next_Line (Content, Position, Line, Have_Next);
                      if not Have_Next then
-                        return Fail (Line_No, "missing final ENDTX");
+                        return Fail (Syntax_Error, Line_No, "missing final ENDTX");
                      end if;
                      Line_No := Line_No + 1;
                      Append (Block, To_String (Line) & ASCII.LF);
@@ -312,20 +314,22 @@ package body HRA_N.Storage.Loam_Actual_Reader is
                begin
                   if not Decoded.Success then
                      if Decoded.Error_Len = 0 then
-                        return Fail (Error_Line, "invalid Event block");
+                        return Fail (Syntax_Error, Error_Line, "invalid Event block");
                      else
                         return Fail
-                          (Error_Line,
+                          (Syntax_Error,
+                           Error_Line,
                            Decoded.Error_Reason (1 .. Decoded.Error_Len));
                      end if;
                   elsif Event_Exists (Workspace.Data.Result.Events, Id (Decoded.Value)) then
-                     return Fail (Block_Start, "duplicate Event identity");
+                     return Fail (Duplicate_Event_Id, Block_Start, "duplicate Event identity");
                   elsif Decoded.Has_Description
                     and then
                       Workspace.Data.Description_Entries.Count = Description_Count_Type'Last
                   then
                      return Fail
-                       (Block_Start,
+                       (Capacity_Exceeded,
+                        Block_Start,
                         "HRA-N description bridge capacity exceeded");
                   end if;
 
@@ -355,17 +359,18 @@ package body HRA_N.Storage.Loam_Actual_Reader is
         or else not Metadata_Event_Ids_Are_Unique (Workspace.Data.Metadata_Entries)
       then
          return Fail
-           (Line_No, "duplicate Event identity in decoded evidence");
+           (Duplicate_Event_Id,
+            Line_No, "duplicate Event identity in decoded evidence");
       elsif not Replacement_References_Are_Closed (Workspace.Data.Metadata_Entries)
         or else not Replacements_Are_One_To_One (Workspace.Data.Metadata_Entries)
         or else not Replacements_Are_Acyclic (Workspace.Data.Metadata_Entries)
       then
-         return Fail (Line_No, "invalid Event replacement topology");
+         return Fail (Invalid_Topology, Line_No, "invalid Event replacement topology");
       elsif not Reversal_References_Are_Closed (Workspace.Data.Metadata_Entries)
         or else not Reversals_Are_One_To_One (Workspace.Data.Metadata_Entries)
         or else not Reversals_Have_No_Chains (Workspace.Data.Metadata_Entries)
       then
-         return Fail (Line_No, "invalid reversal topology");
+         return Fail (Invalid_Topology, Line_No, "invalid reversal topology");
       end if;
 
       for I in 1 .. Workspace.Data.Metadata_Entries.Count loop
@@ -388,12 +393,14 @@ package body HRA_N.Storage.Loam_Actual_Reader is
                   Have_Target);
                if not Have_Reversal or else not Have_Target then
                   return Fail
-                    (Line_No, "reversal endpoint is not readable");
+                    (Invalid_Topology,
+                     Line_No, "reversal endpoint is not readable");
                elsif not Exact_Physical_Inverse
                  (Target_Event, Reversal_Event)
                then
                   return Fail
-                    (Line_No,
+                    (Invalid_Topology,
+                     Line_No,
                      "reversal is not the exact physical inverse");
                end if;
             end;
@@ -403,13 +410,13 @@ package body HRA_N.Storage.Loam_Actual_Reader is
       Workspace.Data.Result.Validities := Make_Validity_Memory (Workspace.Data.Validity_Entries);
       Workspace.Data.Result.Descriptions := Make_Description_Memory (Workspace.Data.Description_Entries);
       Workspace.Data.Result.Metadata := Make_Metadata_Memory (Workspace.Data.Metadata_Entries);
-      Workspace.Data.Result.Success := True;
       return Workspace.Data.Result;
 
    exception
       when E : others =>
          return Fail
-           (Line_No,
+           (IO_Error,
+            Line_No,
             "unexpected LOAM Actual reader failure: "
             & Ada.Exceptions.Exception_Name (E)
             & (if Ada.Exceptions.Exception_Message (E)'Length = 0
@@ -422,38 +429,42 @@ package body HRA_N.Storage.Loam_Actual_Reader is
    is
       Exact : constant HRA_N.Storage.Exact_File.Read_Result :=
         HRA_N.Storage.Exact_File.Read_All (Path);
-      Message : constant String := "cannot read LOAM Actual file";
    begin
       if not Exact.Success then
-         return Failure : Loam_Actual_Result do
-            Failure.Error_Line := 0;
-            Failure.Error_Len := Message'Length;
-            Failure.Error_Reason (1 .. Message'Length) := Message;
-         end return;
+         return Make_Failure
+           (IO_Error, 0, "cannot read LOAM Actual file");
       end if;
 
       return Read_Loam_Actual_Content (To_String (Exact.Content));
    exception
       when E : others =>
-         declare
-            Text : constant String :=
-              "unexpected LOAM Actual file-reader failure: "
-              & Ada.Exceptions.Exception_Name (E)
-              & (if Ada.Exceptions.Exception_Message (E)'Length = 0
-                 then ""
-                 else ": " & Ada.Exceptions.Exception_Message (E));
-         begin
-            return Fallback : Loam_Actual_Result do
-               Fallback.Error_Line := 0;
-               Fallback.Error_Len :=
-                 Natural'Min (Text'Length, Fallback.Error_Reason'Length);
-               if Fallback.Error_Len > 0 then
-                  Fallback.Error_Reason (1 .. Fallback.Error_Len) :=
-                    Text
-                      (Text'First .. Text'First + Fallback.Error_Len - 1);
-               end if;
-            end return;
-         end;
+         return Make_Failure
+           (IO_Error, 0,
+            "unexpected LOAM Actual file-reader failure: "
+            & Ada.Exceptions.Exception_Name (E)
+            & (if Ada.Exceptions.Exception_Message (E)'Length = 0
+               then ""
+               else ": " & Ada.Exceptions.Exception_Message (E)));
    end Read_Loam_Actual_File;
+
+   function Format_Error (Result : Loam_Actual_Result) return String is
+   begin
+      if Result.Success then
+         return "";
+      elsif Result.Error_Len > 0 then
+         return Result.Error_Reason (1 .. Result.Error_Len);
+      else
+         case Result.Status is
+            when Document_Empty        => return "LOAM Actual document is empty";
+            when Missing_Final_Newline => return "LOAM Actual document must end with newline";
+            when Unsupported_Header    => return "unsupported LOAM Actual header";
+            when Syntax_Error          => return "syntax error in LOAM Actual document";
+            when Duplicate_Event_Id    => return "duplicate Event identity";
+            when Capacity_Exceeded     => return "exceeded maximum admitted Events";
+            when Invalid_Topology      => return "invalid Event topology";
+            when IO_Error              => return "I/O error reading LOAM Actual document";
+         end case;
+      end if;
+   end Format_Error;
 
 end HRA_N.Storage.Loam_Actual_Reader;

@@ -28,8 +28,7 @@ package body HRA_N.Storage.Loam_Actual_Replay_Snapshot is
          end;
       end if;
       Snapshot.Count := 0;
-      Snapshot.Admitted.Success := False;
-      Snapshot.Admitted.Events.Clear;
+      Snapshot.Admitted := (Success => False, others => <>);
    end Close_Quietly;
 
    procedure Open

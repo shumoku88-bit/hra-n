@@ -32,16 +32,32 @@ package HRA_N.Storage.Loam_Actual_Reader is
      (Index_Type   => Positive,
       Element_Type => Event);
 
-   type Loam_Actual_Result is record
-      Success      : Boolean := False;
-      Events       : Event_Vectors.Vector;
-      Validities   : Validity_Memory;
-      Descriptions : Description_Memory;
-      Metadata     : Metadata_Memory;
-      Error_Line   : Natural := 0;
-      Error_Reason : String (1 .. 160) := [others => ' '];
-      Error_Len    : Natural := 0;
+   type Actual_Read_Status is
+     (Document_Empty,
+      Missing_Final_Newline,
+      Unsupported_Header,
+      Syntax_Error,
+      Duplicate_Event_Id,
+      Capacity_Exceeded,
+      Invalid_Topology,
+      IO_Error);
+
+   type Loam_Actual_Result (Success : Boolean := True) is record
+      Events : Event_Vectors.Vector;
+      case Success is
+         when True =>
+            Validities   : Validity_Memory;
+            Descriptions : Description_Memory;
+            Metadata     : Metadata_Memory;
+         when False =>
+            Status       : Actual_Read_Status := Syntax_Error;
+            Error_Line   : Natural := 0;
+            Error_Reason : String (1 .. 160) := [others => ' '];
+            Error_Len    : Natural := 0;
+      end case;
    end record;
+
+   function Format_Error (Result : Loam_Actual_Result) return String;
 
    --  Admit an exact byte image without reopening a pathname.  This is the
    --  semantic parser used when another component already owns the file object

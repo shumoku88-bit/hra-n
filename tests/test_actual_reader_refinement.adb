@@ -140,7 +140,6 @@ package body Test_Actual_Reader_Refinement is
          Duplicate : Loam_Actual_Result;
          Adapted   : Adapter_Result;
       begin
-         Duplicate.Success := True;
          Duplicate.Events.Append (Parsed.Events.Element (1));
          Duplicate.Events.Append (Parsed.Events.Element (1));
          Adapted := To_Bounded_Semantic_Image (Duplicate, Snapshot);
