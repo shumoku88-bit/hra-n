@@ -151,8 +151,13 @@ known-through semantics.
 ### Balances and reconciliation
 
 - `(Locus, Measure)` balances without implicit conversion;
-- known-zero, unknown-origin, and assertion-conflict states;
-- balance assertion entry as evidence, not an invented adjustment transaction.
+- known-zero, unknown-origin, and assertion-conflict states; canonical Actual
+  currently has no qualified assertion source, so its balance answer is PARTIAL
+  with unavailable assertion evidence, not a zero-conflict claim;
+- current canonical Role never establishes historical as-of classification;
+- balance assertion entry as evidence, not an invented adjustment transaction:
+  legacy-only remains writable, canonical Balance is read-only until the
+  canonical assertion protocol is qualified.
 
 ### Budget/capacity
 

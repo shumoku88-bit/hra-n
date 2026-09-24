@@ -138,6 +138,11 @@ zero-disk-I/O navigation, semantic styling, and headless CLI exports
 (`hra-n report --flow`, `--pace`, `--audit`, `--mom`, `--budget`, `--balances`).
 Scalar financial reports currently reject non-JPY journal effects rather than
 combine or relabel measures; use `hra-n balance` for coordinate balances.
+Balance CLI/TUI now select canonical Actual, zero-origin coverage, and current
+AccountingRole when canonical accounting is present, without falling back to
+legacy journal/policy. Canonical assertions remain unavailable: the answer is
+PARTIAL, historical as-of roles remain unknown, and the canonical Balance TUI
+is read-only until a qualified assertion writer exists.
 Statement distinguishes classified changes from known balances: missing stock
 origin evidence or assertion conflicts produce `PARTIAL`, not a qualified net
 worth. Income/Expense remain retained flows. Budget/Pace/Audit show capacity

@@ -13,8 +13,7 @@ with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Assertion_Command; use HRA_N.Application.Assertion_Command;
 with HRA_N.Application.Review; use HRA_N.Application.Review;
-with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
-with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
+
 with HRA_N.UI.Line_Edit; use HRA_N.UI.Line_Edit;
 with HRA_N.UI.Output; use HRA_N.UI.Output;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
@@ -114,10 +113,15 @@ package body HRA_N.UI.Balance_TUI is
          end if;
       end if;
 
+      if Rows > 3 and then View.Status = Query_Partial then
+         Put_Clipped (Rows - 3, View.Diagnostic (1 .. View.Diagnostic_Len));
+      end if;
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "j/k/wheel: select   a: assert balance   f: scope   t: toggle as-of   b/Esc/q: home");
+            (if View.Source = Canonical_Balance
+             then "canonical balances: read-only   f: scope   t: as-of   b/Esc/q: home"
+             else "j/k/wheel: select   a: assert balance   f: scope   t: toggle as-of   b/Esc/q: home"));
       end if;
       Curses.Refresh;
    end Draw;
@@ -134,28 +138,13 @@ package body HRA_N.UI.Balance_TUI is
       Cursor          : Positive := 1;
       Count           : Natural := 0;
       Running         : Boolean := True;
-      Current_Journal : Journal_Result;
-      Current_Policy  : Policy_Result;
       Current_View    : Balance_View;
-
-      procedure Recompute_View is
-         Snap : Snapshot_Reference := (Kind => Snapshot_Unversioned);
-      begin
-         if Current_Paths.Is_Versioned then
-            Snap := (Kind => Snapshot_Versioned, Identity => Make_Token (Snapshot_Id_Str (Current_Paths)));
-         end if;
-         Current_View := HRA_N.Application.Balance_Query.Project
-           (Journal  => Current_Journal,
-            Policy   => Current_Policy,
-            Request  => (Scope => Scope, Has_As_Of => Filter_As_Of, As_Of_Date => Selected_Day),
-            Snapshot => Snap);
-      end Recompute_View;
 
       procedure Reload is
       begin
-         Current_Journal := Read_Journal_File (Journal_Path_Str (Current_Paths));
-         Current_Policy  := Read_Policy_File (Policy_Path_Str (Current_Paths));
-         Recompute_View;
+         Current_View := HRA_N.Application.Balance_Query.Execute
+           (Current_Paths,
+            (Scope => Scope, Has_As_Of => Filter_As_Of, As_Of_Date => Selected_Day));
       end Reload;
    begin
       HRA_N.UI.Terminal_Style.Initialize;
@@ -229,7 +218,9 @@ package body HRA_N.UI.Balance_TUI is
                         end if;
                      elsif Key = Character'Pos ('g') then
                         Cursor := 1;
-                     elsif (Key = Character'Pos ('a') or else Key = Character'Pos ('A')) and then Count > 0 then
+                     elsif (Key = Character'Pos ('a') or else Key = Character'Pos ('A'))
+                       and then Count > 0
+                       and then Current_View.Source = Legacy_Balance then
                         if Current_View.Status /= Query_Rejected and then Cursor <= Natural (Current_View.Row_Count) then
                            declare
                               Row        : constant Balance_Row := Current_View.Rows (Cursor);
@@ -292,11 +283,11 @@ package body HRA_N.UI.Balance_TUI is
                              when Scope_Known_Only   => Scope_Unknown_Only,
                              when Scope_Unknown_Only => Scope_All);
                         Cursor := 1;
-                        Recompute_View;
+                        Reload;
                      elsif Key = Character'Pos ('t') or else Key = Character'Pos ('T') then
                         Filter_As_Of := not Filter_As_Of;
                         Cursor := 1;
-                        Recompute_View;
+                        Reload;
                      elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R')
                        or else HRA_N.UI.TUI_Input.Is_Redraw (Key)
                      then

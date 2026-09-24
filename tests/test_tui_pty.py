@@ -1120,6 +1120,8 @@ def test_canonical_actual_tui() -> None:
                 f"LOCUS{ht}cash{nl}"
                 f"LOCUS{ht}food{nl}"
             )
+        with open(os.path.join(household, "zero-origin-coverage.loam"), "w", encoding="utf-8") as stream:
+            stream.write(f"LOAM-ZERO-ORIGIN-COVERAGE{ht}1{nl}COORDINATE{ht}cash{ht}jpy{nl}")
 
         with open(os.path.join(household, "scheduled.loam"), "w", encoding="utf-8") as stream:
             stream.write(
@@ -1157,6 +1159,20 @@ def test_canonical_actual_tui() -> None:
             assert b"Evidence   PARTIAL" in home_screen, home_screen
             assert b"Attention  unavailable" in home_screen, home_screen
             assert b"Sources    actual=UNVERSIONED / scheduled=UNVERSIONED / statement=UNVERSIONED / other=g00000001" in home_screen, home_screen
+
+            # Canonical Balance is independently read-only: a never writes
+            # to the legacy generation, while f retains known-origin scope.
+            legacy_before = open(legacy_path, "rb").read()
+            os.write(fd, b"b")
+            read_until(fd, output, b"canonical balances: read-only")
+            assert b"e-legacy" not in output[output.rfind(b"HRA-N BALANCES"):]
+            os.write(fd, b"a")
+            time.sleep(0.1)
+            os.write(fd, b"f")
+            read_until(fd, output, b"KNOWN ZERO")
+            assert open(legacy_path, "rb").read() == legacy_before
+            os.write(fd, b"b")
+            read_until(fd, output, b"Evidence")
 
             # 'a' opens Actual TUI in Scope_All
             os.write(fd, b"a")

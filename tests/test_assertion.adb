@@ -2,6 +2,7 @@ with Ada.Directories;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Core.Assertion; use HRA_N.Core.Assertion;
+with HRA_N.Storage.Atomic_Writer; use HRA_N.Storage.Atomic_Writer;
 with HRA_N.Application.Initializer; use HRA_N.Application.Initializer;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Movement_Command; use HRA_N.Application.Movement_Command;
@@ -214,6 +215,32 @@ package body Test_Assertion is
                        "bank status is Status_Conflict");
             end if;
          end loop;
+      end;
+
+      --  A proposal prepared on legacy authority must not commit after a
+      --  canonical marker appears; fresh canonical proposals also refuse.
+      declare
+         Paths : constant Path_Config := Resolve_Paths (Test_Dir);
+         Intent : constant Assertion_Intent :=
+           (Id          => (Length => 0, Value => [others => ' ']),
+            Valid_On    => Make_Date (2026, 9, 3),
+            Locus       => (Token => Make_Token ("cash")),
+            Measure     => (Token => Make_Token ("jpy")),
+            Amount      => 0,
+            Description => Make_Token ("not publishable"));
+         Prepared : constant HRA_N.Application.Assertion_Command.Proposal_Result :=
+           HRA_N.Application.Assertion_Command.Propose (Paths, Intent);
+         Error : String (1 .. 160) := [others => ' '];
+         Error_Len : Natural := 0;
+      begin
+         Assert (Prepared.Success, "legacy assertion prepared before canonical marker");
+         Assert (Write_File_Atomically
+                   (Test_Dir & "/actual.loam", "LOAM-NORMALIZED-ACTUAL" & ASCII.HT & "1" & ASCII.LF,
+                    Error, Error_Len), "canonical marker installed");
+         Assert (not HRA_N.Application.Assertion_Command.Propose (Paths, Intent).Success,
+                 "canonical assertion proposal cannot write legacy journal");
+         Assert (not HRA_N.Application.Assertion_Command.Commit (Prepared.Proposal).Success,
+                 "prepared legacy assertion cannot commit after canonical selection");
       end;
 
       --  Clean up fixture

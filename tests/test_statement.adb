@@ -1,6 +1,7 @@
 with Ada.Directories;
 with Ada.Text_IO;
 with Ada.Strings.Fixed;
+with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Test_Support; use Test_Support;
 with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
@@ -8,6 +9,7 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Statement; use HRA_N.Application.Statement;
+with HRA_N.Application.Balance_Query;
 with HRA_N.Application.Home_Query;
 with HRA_N.Storage.Atomic_Writer; use HRA_N.Storage.Atomic_Writer;
 
@@ -296,6 +298,66 @@ package body Test_Statement is
                     "ROLE" & HT & "food" & HT & "EXPENSE" & NL,
                     Error, Error_Len),
                  "canonical current AccountingRole installs");
+         declare
+            package BQ renames HRA_N.Application.Balance_Query;
+            use type BQ.Balance_Source;
+            use type BQ.Balance_Epistemic_Status;
+            View : constant BQ.Balance_View := BQ.Execute (Paths);
+            Historical : constant BQ.Balance_View :=
+              BQ.Execute (Paths, (Scope => BQ.Scope_All, Has_As_Of => True,
+                                  As_Of_Date => (2026, 9, 15)));
+            Known : constant BQ.Balance_View :=
+              BQ.Execute (Paths, (Scope => BQ.Scope_Known_Only,
+                                  Has_As_Of => False, As_Of_Date => (2026, 1, 1)));
+            Unknown : constant BQ.Balance_View :=
+              BQ.Execute (Paths, (Scope => BQ.Scope_Unknown_Only,
+                                  Has_As_Of => False, As_Of_Date => (2026, 1, 1)));
+         begin
+            Assert (View.Status = Query_Partial and then View.Source = BQ.Canonical_Balance
+                    and then not View.Assertion_Evidence_Available
+                    and then View.Snapshot.Kind = Snapshot_Unversioned,
+                    "canonical balance is independent and assertion evidence unavailable");
+            Assert (View.Total_Known_Count = 1 and then View.Total_Unknown_Count = 2
+                    and then View.Total_Conflict_Count = 0,
+                    "canonical coverage is not legacy policy or invented conflict evidence");
+            Assert (Known.Row_Count = 1 and then Known.Rows (1).Amount = -50
+                    and then Known.Rows (1).Epistemic_Status = BQ.Status_Known_Zero,
+                    "canonical corrected and future Actual produce known cash -50");
+            Assert (Unknown.Row_Count = 2 and then Unknown.Rows (1).Amount = 20,
+                    "canonical open frontier retains food and mystery in scope");
+            Assert (Historical.Status = Query_Partial and then Historical.Total_Known_Count = 1
+                    and then not Historical.Rows (1).Has_Role
+                    and then Historical.Rows (1).Amount = -20,
+                    "historical as-of does not infer current canonical role");
+         end;
+         declare
+            Huge : Unbounded_String := To_Unbounded_String
+              ("LOAM-NORMALIZED-ACTUAL" & HT & "1" & NL);
+         begin
+            for I in 1 .. 923 loop
+               Append (Huge, "TX" & HT & "large-" &
+                 Ada.Strings.Fixed.Trim (Integer'Image (I), Ada.Strings.Both) &
+                 HT & "2026-09-01" & HT & "DESC" & HT & "large" & NL &
+                 "EFFECT" & HT & "cash" & HT & "jpy" & HT & "10000000000000000" & NL &
+                 "EFFECT" & HT & "food" & HT & "jpy" & HT & "-10000000000000000" & NL &
+                 "ENDTX" & NL);
+            end loop;
+            Assert (Write_File_Atomically
+                      (Test_Dir & "/actual.loam", To_String (Huge), Error, Error_Len),
+                    "large canonical balance fixture installs");
+            declare
+               Overflow : constant HRA_N.Application.Balance_Query.Balance_View :=
+                 HRA_N.Application.Balance_Query.Execute (Paths);
+            begin
+               Assert (Overflow.Status = Query_Rejected and then
+                       Ada.Strings.Fixed.Index
+                         (Overflow.Diagnostic (1 .. Overflow.Diagnostic_Len), "overflow") > 0,
+                       "canonical balance refuses exact accumulation beyond 64-bit");
+            end;
+            Assert (Write_File_Atomically
+                      (Test_Dir & "/actual.loam", Canonical, Error, Error_Len),
+                    "canonical balance fixture restored after overflow");
+         end;
          declare
             Current : constant Statement_Report := Execute_Statement_Query (Paths);
             Historical : constant Statement_Report :=
