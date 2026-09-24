@@ -5,7 +5,6 @@
 
 with Ada.Directories;
 with Ada.Strings.Unbounded;
-with HRA_N.Core.Capacity; use HRA_N.Core.Capacity;
 with HRA_N.Core.Types;    use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Storage.Exact_File;
@@ -144,40 +143,44 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
       end if;
    end Split_Tabs;
 
+   function Make_Failure
+     (Status  : Capacity_Read_Status;
+      At_Line : Natural;
+      Message : String) return Read_Result
+   is
+      Result : Read_Result (Success => False);
+      N      : constant Natural :=
+        Natural'Min (Message'Length, Result.Error_Reason'Length);
+   begin
+      Result.Status     := Status;
+      Result.Error_Line := At_Line;
+      Result.Error_Len  := N;
+      if N > 0 then
+         Result.Error_Reason (1 .. N) :=
+           Message (Message'First .. Message'First + N - 1);
+      end if;
+      return Result;
+   end Make_Failure;
+
    function Read_Content (Content : String) return Read_Result is
-      Result   : Read_Result;
+      Result   : Read_Result (Success => True);
       Position : Natural :=
         (if Content'Length = 0 then 0 else Content'First);
       Line_No  : Natural := 0;
 
-      procedure Set_Error (At_Line : Natural; Message : String) is
-         Len : constant Natural :=
-           Natural'Min (Message'Length, Result.Error_Reason'Length);
-      begin
-         Result.Success := False;
-         Result.Error_Line := At_Line;
-         Result.Error_Reason := [others => ' '];
-         Result.Error_Len := Len;
-         if Len > 0 then
-            Result.Error_Reason (1 .. Len) :=
-              Message (Message'First .. Message'First + Len - 1);
-         end if;
-      end Set_Error;
-
       function Fail
-        (At_Line : Natural;
-         Message : String) return Read_Result
-      is
+        (Status  : Capacity_Read_Status;
+         At_Line : Natural;
+         Message : String) return Read_Result is
       begin
-         Set_Error (At_Line, Message);
-         return Result;
+         return Make_Failure (Status, At_Line, Message);
       end Fail;
 
    begin
       if Content'Length = 0 then
-         return Fail (0, "LOAM capacity document is empty");
+         return Fail (Document_Empty, 0, "LOAM capacity document is empty");
       elsif Content (Content'Last) /= ASCII.LF then
-         return Fail (0, "LOAM capacity document does not end with LF");
+         return Fail (Missing_Final_Newline, 0, "LOAM capacity document does not end with LF");
       end if;
 
       declare
@@ -186,12 +189,12 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
       begin
          Next_Line (Content, Position, Line, Success);
          if not Success then
-            return Fail (1, "Failed reading header line");
+            return Fail (Malformed_Header, 1, "Failed reading header line");
          end if;
          Line_No := 1;
 
          if US.To_String (Line) /= Header then
-            return Fail (1, "Invalid header: expected " & Header);
+            return Fail (Malformed_Header, 1, "Invalid header: expected " & Header);
          end if;
 
          loop
@@ -203,7 +206,7 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
                Raw : constant String := US.To_String (Line);
             begin
                if Raw'Length = 0 then
-                  return Fail (Line_No, "Empty line encountered");
+                  return Fail (Syntax_Error, Line_No, "Empty line encountered");
                end if;
 
                declare
@@ -212,7 +215,7 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
                begin
                   Split_Tabs (Raw, Fields, Field_Count);
                   if Field_Count = 0 then
-                     return Fail (Line_No, "Blank line encountered");
+                     return Fail (Syntax_Error, Line_No, "Blank line encountered");
                   end if;
 
                   declare
@@ -220,11 +223,11 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
                        Raw (Fields (1).First .. Fields (1).Last);
                   begin
                      if Tag /= "MOVEMENT" then
-                        return Fail (Line_No, "Expected MOVEMENT, got: " & Tag);
+                        return Fail (Syntax_Error, Line_No, "Expected MOVEMENT, got: " & Tag);
                      end if;
 
                      if Field_Count < 4 then
-                        return Fail (Line_No, "Too few fields in MOVEMENT row");
+                        return Fail (Syntax_Error, Line_No, "Too few fields in MOVEMENT row");
                      end if;
 
                      declare
@@ -239,13 +242,13 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
                         Eff      : Capacity_Effective;
                      begin
                         if not Valid_Token (Id_Str) then
-                           return Fail (Line_No, "Invalid movement ID: " & Id_Str);
+                           return Fail (Syntax_Error, Line_No, "Invalid movement ID: " & Id_Str);
                         end if;
                         if not Parse_Iso_Date (Date_Str, Parsed_D) then
-                           return Fail (Line_No, "Invalid date in MOVEMENT: " & Date_Str);
+                           return Fail (Syntax_Error, Line_No, "Invalid date in MOVEMENT: " & Date_Str);
                         end if;
                         if not Valid_Token (Cur_Str) then
-                           return Fail (Line_No, "Invalid currency: " & Cur_Str);
+                           return Fail (Syntax_Error, Line_No, "Invalid currency: " & Cur_Str);
                         end if;
 
                         Mov.Id := Make_Token (Id_Str);
@@ -260,7 +263,7 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
                         loop
                            Next_Line (Content, Position, Line, Success);
                            if not Success then
-                              return Fail (Line_No, "Unexpected EOF inside MOVEMENT block");
+                              return Fail (Syntax_Error, Line_No, "Unexpected EOF inside MOVEMENT block");
                            end if;
                            Line_No := Line_No + 1;
 
@@ -268,7 +271,7 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
                               Inner_Raw : constant String := US.To_String (Line);
                            begin
                               if Inner_Raw'Length = 0 then
-                                 return Fail (Line_No, "Empty line inside MOVEMENT block");
+                                 return Fail (Syntax_Error, Line_No, "Empty line inside MOVEMENT block");
                               end if;
 
                               declare
@@ -277,7 +280,7 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
                               begin
                                  Split_Tabs (Inner_Raw, Inner_Fields, Inner_Count);
                                  if Inner_Count = 0 then
-                                    return Fail (Line_No, "Blank line in MOVEMENT block");
+                                    return Fail (Syntax_Error, Line_No, "Blank line in MOVEMENT block");
                                  end if;
 
                                  declare
@@ -288,7 +291,7 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
                                        exit;
                                     elsif Inner_Tag = "CHANGE" then
                                        if Inner_Count < 3 then
-                                          return Fail (Line_No, "Too few fields in CHANGE row");
+                                          return Fail (Syntax_Error, Line_No, "Too few fields in CHANGE row");
                                        end if;
 
                                        declare
@@ -303,7 +306,7 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
                                                 Amt_Val : Quanta_Type;
                                              begin
                                                 if not Parse_Quanta (Amt_Str, Amt_Val) then
-                                                   return Fail (Line_No, "Invalid amount: " & Amt_Str);
+                                                   return Fail (Syntax_Error, Line_No, "Invalid amount: " & Amt_Str);
                                                 end if;
                                                 Change_Rec :=
                                                   (Coord  => Make_Unallocated_Coordinate,
@@ -311,7 +314,7 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
                                              end;
                                           elsif Target_Kind = "PURPOSE" then
                                              if Inner_Count < 4 then
-                                                return Fail (Line_No, "PURPOSE change requires purpose name and amount");
+                                                return Fail (Syntax_Error, Line_No, "PURPOSE change requires purpose name and amount");
                                              end if;
                                              declare
                                                 Purp_Str : constant String :=
@@ -321,27 +324,27 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
                                                 Amt_Val  : Quanta_Type;
                                              begin
                                                 if not Valid_Token (Purp_Str) then
-                                                   return Fail (Line_No, "Invalid purpose token: " & Purp_Str);
+                                                   return Fail (Syntax_Error, Line_No, "Invalid purpose token: " & Purp_Str);
                                                 end if;
                                                 if not Parse_Quanta (Amt_Str, Amt_Val) then
-                                                   return Fail (Line_No, "Invalid amount: " & Amt_Str);
+                                                   return Fail (Syntax_Error, Line_No, "Invalid amount: " & Amt_Str);
                                                 end if;
                                                 Change_Rec :=
                                                   (Coord  => Make_Purpose_Coordinate (Make_Token (Purp_Str)),
                                                    Amount => Amt_Val);
                                              end;
                                           else
-                                             return Fail (Line_No, "Unknown CHANGE coordinate kind: " & Target_Kind);
+                                             return Fail (Syntax_Error, Line_No, "Unknown CHANGE coordinate kind: " & Target_Kind);
                                           end if;
 
                                           if Mov.Change_Count = Max_Changes_Per_Movement then
-                                             return Fail (Line_No, "Exceeded maximum changes per movement");
+                                             return Fail (Capacity_Exceeded, Line_No, "Exceeded maximum changes per movement");
                                           end if;
                                           Mov.Change_Count := Mov.Change_Count + 1;
                                           Mov.Changes (Mov.Change_Count) := Change_Rec;
                                        end;
                                     else
-                                       return Fail (Line_No, "Expected CHANGE or ENDMOVEMENT, got: " & Inner_Tag);
+                                       return Fail (Syntax_Error, Line_No, "Expected CHANGE or ENDMOVEMENT, got: " & Inner_Tag);
                                     end if;
                                  end;
                               end;
@@ -350,11 +353,11 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
 
                         --  Conservation check: strictly Delta = 0
                         if not Is_Conserved (Mov) then
-                           return Fail (Line_No, "Capacity movement is not conserved (Delta /= 0)");
+                           return Fail (Unconserved_Movement, Line_No, "Capacity movement is not conserved (Delta /= 0)");
                         end if;
 
                         if Result.Capacity.Movement_Count = Max_Capacity_Movements then
-                           return Fail (Line_No, "Exceeded maximum capacity movements");
+                           return Fail (Capacity_Exceeded, Line_No, "Exceeded maximum capacity movements");
                         end if;
 
                         Result.Capacity.Movement_Count := Result.Capacity.Movement_Count + 1;
@@ -369,44 +372,52 @@ package body HRA_N.Storage.Loam_Capacity_Reader is
          end loop;
       end;
 
-      Result.Success := True;
       return Result;
    exception
       when others =>
-         return Fail (Line_No, "unexpected LOAM capacity reader failure");
+         return Fail (Syntax_Error, Line_No, "unexpected LOAM capacity reader failure");
    end Read_Content;
 
    function Read_File (Path : String) return Read_Result is
-      Result : Read_Result;
-      Msg    : constant String := "required LOAM capacity file is missing or unreadable";
+      Msg : constant String := "required LOAM capacity file is missing or unreadable";
    begin
       if not Ada.Directories.Exists (Path) then
-         Result.Error_Len := Msg'Length;
-         Result.Error_Reason (1 .. Msg'Length) := Msg;
-         return Result;
+         return Make_Failure (IO_Error, 0, Msg);
       end if;
       if Ada.Directories.Kind (Path) /= Ada.Directories.Ordinary_File then
-         Result.Error_Len := Msg'Length;
-         Result.Error_Reason (1 .. Msg'Length) := Msg;
-         return Result;
+         return Make_Failure (IO_Error, 0, Msg);
       end if;
       declare
          Exact : constant HRA_N.Storage.Exact_File.Read_Result :=
            HRA_N.Storage.Exact_File.Read_All (Path);
       begin
          if not Exact.Success then
-            Result.Error_Len := Msg'Length;
-            Result.Error_Reason (1 .. Msg'Length) := Msg;
-            return Result;
+            return Make_Failure (IO_Error, 0, Msg);
          end if;
          return Read_Content (US.To_String (Exact.Content));
       end;
    exception
       when others =>
-         Result.Success := False;
-         Result.Error_Len := Msg'Length;
-         Result.Error_Reason (1 .. Msg'Length) := Msg;
-         return Result;
+         return Make_Failure (IO_Error, 0, Msg);
    end Read_File;
+
+   function Format_Error (Result : Read_Result) return String is
+   begin
+      if Result.Success then
+         return "";
+      elsif Result.Error_Len > 0 then
+         return Result.Error_Reason (1 .. Result.Error_Len);
+      else
+         case Result.Status is
+            when Document_Empty        => return "LOAM capacity document is empty";
+            when Missing_Final_Newline => return "LOAM capacity document does not end with LF";
+            when Malformed_Header      => return "malformed LOAM capacity header";
+            when Syntax_Error          => return "syntax error in LOAM capacity document";
+            when Unconserved_Movement  => return "capacity movement is not conserved";
+            when Capacity_Exceeded     => return "exceeded maximum capacity movements or changes";
+            when IO_Error              => return "I/O error reading LOAM capacity document";
+         end case;
+      end if;
+   end Format_Error;
 
 end HRA_N.Storage.Loam_Capacity_Reader;
