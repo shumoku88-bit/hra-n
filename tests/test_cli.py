@@ -218,6 +218,14 @@ class TestHraNCli(unittest.TestCase):
         malformed = self.run_cmd('balance')
         self.assertNotEqual(malformed.returncode, 0)
         self.assertIn('zero-origin-coverage.loam', malformed.stdout + malformed.stderr)
+        with open(coverage, 'w', encoding='utf-8') as f:
+            f.write('LOAM-ZERO-ORIGIN-COVERAGE\t1\nCOORDINATE\tcash\tjpy\n')
+        for name in ('policy.hra', 'journal.hra', 'scheduled.hra'):
+            os.unlink(os.path.join(self.test_dir, name))
+        canonical_only = self.run_cmd('balance', '--known')
+        self.assertEqual(canonical_only.returncode, 0, canonical_only.stdout + canonical_only.stderr)
+        self.assertIn('cash', canonical_only.stdout)
+        self.assertIn('PARTIAL', canonical_only.stdout)
 
     def test_statement_origin_and_conflict_across_surfaces(self) -> None:
         journal = 'TX e0001 2026-09-10 cash:-10 food:10 "purchase"\n'
