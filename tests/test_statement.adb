@@ -466,10 +466,11 @@ package body Test_Statement is
             Assert (Rep.Status = Query_Partial
                     and then Rep.Total_Events = 2,
                     "canonical Statement remains available beside malformed Home policy");
-            Assert (Home.Status = Query_Rejected
+            Assert (Home.Status = Query_Partial
+                    and then not Home.Attention_Available
                     and then Ada.Strings.Fixed.Index
-                      (Home.Diagnostic (1 .. Home.Diagnostic_Len), "policy.hra") > 0,
-                    "Home reports legacy Attention policy failure independently");
+                      (Home.Diagnostic (1 .. Home.Diagnostic_Len), "Attention unavailable") > 0,
+                    "Home does not consult malformed legacy policy in canonical mode");
          end;
          Assert (Write_File_Atomically
                    (Policy_Path_Str (Paths),

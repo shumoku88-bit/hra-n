@@ -9,7 +9,7 @@ with HRA_N.Application.Actual_Query;
 with HRA_N.Application.Scheduled_Query;
 with HRA_N.Application.Statement;
 
-with HRA_N.Storage.Policy_Reader;
+with HRA_N.Application.Attention_Query;
 
 package HRA_N.Application.Home_Query is
 
@@ -38,24 +38,24 @@ package HRA_N.Application.Home_Query is
       Zero_Origins        : Natural := 0;
       Unresolved_Loci     : Natural := 0;
       Open_Attentions     : Natural := 0;
+      Attention_Available : Boolean := False;
+      Attention_Snapshot : Frontend_Types.Snapshot_Reference :=
+        (Kind => Frontend_Types.Snapshot_Unversioned);
       Diagnostic          : Frontend_Types.Diagnostic_Text := [others => ' '];
       Diagnostic_Len      : Frontend_Types.Diagnostic_Length := 0;
    end record;
 
-   --  Project independently acquired shared observations. PR supplies only
-   --  transitional Home fields such as Attention; Statement owns its selected
-   --  canonical or legacy evidence. No Scheduled storage reads.
+   --  Project independently acquired shared observations.
    function Project_With_Views
      (Statement : HRA_N.Application.Statement.Statement_Report;
-      PR        : HRA_N.Storage.Policy_Reader.Policy_Result;
+      Attention : HRA_N.Application.Attention_Query.Attention_View;
       Actual    : HRA_N.Application.Actual_Query.Actual_View;
       Scheduled : HRA_N.Application.Scheduled_Query.Scheduled_View;
       Query     : Home_Query;
       Snapshot  : Frontend_Types.Snapshot_Reference :=
         (Kind => Frontend_Types.Snapshot_Unversioned)) return Home_View;
 
-   --  Acquire Statement and transitional Policy independently alongside shared
-   --  Actual and Scheduled observations. Snapshot identifies only legacy evidence.
+   --  Acquire Statement, Actual, Scheduled and Attention independently.
    function Execute
      (Paths : HRA_N.Application.Path_Resolver.Path_Config;
       Query : Home_Query) return Home_View;

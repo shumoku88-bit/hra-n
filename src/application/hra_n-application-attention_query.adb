@@ -5,6 +5,9 @@
 
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
+with HRA_N.Storage.Loam_Attention_Reader;
+with HRA_N.Application.Canonical_Authority;
+with Ada.Directories;
 
 package body HRA_N.Application.Attention_Query is
 
@@ -19,6 +22,9 @@ package body HRA_N.Application.Attention_Query is
 
       View   : Attention_View;
       Policy : Policy_Result;
+      Memory : Attention_Memory;
+      Canonical : HRA_N.Storage.Loam_Attention_Reader.Read_Result;
+      use HRA_N.Application.Canonical_Authority;
 
       procedure Set_Diagnostic (Message : String) is
          Len : constant Natural :=
@@ -38,24 +44,52 @@ package body HRA_N.Application.Attention_Query is
             Identity => Make_Token (Snapshot_Id_Str (Paths)));
       end if;
 
-      Policy := Read_Policy_File (Policy_Path_Str (Paths));
-      if not Policy.Success then
-         Set_Diagnostic
-           ("policy.hra: " &
-            Policy.Error_Reason (1 .. Policy.Error_Len));
-         return View;
-      end if;
+      declare
+         Authority : constant Authority_Probe := Probe (Data_Dir_Str (Paths));
+         File_Path : constant String :=
+           Ada.Directories.Compose (Data_Dir_Str (Paths), "attention.loam");
+      begin
+         if Authority.State = Probe_Failed then
+            Set_Diagnostic ("Attention authority: " & Authority.Diagnostic (1 .. Authority.Diagnostic_Len));
+            return View;
+         end if;
+         Canonical := HRA_N.Storage.Loam_Attention_Reader.Read_File (File_Path);
+         if not Canonical.Success then
+            Set_Diagnostic ("attention.loam: " & Canonical.Diagnostic (1 .. Canonical.Diagnostic_Len));
+            return View;
+         elsif Canonical.Present then
+            View.Source := Canonical_Attention;
+            View.Availability := Attention_Available;
+            View.Snapshot := (Kind => Snapshot_Unversioned);
+            Memory := Canonical.Memory;
+         elsif Authority.State = Canonical_Present then
+            View.Source := Canonical_Unavailable;
+            View.Status := Query_Partial;
+            View.Success := True;
+            Set_Diagnostic ("attention.loam unavailable");
+            return View;
+         else
+            Policy := Read_Policy_File (Policy_Path_Str (Paths));
+            if not Policy.Success then
+               Set_Diagnostic ("policy.hra: " & Policy.Error_Reason (1 .. Policy.Error_Len));
+               return View;
+            end if;
+            View.Availability := Attention_Available;
+            Memory := Policy.Attention;
+         end if;
+      end;
 
-      for I in 1 .. Policy.Attention.Item_Count loop
-         exit when View.Count >= Max_Query_Rows;
-         if not Has_Closure
-           (Policy.Attention, Policy.Attention.Items (I).Id)
-         then
+      for I in 1 .. Memory.Item_Count loop
+         if not Has_Closure (Memory, Memory.Items (I).Id) then
+            if View.Count >= Max_Query_Rows then
+               Set_Diagnostic ("Attention view capacity exceeded");
+               return View;
+            end if;
             View.Count := View.Count + 1;
             View.Rows (View.Count) :=
-              (Id      => Policy.Attention.Items (I).Id,
-               Context => Policy.Attention.Items (I).Context,
-               Due     => Policy.Attention.Items (I).Due);
+              (Id      => Memory.Items (I).Id,
+               Context => Memory.Items (I).Context,
+               Due     => Memory.Items (I).Due);
          end if;
       end loop;
 

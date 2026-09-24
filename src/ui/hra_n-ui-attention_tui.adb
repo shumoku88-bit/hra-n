@@ -172,7 +172,9 @@ package body HRA_N.UI.Attention_TUI is
          Put_Clipped (4, View.Diagnostic (1 .. View.Diagnostic_Len));
       else
          Count := View.Count;
-         if Count = 0 then
+         if View.Availability = Attention_Unavailable then
+            Put_Clipped (3, "Attention unavailable");
+         elsif Count = 0 then
             Put_Clipped (3, "No open matters. (An empty stream is not unavailable.)");
          else
             Put_Clipped (3, "  ID          DUE                     MATTER");
@@ -205,7 +207,9 @@ package body HRA_N.UI.Attention_TUI is
             "Snapshot: " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
          Put_Clipped
            (Rows - 2,
-            "j/k/wheel: select   n: raise   r: resolve   x: drop   R: reload   b/Esc/q: home");
+            (if View.Source = Legacy_Attention and then View.Success
+             then "j/k/wheel: select   n: raise   r: resolve   x: drop   R: reload   b/Esc/q: home"
+             else "canonical Attention: read-only   R: reload   b/Esc/q: home"));
       end if;
       Curses.Refresh;
    end Draw;
@@ -293,7 +297,9 @@ package body HRA_N.UI.Attention_TUI is
                         end if;
                      elsif Key = Character'Pos ('g') then
                         Cursor := 1;
-                     elsif Key = Character'Pos ('n') or else Key = Character'Pos ('N') then
+                     elsif (Key = Character'Pos ('n') or else Key = Character'Pos ('N'))
+                       and then Current_View.Source = Legacy_Attention
+                       and then Current_View.Success then
                         declare
                            Done : Boolean := False;
                         begin
@@ -307,6 +313,8 @@ package body HRA_N.UI.Attention_TUI is
                         end;
                      elsif (Key = Character'Pos ('r') or else Key = Character'Pos ('x'))
                        and then Count > 0
+                       and then Current_View.Source = Legacy_Attention
+                       and then Current_View.Success
                      then
                         if Current_View.Success and then Cursor <= Current_View.Count then
                            declare

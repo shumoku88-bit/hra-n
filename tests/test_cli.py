@@ -47,6 +47,51 @@ class TestHraNCli(unittest.TestCase):
             with open(os.path.join(self.test_dir, name), "w", encoding="utf-8") as f:
                 f.write(text)
 
+    def test_attention_independent_authority_and_read_only(self) -> None:
+        self.write_report_fixture('TX legacy 2026-09-10 cash:-2 food:2 "Legacy"\n')
+        policy = os.path.join(self.test_dir, "policy.hra")
+        with open(policy, "a", encoding="utf-8") as stream:
+            stream.write('ATTENTION legacy-attention "Legacy matter" nodue\n')
+        # Independently selected Attention does not change Statement's route.
+        attention = os.path.join(self.test_dir, "attention.loam")
+        with open(attention, "w", encoding="utf-8") as stream:
+            stream.write("LOAM-ATTENTION-MEMORY\t1\nITEM\tcanonical-attention\tNO_DUE_DATE\t-\tCanonical matter\n")
+        statement = self.run_cmd("statement", "--as-of", "2026-09-15")
+        self.assertEqual(statement.returncode, 0, statement.stdout + statement.stderr)
+        self.assertIn("Events Aggregated   :  1", statement.stdout)
+        self.assertIn("COMPLETE FINANCIAL STATEMENT", statement.stdout)
+        view = self.run_cmd("attention")
+        self.assertEqual(view.returncode, 0, view.stdout + view.stderr)
+        self.assertIn("canonical-attention", view.stdout)
+        self.assertNotIn("legacy-attention", view.stdout)
+        home = self.run_cmd("home")
+        self.assertIn("Attention   1 open", home.stdout)
+        before = open(policy, "rb").read()
+        for args in [("raise", "new"), ("resolve", "canonical-attention"), ("drop", "canonical-attention")]:
+            rejected = self.run_cmd("attention", *args)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("canonical Attention mutation", rejected.stdout)
+            self.assertEqual(open(policy, "rb").read(), before)
+        os.unlink(attention)
+        with open(os.path.join(self.test_dir, "actual.loam"), "w", encoding="utf-8") as stream:
+            stream.write("LOAM-NORMALIZED-ACTUAL\t1\n")
+        with open(os.path.join(self.test_dir, "accounting-role.loam"), "w", encoding="utf-8") as stream:
+            stream.write("LOAM-ACCOUNTING-ROLE-MAP\t1\nROLE\tcash\tASSET\nROLE\tfood\tEXPENSE\n")
+        with open(os.path.join(self.test_dir, "locus-admission.loam"), "w", encoding="utf-8") as stream:
+            stream.write("LOAM-LOCUS-ADMISSION-VOCABULARY\t1\nLOCUS\tcash\nLOCUS\tfood\n")
+        view = self.run_cmd("attention")
+        self.assertIn("unavailable", view.stdout)
+        rejected = self.run_cmd("attention", "raise", "unavailable write")
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertEqual(open(policy, "rb").read(), before)
+        self.assertNotIn("legacy-attention", view.stdout)
+        with open(attention, "w", encoding="utf-8") as stream:
+            stream.write("LOAM-ATTENTION-MEMORY\t1\n")
+        self.assertIn("0 open", self.run_cmd("attention").stdout)
+        with open(attention, "w", encoding="utf-8") as stream:
+            stream.write("BROKEN\n")
+        self.assertNotEqual(self.run_cmd("attention").returncode, 0)
+
     def test_statement_period_and_status_correction(self) -> None:
         self.write_report_fixture(
             'TX e0001 2026-09-01 cash:-10 food:10 "old"\n'
