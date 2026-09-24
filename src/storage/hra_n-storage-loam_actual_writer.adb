@@ -27,6 +27,30 @@ package body HRA_N.Storage.Loam_Actual_Writer is
 
    Reversal_Id_Prefix : constant String := "actual-reversal:";
 
+   function Make_Failure
+     (Status  : Actual_Publish_Status;
+      Message : String) return Publish_Result
+   is
+      Result : Publish_Result (Success => False);
+      Len    : constant Natural :=
+        Natural'Min (Message'Length, Result.Error_Reason'Length);
+   begin
+      Result.Status := Status;
+      Result.Error_Len := Len;
+      if Len > 0 then
+         Result.Error_Reason (1 .. Len) :=
+           Message (Message'First .. Message'First + Len - 1);
+      end if;
+      return Result;
+   end Make_Failure;
+
+   function Make_Success (Event_Id : Token_Text) return Publish_Result is
+      Result : Publish_Result (Success => True);
+   begin
+      Result.Event_Id := Event_Id;
+      return Result;
+   end Make_Success;
+
    function Valid_Token (Value : Token_Text) return Boolean is
    begin
       if Value.Length = 0 then
@@ -520,7 +544,6 @@ package body HRA_N.Storage.Loam_Actual_Writer is
       Description : Description_Text;
       Effects     : Effect_List) return Publish_Result
    is
-      Result : Publish_Result;
       Actual_Path : constant String :=
         Ada.Directories.Compose (Root_Path, "actual.loam");
       Policy_Path : constant String :=
@@ -528,25 +551,6 @@ package body HRA_N.Storage.Loam_Actual_Writer is
       Stage_Path : constant String := Actual_Path & ".loam-stage";
       Lock_Path  : constant String := Actual_Path & ".loam-writer-lock";
       Lock       : HRA_N.Storage.File_Lock.Lock_Handle;
-
-      procedure Set_Error (Message : String) is
-         Len : constant Natural :=
-           Natural'Min (Message'Length, Result.Error_Reason'Length);
-      begin
-         Result.Success := False;
-         Result.Error_Reason := [others => ' '];
-         Result.Error_Len := Len;
-         if Len > 0 then
-            Result.Error_Reason (1 .. Len) :=
-              Message (Message'First .. Message'First + Len - 1);
-         end if;
-      end Set_Error;
-
-      function Fail (Message : String) return Publish_Result is
-      begin
-         Set_Error (Message);
-         return Result;
-      end Fail;
 
       procedure Release is
       begin
@@ -566,17 +570,27 @@ package body HRA_N.Storage.Loam_Actual_Writer is
             null;
       end Remove_Stage;
 
+      function Fail
+        (Status  : Actual_Publish_Status;
+         Message : String) return Publish_Result
+      is
+      begin
+         Remove_Stage;
+         Release;
+         return Make_Failure (Status, Message);
+      end Fail;
+
    begin
       if Root_Path'Length = 0 then
-         return Fail ("LOAM data root must not be empty");
+         return Fail (Invalid_Root_Directory, "LOAM data root must not be empty");
       elsif not Is_Valid_Date
         (Valid_On.Year, Valid_On.Month, Valid_On.Day)
       then
-         return Fail ("movement occurrence date is invalid");
+         return Fail (Invalid_Date, "movement occurrence date is invalid");
       elsif not Valid_Description (Description) then
-         return Fail ("movement description is not canonically encodable");
+         return Fail (Invalid_Description, "movement description is not canonically encodable");
       elsif Effects.Count < 2 then
-         return Fail ("movement needs at least two Effects");
+         return Fail (Insufficient_Effects, "movement needs at least two Effects");
       end if;
 
       declare
@@ -591,11 +605,12 @@ package body HRA_N.Storage.Loam_Actual_Writer is
               or else Canonical.Values (I).Amount.Quanta = 0
             then
                return Fail
-                 ("movement requires valid tokens and nonzero quantities");
+                 (Invalid_Effect_Token_Or_Zero,
+                  "movement requires valid tokens and nonzero quantities");
             elsif not Equal_Token
               (Canonical.Values (I).Measure.Token, Measure.Token)
             then
-               return Fail ("movement must use one Measure");
+               return Fail (Multiple_Measures, "movement must use one Measure");
             end if;
 
             Sum := Sum + Long_Long_Integer
@@ -607,11 +622,11 @@ package body HRA_N.Storage.Loam_Actual_Writer is
          end loop;
 
          if Sum /= 0 or else Positive <= 0 then
-            return Fail ("movement must be one balanced nonzero Measure");
+            return Fail (Unbalanced_Or_Zero_Measure, "movement must be one balanced nonzero Measure");
          end if;
 
          if not HRA_N.Storage.File_Lock.Acquire (Lock_Path, Lock) then
-            return Fail ("cannot acquire LOAM Actual writer ownership");
+            return Fail (Lock_Failure, "cannot acquire LOAM Actual writer ownership");
          end if;
 
          declare
@@ -619,8 +634,7 @@ package body HRA_N.Storage.Loam_Actual_Writer is
               HRA_N.Storage.Exact_File.Read_All (Actual_Path);
          begin
             if not Existing.Success then
-               Release;
-               return Fail ("cannot read current actual.loam authority");
+               return Fail (Cannot_Read_Actual, "cannot read current actual.loam authority");
             end if;
 
             declare
@@ -632,23 +646,23 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                  Locus_Reader.Read_File (Policy_Path);
             begin
                if not Current.Success then
-                  Release;
                   return Fail
-                    ("current actual.loam is malformed, unsupported, or over capacity");
+                    (Corrupt_Actual,
+                     "current actual.loam is malformed, unsupported, or over capacity");
                elsif not Policy.Success then
-                  Release;
                   return Fail
-                    ("current locus-admission.loam is malformed or unsupported");
+                    (Corrupt_Locus_Admission,
+                     "current locus-admission.loam is malformed or unsupported");
                elsif not Admits_Effects (Policy.Vocabulary, Canonical) then
-                  Release;
                   return Fail
-                    ("movement uses a Locus not approved for new publication");
+                    (Locus_Not_Admitted,
+                     "movement uses a Locus not approved for new publication");
                elsif Natural (Current.Events.Length) =
                  Actual_Reader.Max_Admitted_Actual_Events
                then
-                  Release;
                   return Fail
-                    ("HRA-N Actual writer working-set capacity exceeded");
+                    (Working_Set_Exceeded,
+                     "HRA-N Actual writer working-set capacity exceeded");
                end if;
 
                declare
@@ -670,18 +684,18 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                      Description,
                      Canonical)
                   then
-                     Release;
                      return Fail
-                       ("candidate Actual generation failed semantic correspondence");
+                       (Candidate_Correspondence_Failure,
+                        "candidate Actual generation failed semantic correspondence");
                   end if;
 
                   Remove_Stage;
                   if not HRA_N.Storage.Atomic_Writer.Write_Staging_File_Durably
                     (Stage_Path, Candidate, Error, Error_Len)
                   then
-                     Release;
                      return Fail
-                       ("cannot durably stage canonical Actual candidate");
+                       (Staging_Write_Failure,
+                        "cannot durably stage canonical Actual candidate");
                   end if;
 
                   declare
@@ -691,10 +705,9 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                      if not Staged.Success
                        or else US.To_String (Staged.Content) /= Candidate
                      then
-                        Remove_Stage;
-                        Release;
                         return Fail
-                          ("staged Actual bytes do not match candidate generation");
+                          (Staging_Mismatch,
+                           "staged Actual bytes do not match candidate generation");
                      end if;
 
                      declare
@@ -710,10 +723,9 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                            Description,
                            Canonical)
                         then
-                           Remove_Stage;
-                           Release;
                            return Fail
-                             ("staged Actual generation failed semantic admission");
+                             (Staging_Admission_Failure,
+                              "staged Actual generation failed semantic admission");
                         end if;
                      end;
                   end;
@@ -721,15 +733,13 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                   if not HRA_N.Storage.Atomic_Writer.Publish_Staged_File_Atomically
                     (Stage_Path, Actual_Path, Error, Error_Len)
                   then
-                     Release;
                      return Fail
-                       ("failed to switch canonical Actual authority");
+                       (Authority_Switch_Failure,
+                        "failed to switch canonical Actual authority");
                   end if;
 
-                  Result.Success := True;
-                  Result.Event_Id := New_Id;
                   Release;
-                  return Result;
+                  return Make_Success (New_Id);
                end;
             end;
          end;
@@ -737,9 +747,7 @@ package body HRA_N.Storage.Loam_Actual_Writer is
 
    exception
       when others =>
-         Remove_Stage;
-         Release;
-         return Fail ("unexpected LOAM Actual writer failure");
+         return Fail (Internal_Error, "unexpected LOAM Actual writer failure");
    end Publish_Movement;
 
    function Publish_Correction
@@ -748,7 +756,6 @@ package body HRA_N.Storage.Loam_Actual_Writer is
       Description : Description_Text;
       Effects     : Effect_List) return Publish_Result
    is
-      Result : Publish_Result;
       Actual_Path : constant String :=
         Ada.Directories.Compose (Root_Path, "actual.loam");
       Policy_Path : constant String :=
@@ -756,25 +763,6 @@ package body HRA_N.Storage.Loam_Actual_Writer is
       Stage_Path : constant String := Actual_Path & ".loam-stage";
       Lock_Path  : constant String := Actual_Path & ".loam-writer-lock";
       Lock       : HRA_N.Storage.File_Lock.Lock_Handle;
-
-      procedure Set_Error (Message : String) is
-         Len : constant Natural :=
-           Natural'Min (Message'Length, Result.Error_Reason'Length);
-      begin
-         Result.Success := False;
-         Result.Error_Reason := [others => ' '];
-         Result.Error_Len := Len;
-         if Len > 0 then
-            Result.Error_Reason (1 .. Len) :=
-              Message (Message'First .. Message'First + Len - 1);
-         end if;
-      end Set_Error;
-
-      function Fail (Message : String) return Publish_Result is
-      begin
-         Set_Error (Message);
-         return Result;
-      end Fail;
 
       procedure Release is
       begin
@@ -794,15 +782,25 @@ package body HRA_N.Storage.Loam_Actual_Writer is
             null;
       end Remove_Stage;
 
+      function Fail
+        (Status  : Actual_Publish_Status;
+         Message : String) return Publish_Result
+      is
+      begin
+         Remove_Stage;
+         Release;
+         return Make_Failure (Status, Message);
+      end Fail;
+
    begin
       if Root_Path'Length = 0 then
-         return Fail ("LOAM data root must not be empty");
+         return Fail (Invalid_Root_Directory, "LOAM data root must not be empty");
       elsif not Valid_Token (Target.Token) then
-         return Fail ("correction target identity is invalid");
+         return Fail (Invalid_Target_Token, "correction target identity is invalid");
       elsif not Valid_Description (Description) then
-         return Fail ("correction description is not canonically encodable");
+         return Fail (Invalid_Description, "correction description is not canonically encodable");
       elsif Effects.Count < 2 then
-         return Fail ("correction replacement needs at least two Effects");
+         return Fail (Insufficient_Effects, "correction replacement needs at least two Effects");
       end if;
 
       declare
@@ -817,11 +815,12 @@ package body HRA_N.Storage.Loam_Actual_Writer is
               or else Canonical.Values (I).Amount.Quanta = 0
             then
                return Fail
-                 ("correction replacement requires valid tokens and nonzero quantities");
+                 (Invalid_Effect_Token_Or_Zero,
+                  "correction replacement requires valid tokens and nonzero quantities");
             elsif not Equal_Token
               (Canonical.Values (I).Measure.Token, Measure.Token)
             then
-               return Fail ("correction replacement must use one Measure");
+               return Fail (Multiple_Measures, "correction replacement must use one Measure");
             end if;
 
             Sum := Sum + Long_Long_Integer
@@ -834,11 +833,12 @@ package body HRA_N.Storage.Loam_Actual_Writer is
 
          if Sum /= 0 or else Positive <= 0 then
             return Fail
-              ("correction replacement must be one balanced nonzero Measure");
+              (Unbalanced_Or_Zero_Measure,
+               "correction replacement must be one balanced nonzero Measure");
          end if;
 
          if not HRA_N.Storage.File_Lock.Acquire (Lock_Path, Lock) then
-            return Fail ("cannot acquire LOAM Actual writer ownership");
+            return Fail (Lock_Failure, "cannot acquire LOAM Actual writer ownership");
          end if;
 
          declare
@@ -846,8 +846,7 @@ package body HRA_N.Storage.Loam_Actual_Writer is
               HRA_N.Storage.Exact_File.Read_All (Actual_Path);
          begin
             if not Existing.Success then
-               Release;
-               return Fail ("cannot read current actual.loam authority");
+               return Fail (Cannot_Read_Actual, "cannot read current actual.loam authority");
             end if;
 
             declare
@@ -864,56 +863,54 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                Have_Date   : Boolean := False;
             begin
                if not Current.Success then
-                  Release;
                   return Fail
-                    ("current actual.loam is malformed, unsupported, or over capacity");
+                    (Corrupt_Actual,
+                     "current actual.loam is malformed, unsupported, or over capacity");
                elsif not Policy.Success then
-                  Release;
                   return Fail
-                    ("current locus-admission.loam is malformed or unsupported");
+                    (Corrupt_Locus_Admission,
+                     "current locus-admission.loam is malformed or unsupported");
                elsif not Admits_Effects (Policy.Vocabulary, Canonical) then
-                  Release;
                   return Fail
-                    ("correction replacement uses a Locus not approved for new publication");
+                    (Locus_Not_Admitted,
+                     "correction replacement uses a Locus not approved for new publication");
                elsif Natural (Current.Events.Length) =
                  Actual_Reader.Max_Admitted_Actual_Events
                then
-                  Release;
                   return Fail
-                    ("HRA-N Actual writer working-set capacity exceeded");
+                    (Working_Set_Exceeded,
+                     "HRA-N Actual writer working-set capacity exceeded");
                end if;
 
                Find_Event_By_Id (Current, Target, Target_Event, Have_Target);
                if not Have_Target then
-                  Release;
-                  return Fail ("selected correction target is not retained");
+                  return Fail (Target_Not_Retained, "selected correction target is not retained");
                elsif not Target_Is_Current (Current, Target) then
-                  Release;
-                  return Fail ("selected Actual is no longer current");
+                  return Fail (Target_Not_Current, "selected Actual is no longer current");
                elsif Target_Participates_In_Reversal (Current, Target) then
-                  Release;
                   return Fail
-                    ("correction of an Actual participating in Reversal evidence is not qualified");
+                    (Target_Participates_In_Reversal,
+                     "correction of an Actual participating in Reversal evidence is not qualified");
                end if;
 
                Practical_Measure
                  (Target_Event, Target_Measure, Target_Practical);
                if not Target_Practical then
-                  Release;
                   return Fail
-                    ("selected Actual is outside the practical balanced single-Measure correction entrance");
+                    (Target_Not_Practical,
+                     "selected Actual is outside the practical balanced single-Measure correction entrance");
                elsif not Equal_Token (Target_Measure.Token, Measure.Token) then
-                  Release;
                   return Fail
-                    ("correction must preserve the target Measure");
+                    (Measure_Mismatch,
+                     "correction must preserve the target Measure");
                end if;
 
                Find_Occurrence_Date
                  (Current.Validities, Target, Target_Date, Have_Date);
                if not Have_Date then
-                  Release;
                   return Fail
-                    ("selected Actual has no current occurrence date");
+                    (Target_Missing_Date,
+                     "selected Actual has no current occurrence date");
                end if;
 
                declare
@@ -941,18 +938,18 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                      Description,
                      Canonical)
                   then
-                     Release;
                      return Fail
-                       ("candidate correction generation failed semantic correspondence");
+                       (Candidate_Correspondence_Failure,
+                        "candidate correction generation failed semantic correspondence");
                   end if;
 
                   Remove_Stage;
                   if not HRA_N.Storage.Atomic_Writer.Write_Staging_File_Durably
                     (Stage_Path, Candidate, Error, Error_Len)
                   then
-                     Release;
                      return Fail
-                       ("cannot durably stage canonical correction candidate");
+                       (Staging_Write_Failure,
+                        "cannot durably stage canonical correction candidate");
                   end if;
 
                   declare
@@ -962,10 +959,9 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                      if not Staged.Success
                        or else US.To_String (Staged.Content) /= Candidate
                      then
-                        Remove_Stage;
-                        Release;
                         return Fail
-                          ("staged correction bytes do not match candidate generation");
+                          (Staging_Mismatch,
+                           "staged correction bytes do not match candidate generation");
                      end if;
 
                      declare
@@ -982,10 +978,9 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                            Description,
                            Canonical)
                         then
-                           Remove_Stage;
-                           Release;
                            return Fail
-                             ("staged correction generation failed semantic admission");
+                             (Staging_Admission_Failure,
+                              "staged correction generation failed semantic admission");
                         end if;
                      end;
                   end;
@@ -993,15 +988,13 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                   if not HRA_N.Storage.Atomic_Writer.Publish_Staged_File_Atomically
                     (Stage_Path, Actual_Path, Error, Error_Len)
                   then
-                     Release;
                      return Fail
-                       ("failed to switch canonical Actual correction authority");
+                       (Authority_Switch_Failure,
+                        "failed to switch canonical Actual correction authority");
                   end if;
 
-                  Result.Success := True;
-                  Result.Event_Id := Replacement_Id;
                   Release;
-                  return Result;
+                  return Make_Success (Replacement_Id);
                end;
             end;
          end;
@@ -1009,9 +1002,7 @@ package body HRA_N.Storage.Loam_Actual_Writer is
 
    exception
       when others =>
-         Remove_Stage;
-         Release;
-         return Fail ("unexpected LOAM Actual correction writer failure");
+         return Fail (Internal_Error, "unexpected LOAM Actual correction writer failure");
    end Publish_Correction;
 
 
@@ -1020,7 +1011,6 @@ package body HRA_N.Storage.Loam_Actual_Writer is
       Target    : HRA_N.Core.Types.Event_Id;
       Valid_On  : Date_Type) return Publish_Result
    is
-      Result : Publish_Result;
       Actual_Path : constant String :=
         Ada.Directories.Compose (Root_Path, "actual.loam");
       Scheduled_Path : constant String :=
@@ -1033,25 +1023,6 @@ package body HRA_N.Storage.Loam_Actual_Writer is
       Actual_Lock_Path : constant String :=
         Actual_Path & ".loam-writer-lock";
       Ownership : HRA_N.Storage.File_Lock.Ordered_Lock_Pair;
-
-      procedure Set_Error (Message : String) is
-         Len : constant Natural :=
-           Natural'Min (Message'Length, Result.Error_Reason'Length);
-      begin
-         Result.Success := False;
-         Result.Error_Reason := [others => ' '];
-         Result.Error_Len := Len;
-         if Len > 0 then
-            Result.Error_Reason (1 .. Len) :=
-              Message (Message'First .. Message'First + Len - 1);
-         end if;
-      end Set_Error;
-
-      function Fail (Message : String) return Publish_Result is
-      begin
-         Set_Error (Message);
-         return Result;
-      end Fail;
 
       procedure Release_All is
       begin
@@ -1071,20 +1042,31 @@ package body HRA_N.Storage.Loam_Actual_Writer is
             null;
       end Remove_Stage;
 
+      function Fail
+        (Status  : Actual_Publish_Status;
+         Message : String) return Publish_Result
+      is
+      begin
+         Remove_Stage;
+         Release_All;
+         return Make_Failure (Status, Message);
+      end Fail;
+
    begin
       if Root_Path'Length = 0 then
-         return Fail ("LOAM data root must not be empty");
+         return Fail (Invalid_Root_Directory, "LOAM data root must not be empty");
       elsif not Valid_Token (Target.Token) then
-         return Fail ("reversal target identity is invalid");
+         return Fail (Invalid_Target_Token, "reversal target identity is invalid");
       elsif Target.Token.Length + Reversal_Id_Prefix'Length >
         Max_Token_Length
       then
          return Fail
-           ("deterministic reversal identity exceeds HRA-N token capacity");
+           (Reversal_Identity_Exceeds_Capacity,
+            "deterministic reversal identity exceeds HRA-N token capacity");
       elsif not Is_Valid_Date
         (Valid_On.Year, Valid_On.Month, Valid_On.Day)
       then
-         return Fail ("reversal occurrence date is invalid");
+         return Fail (Invalid_Date, "reversal occurrence date is invalid");
       end if;
 
       --  Match Loam shared ownership order exactly: Scheduled first, Actual
@@ -1093,7 +1075,7 @@ package body HRA_N.Storage.Loam_Actual_Writer is
       if not HRA_N.Storage.File_Lock.Acquire_Ordered_Pair
         (Scheduled_Lock_Path, Actual_Lock_Path, Ownership)
       then
-         return Fail ("cannot acquire shared LOAM Scheduled/Actual ownership");
+         return Fail (Lock_Failure, "cannot acquire shared LOAM Scheduled/Actual ownership");
       end if;
 
       declare
@@ -1101,8 +1083,7 @@ package body HRA_N.Storage.Loam_Actual_Writer is
            HRA_N.Storage.Exact_File.Read_All (Actual_Path);
       begin
          if not Existing.Success then
-            Release_All;
-            return Fail ("cannot read current actual.loam authority");
+            return Fail (Cannot_Read_Actual, "cannot read current actual.loam authority");
          end if;
 
          declare
@@ -1123,47 +1104,44 @@ package body HRA_N.Storage.Loam_Actual_Writer is
             Has_Prior_Reverser : Boolean := False;
          begin
             if not Current.Success then
-               Release_All;
                return Fail
-                 ("current actual.loam is malformed, unsupported, or over capacity");
+                 (Corrupt_Actual,
+                  "current actual.loam is malformed, unsupported, or over capacity");
             elsif not Policy.Success then
-               Release_All;
                return Fail
-                 ("current locus-admission.loam is malformed or unsupported");
+                 (Corrupt_Locus_Admission,
+                  "current locus-admission.loam is malformed or unsupported");
             elsif not Scheduled.Success then
-               Release_All;
                return Fail
-                 ("current scheduled.loam is malformed, unsupported, or over capacity");
+                 (Corrupt_Scheduled,
+                  "current scheduled.loam is malformed, unsupported, or over capacity");
             elsif Natural (Current.Events.Length) =
               Actual_Reader.Max_Admitted_Actual_Events
             then
-               Release_All;
                return Fail
-                 ("HRA-N Actual writer working-set capacity exceeded");
+                 (Working_Set_Exceeded,
+                  "HRA-N Actual writer working-set capacity exceeded");
             end if;
 
             Find_Event_By_Id (Current, Target, Target_Event, Have_Target);
             if not Have_Target then
-               Release_All;
-               return Fail ("selected reversal target is not retained");
+               return Fail (Target_Not_Retained, "selected reversal target is not retained");
             elsif not Target_Is_Current (Current, Target) then
-               Release_All;
-               return Fail ("selected Actual is no longer current");
+               return Fail (Target_Not_Current, "selected Actual is no longer current");
             end if;
 
             Find_Metadata
               (Current.Metadata, Target, Target_Meta, Has_Target_Meta);
             if Has_Target_Meta and then Target_Meta.Reverses.Present then
-               Release_All;
                return Fail
-                 ("reversal-of-reversal chains are not qualified");
+                 (Reversal_Chain_Not_Qualified,
+                  "reversal-of-reversal chains are not qualified");
             end if;
 
             Find_Reverser
               (Current.Metadata, Target, Prior_Reverser, Has_Prior_Reverser);
             if Has_Prior_Reverser then
-               Release_All;
-               return Fail ("selected Actual is already reversed");
+               return Fail (Target_Already_Reversed, "selected Actual is already reversed");
             end if;
 
             --  Relation and Discharge canonical rows are not silently ignored:
@@ -1174,9 +1152,9 @@ package body HRA_N.Storage.Loam_Actual_Writer is
             if Scheduled_Reader.Completion_Mentions_Actual
               (Scheduled, Target)
             then
-               Release_All;
                return Fail
-                 ("reversal of a Scheduled-completion Actual is not qualified");
+                 (Scheduled_Completion_Not_Qualified,
+                  "reversal of a Scheduled-completion Actual is not qualified");
             end if;
 
             Practical_Measure
@@ -1185,9 +1163,9 @@ package body HRA_N.Storage.Loam_Actual_Writer is
               or else not Equal_Token
                 (Target_Measure.Token, Make_Token ("jpy"))
             then
-               Release_All;
                return Fail
-                 ("selected Actual is outside the practical balanced-JPY reversal entrance");
+                 (Target_Not_Practical,
+                  "selected Actual is outside the practical balanced-JPY reversal entrance");
             end if;
 
             declare
@@ -1199,15 +1177,15 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                  Make_Token (Reversal_Id_Prefix & Target_Text);
             begin
                if not Admits_Effects (Policy.Vocabulary, Inverse) then
-                  Release_All;
                   return Fail
-                    ("reversal uses a Locus not approved for new publication");
+                    (Locus_Not_Admitted,
+                     "reversal uses a Locus not approved for new publication");
                elsif Event_Id_In_Use
                  (Current, Reversal_Id_Prefix & Target_Text)
                then
-                  Release_All;
                   return Fail
-                    ("deterministic reversal Event identity collides with retained Movement evidence");
+                    (Identity_Collision,
+                     "deterministic reversal Event identity collides with retained Movement evidence");
                end if;
 
                declare
@@ -1229,18 +1207,18 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                      Inverse,
                      Target_Event)
                   then
-                     Release_All;
                      return Fail
-                       ("candidate reversal generation failed semantic correspondence");
+                       (Candidate_Correspondence_Failure,
+                        "candidate reversal generation failed semantic correspondence");
                   end if;
 
                   Remove_Stage;
                   if not HRA_N.Storage.Atomic_Writer.Write_Staging_File_Durably
                     (Stage_Path, Candidate, Error, Error_Len)
                   then
-                     Release_All;
                      return Fail
-                       ("cannot durably stage canonical reversal candidate");
+                       (Staging_Write_Failure,
+                        "cannot durably stage canonical reversal candidate");
                   end if;
 
                   declare
@@ -1250,10 +1228,9 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                      if not Staged.Success
                        or else US.To_String (Staged.Content) /= Candidate
                      then
-                        Remove_Stage;
-                        Release_All;
                         return Fail
-                          ("staged reversal bytes do not match candidate generation");
+                          (Staging_Mismatch,
+                           "staged reversal bytes do not match candidate generation");
                      end if;
 
                      declare
@@ -1271,10 +1248,9 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                            Inverse,
                            Target_Event)
                         then
-                           Remove_Stage;
-                           Release_All;
                            return Fail
-                             ("staged reversal generation failed semantic admission");
+                             (Staging_Admission_Failure,
+                              "staged reversal generation failed semantic admission");
                         end if;
                      end;
                   end;
@@ -1282,15 +1258,13 @@ package body HRA_N.Storage.Loam_Actual_Writer is
                   if not HRA_N.Storage.Atomic_Writer.Publish_Staged_File_Atomically
                     (Stage_Path, Actual_Path, Error, Error_Len)
                   then
-                     Release_All;
                      return Fail
-                       ("failed to switch canonical Actual reversal authority");
+                       (Authority_Switch_Failure,
+                        "failed to switch canonical Actual reversal authority");
                   end if;
 
-                  Result.Success := True;
-                  Result.Event_Id := Reversal_Id;
                   Release_All;
-                  return Result;
+                  return Make_Success (Reversal_Id);
                end;
             end;
          end;
@@ -1298,9 +1272,83 @@ package body HRA_N.Storage.Loam_Actual_Writer is
 
    exception
       when others =>
-         Remove_Stage;
-         Release_All;
-         return Fail ("unexpected LOAM Actual reversal writer failure");
+         return Fail (Internal_Error, "unexpected LOAM Actual reversal writer failure");
    end Publish_Reversal;
+
+   function Format_Error (Result : Publish_Result) return String is
+   begin
+      if Result.Success then
+         return "";
+      elsif Result.Error_Len > 0 then
+         return Result.Error_Reason (1 .. Result.Error_Len);
+      else
+         case Result.Status is
+            when Invalid_Root_Directory =>
+               return "LOAM data root must not be empty";
+            when Invalid_Date =>
+               return "occurrence date is invalid";
+            when Invalid_Description =>
+               return "description is not canonically encodable";
+            when Insufficient_Effects =>
+               return "transaction needs at least two Effects";
+            when Invalid_Effect_Token_Or_Zero =>
+               return "transaction requires valid tokens and nonzero quantities";
+            when Multiple_Measures =>
+               return "transaction must use one Measure";
+            when Unbalanced_Or_Zero_Measure =>
+               return "transaction must be one balanced nonzero Measure";
+            when Lock_Failure =>
+               return "cannot acquire LOAM writer ownership";
+            when Cannot_Read_Actual =>
+               return "cannot read current actual.loam authority";
+            when Corrupt_Actual =>
+               return "current actual.loam is malformed, unsupported, or over capacity";
+            when Corrupt_Locus_Admission =>
+               return "current locus-admission.loam is malformed or unsupported";
+            when Locus_Not_Admitted =>
+               return "transaction uses a Locus not approved for new publication";
+            when Working_Set_Exceeded =>
+               return "HRA-N Actual writer working-set capacity exceeded";
+            when Candidate_Correspondence_Failure =>
+               return "candidate Actual generation failed semantic correspondence";
+            when Staging_Write_Failure =>
+               return "cannot durably stage canonical candidate";
+            when Staging_Mismatch =>
+               return "staged bytes do not match candidate generation";
+            when Staging_Admission_Failure =>
+               return "staged generation failed semantic admission";
+            when Authority_Switch_Failure =>
+               return "failed to switch canonical Actual authority";
+            when Invalid_Target_Token =>
+               return "target identity is invalid";
+            when Target_Not_Retained =>
+               return "selected target is not retained";
+            when Target_Not_Current =>
+               return "selected Actual is no longer current";
+            when Target_Participates_In_Reversal =>
+               return "correction of an Actual participating in Reversal evidence is not qualified";
+            when Target_Not_Practical =>
+               return "selected Actual is outside the practical entrance";
+            when Measure_Mismatch =>
+               return "correction must preserve the target Measure";
+            when Target_Missing_Date =>
+               return "selected Actual has no current occurrence date";
+            when Reversal_Identity_Exceeds_Capacity =>
+               return "deterministic reversal identity exceeds HRA-N token capacity";
+            when Corrupt_Scheduled =>
+               return "current scheduled.loam is malformed, unsupported, or over capacity";
+            when Reversal_Chain_Not_Qualified =>
+               return "reversal-of-reversal chains are not qualified";
+            when Target_Already_Reversed =>
+               return "selected Actual is already reversed";
+            when Scheduled_Completion_Not_Qualified =>
+               return "reversal of a Scheduled-completion Actual is not qualified";
+            when Identity_Collision =>
+               return "deterministic reversal Event identity collides with retained Movement evidence";
+            when Internal_Error =>
+               return "unexpected LOAM Actual writer failure";
+         end case;
+      end if;
+   end Format_Error;
 
 end HRA_N.Storage.Loam_Actual_Writer;

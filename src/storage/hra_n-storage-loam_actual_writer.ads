@@ -15,12 +15,55 @@ with HRA_N.Core.Validity;    use HRA_N.Core.Validity;
 
 package HRA_N.Storage.Loam_Actual_Writer is
 
-   type Publish_Result is record
-      Success      : Boolean := False;
-      Event_Id     : Token_Text;
-      Error_Reason : String (1 .. 192) := [others => ' '];
-      Error_Len    : Natural := 0;
+   type Actual_Publish_Status is
+     (Invalid_Root_Directory,
+      Invalid_Date,
+      Invalid_Description,
+      Insufficient_Effects,
+      Invalid_Effect_Token_Or_Zero,
+      Multiple_Measures,
+      Unbalanced_Or_Zero_Measure,
+      Lock_Failure,
+      Cannot_Read_Actual,
+      Corrupt_Actual,
+      Corrupt_Locus_Admission,
+      Locus_Not_Admitted,
+      Working_Set_Exceeded,
+      Candidate_Correspondence_Failure,
+      Staging_Write_Failure,
+      Staging_Mismatch,
+      Staging_Admission_Failure,
+      Authority_Switch_Failure,
+      --  Correction specific
+      Invalid_Target_Token,
+      Target_Not_Retained,
+      Target_Not_Current,
+      Target_Participates_In_Reversal,
+      Target_Not_Practical,
+      Measure_Mismatch,
+      Target_Missing_Date,
+      --  Reversal specific
+      Reversal_Identity_Exceeds_Capacity,
+      Corrupt_Scheduled,
+      Reversal_Chain_Not_Qualified,
+      Target_Already_Reversed,
+      Scheduled_Completion_Not_Qualified,
+      Identity_Collision,
+      --  Internal / unexpected
+      Internal_Error);
+
+   type Publish_Result (Success : Boolean := True) is record
+      case Success is
+         when True =>
+            Event_Id     : Token_Text;
+         when False =>
+            Status       : Actual_Publish_Status := Internal_Error;
+            Error_Reason : String (1 .. 192)     := [others => ' '];
+            Error_Len    : Natural               := 0;
+      end case;
    end record;
+
+   function Format_Error (Result : Publish_Result) return String;
 
    --  Publish one single-Measure balanced Movement to root/actual.loam.
    --

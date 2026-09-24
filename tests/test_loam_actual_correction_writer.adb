@@ -167,7 +167,8 @@ package body Test_Loam_Actual_Correction_Writer is
               Replacement_Effects (20));
       begin
          Assert
-           (not Rejected.Success,
+           (not Rejected.Success
+            and then Rejected.Status = Target_Not_Current,
             "already replaced target is no longer current");
          Assert
            (Read_Exact (Actual) = Before,
@@ -218,7 +219,8 @@ package body Test_Loam_Actual_Correction_Writer is
               Replacement_Effects (30, "usd"));
       begin
          Assert
-           (not Cross_Measure.Success,
+           (not Cross_Measure.Success
+            and then Cross_Measure.Status = Measure_Mismatch,
             "cross-Measure correction is rejected");
          Assert
            (Read_Exact (Actual) = Before,
@@ -234,7 +236,10 @@ package body Test_Loam_Actual_Correction_Writer is
               Make_Description ("missing"),
               Replacement_Effects (30));
       begin
-         Assert (not Missing.Success, "missing correction target is rejected");
+         Assert
+           (not Missing.Success
+            and then Missing.Status = Target_Not_Retained,
+            "missing correction target is rejected");
          Assert
            (Read_Exact (Actual) = Before,
             "missing target rejection leaves authority unchanged");
@@ -249,7 +254,10 @@ package body Test_Loam_Actual_Correction_Writer is
               Make_Description ("bad locus"),
               Replacement_Effects (30, "jpy", "unknown"));
       begin
-         Assert (not Unapproved.Success, "unapproved replacement Locus is rejected");
+         Assert
+           (not Unapproved.Success
+            and then Unapproved.Status = Locus_Not_Admitted,
+            "unapproved replacement Locus is rejected");
          Assert
            (Read_Exact (Actual) = Before,
             "policy rejection leaves corrected authority unchanged");
@@ -286,7 +294,10 @@ package body Test_Loam_Actual_Correction_Writer is
               Replacement_Effects (11));
       begin
          Assert
-           (not Target_Side.Success and then not Reversal_Side.Success,
+           (not Target_Side.Success
+            and then Target_Side.Status = Target_Participates_In_Reversal
+            and then not Reversal_Side.Success
+            and then Reversal_Side.Status = Target_Participates_In_Reversal,
             "either endpoint of reversal evidence is refused as correction target");
          Assert
            (Read_Exact (Actual) = Before,

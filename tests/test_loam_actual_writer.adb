@@ -159,8 +159,13 @@ package body Test_Loam_Actual_Writer is
               Make_Description ("must refuse"),
               Rejected_Effects);
          Assert
-           (not Rejected.Success,
+           (not Rejected.Success
+            and then Rejected.Status = Locus_Not_Admitted,
             "unapproved Locus fails closed");
+         Assert
+           (Format_Error (Rejected) =
+              "movement uses a Locus not approved for new publication",
+            "format error matches Locus_Not_Admitted message");
          Assert
            (Read_Exact (Actual) = Before,
             "policy rejection leaves canonical Actual bytes untouched");
@@ -183,8 +188,13 @@ package body Test_Loam_Actual_Writer is
                  Effects);
          begin
             Assert
-              (not Rejected.Success,
+              (not Rejected.Success
+               and then Rejected.Status = Corrupt_Locus_Admission,
                "duplicate canonical policy identity fails closed");
+            Assert
+              (Format_Error (Rejected) =
+                 "current locus-admission.loam is malformed or unsupported",
+               "format error matches Corrupt_Locus_Admission message");
             Assert
               (Read_Exact (Actual) = Before,
                "malformed policy leaves canonical Actual bytes untouched");
@@ -212,11 +222,57 @@ package body Test_Loam_Actual_Writer is
               Effects);
       begin
          Assert
-           (not Rejected.Success,
+           (not Rejected.Success
+            and then Rejected.Status = Corrupt_Actual,
             "unadmitted existing Actual fails closed");
+         Assert
+           (Format_Error (Rejected) =
+              "current actual.loam is malformed, unsupported, or over capacity",
+            "format error matches Corrupt_Actual message");
          Assert
            (Read_Exact (Actual) = Before,
             "existing-authority admission failure leaves bytes untouched");
+      end;
+
+      --  Input validation checks
+      declare
+         Empty_Root_Res : constant Publish_Result :=
+           Publish_Movement
+             ("",
+              (Year => 2026, Month => 9, Day => 22),
+              Make_Description ("test"),
+              Effects);
+         Bad_Date_Res : constant Publish_Result :=
+           Publish_Movement
+             (Root,
+              (Year => 2026, Month => 2, Day => 30),
+              Make_Description ("test"),
+              Effects);
+         Single_Effect : Effect_List;
+      begin
+         Single_Effect.Count := 1;
+         Single_Effect.Values (1) := Effects.Values (1);
+         declare
+            Single_Res : constant Publish_Result :=
+              Publish_Movement
+                (Root,
+                 (Year => 2026, Month => 9, Day => 22),
+                 Make_Description ("test"),
+                 Single_Effect);
+         begin
+            Assert
+              (not Empty_Root_Res.Success
+               and then Empty_Root_Res.Status = Invalid_Root_Directory,
+               "empty root yields Invalid_Root_Directory");
+            Assert
+              (not Bad_Date_Res.Success
+               and then Bad_Date_Res.Status = Invalid_Date,
+               "bad date yields Invalid_Date");
+            Assert
+              (not Single_Res.Success
+               and then Single_Res.Status = Insufficient_Effects,
+               "single effect yields Insufficient_Effects");
+         end;
       end;
 
       if Ada.Directories.Exists (Root) then

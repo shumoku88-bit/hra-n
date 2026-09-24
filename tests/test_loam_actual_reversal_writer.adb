@@ -234,10 +234,12 @@ package body Test_Loam_Actual_Reversal_Writer is
                  (Year => 2026, Month => 9, Day => 23));
          begin
             Assert
-              (not Again.Success,
+              (not Again.Success
+               and then Again.Status = Target_Already_Reversed,
                "already reversed target is refused");
             Assert
-              (not Chain.Success,
+              (not Chain.Success
+               and then Chain.Status = Reversal_Chain_Not_Qualified,
                "reversal-of-reversal is refused");
             Assert
               (Read_Exact (Actual) = Stable,
@@ -263,7 +265,10 @@ package body Test_Loam_Actual_Reversal_Writer is
               (Token => Make_Token ("record-1")),
               (Year => 2026, Month => 9, Day => 22));
       begin
-         Assert (not Rejected.Success, "non-current correction target is refused");
+         Assert
+           (not Rejected.Success
+            and then Rejected.Status = Target_Not_Current,
+            "non-current correction target is refused");
          Assert
            (Read_Exact (Actual) = Before,
             "non-current refusal leaves authority unchanged");
@@ -280,7 +285,8 @@ package body Test_Loam_Actual_Reversal_Writer is
               (Year => 2026, Month => 9, Day => 22));
       begin
          Assert
-           (not Rejected.Success,
+           (not Rejected.Success
+            and then Rejected.Status = Scheduled_Completion_Not_Qualified,
             "Scheduled-completion Actual is refused");
          Assert
            (Read_Exact (Actual) = Before,
@@ -298,7 +304,8 @@ package body Test_Loam_Actual_Reversal_Writer is
               (Year => 2026, Month => 9, Day => 22));
       begin
          Assert
-           (not Rejected.Success,
+           (not Rejected.Success
+            and then Rejected.Status = Corrupt_Scheduled,
             "malformed Scheduled lifecycle fails reversal closed");
          Assert
            (Read_Exact (Actual) = Before,
@@ -315,7 +322,10 @@ package body Test_Loam_Actual_Reversal_Writer is
               (Token => Make_Token ("record-1")),
               (Year => 2026, Month => 9, Day => 22));
       begin
-         Assert (not Rejected.Success, "non-JPY target is refused");
+         Assert
+           (not Rejected.Success
+            and then Rejected.Status = Target_Not_Practical,
+            "non-JPY target is refused");
          Assert
            (Read_Exact (Actual) = Before,
             "non-JPY refusal leaves authority unchanged");
@@ -334,7 +344,10 @@ package body Test_Loam_Actual_Reversal_Writer is
               (Token => Make_Token ("record-1")),
               (Year => 2026, Month => 9, Day => 22));
       begin
-         Assert (not Rejected.Success, "unapproved inverse Locus is refused");
+         Assert
+           (not Rejected.Success
+            and then Rejected.Status = Locus_Not_Admitted,
+            "unapproved inverse Locus is refused");
          Assert
            (Read_Exact (Actual) = Before,
             "Locus admission refusal leaves authority unchanged");
@@ -358,7 +371,8 @@ package body Test_Loam_Actual_Reversal_Writer is
               (Year => 2026, Month => 9, Day => 22));
       begin
          Assert
-           (not Rejected.Success,
+           (not Rejected.Success
+            and then Rejected.Status = Identity_Collision,
             "deterministic reversal identity collision is refused");
          Assert
            (Read_Exact (Actual) = Before,
@@ -389,7 +403,8 @@ package body Test_Loam_Actual_Reversal_Writer is
               (Year => 2026, Month => 9, Day => 22));
       begin
          Assert
-           (not Rejected.Success,
+           (not Rejected.Success
+            and then Rejected.Status = Corrupt_Actual,
             "unqualified canonical Relation evidence is not ignored");
          Assert
            (Read_Exact (Actual) = Before,
