@@ -97,6 +97,12 @@ jobs:
       - name: Test LOAM Attention Reader
         run: ./tests/bin/test_runner Test_Loam_Attention_Reader
 
+      - name: Test LOAM Locus Admission Reader
+        run: ./tests/bin/test_runner Test_Loam_Locus_Admission_Reader
+
+      - name: Test LOAM Locus Admission Writer
+        run: ./tests/bin/test_runner Test_Loam_Locus_Admission_Writer
+
       - name: Test LOAM Actual Writer
         run: ./tests/bin/test_runner Test_Loam_Actual_Writer
 

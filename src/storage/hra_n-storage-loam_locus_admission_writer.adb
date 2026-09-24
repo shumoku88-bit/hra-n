@@ -20,6 +20,32 @@ package body HRA_N.Storage.Loam_Locus_Admission_Writer is
    HT : constant String := [1 => ASCII.HT];
    NL : constant String := [1 => ASCII.LF];
 
+   function Make_Failure
+     (Locus   : Locus_Id;
+      Status  : Locus_Publish_Status;
+      Message : String) return Publish_Result
+   is
+      Result : Publish_Result (Success => False);
+      Len    : constant Natural :=
+        Natural'Min (Message'Length, Result.Error_Reason'Length);
+   begin
+      Result.Locus := Locus;
+      Result.Status := Status;
+      Result.Error_Len := Len;
+      if Len > 0 then
+         Result.Error_Reason (1 .. Len) :=
+           Message (Message'First .. Message'First + Len - 1);
+      end if;
+      return Result;
+   end Make_Failure;
+
+   function Make_Success (Locus : Locus_Id) return Publish_Result is
+      Result : Publish_Result (Success => True);
+   begin
+      Result.Locus := Locus;
+      return Result;
+   end Make_Success;
+
    function Valid_Locus_Token (Token : Token_Text) return Boolean is
    begin
       if Token.Length = 0 then
@@ -38,24 +64,6 @@ package body HRA_N.Storage.Loam_Locus_Admission_Writer is
      (Root_Path : String;
       Locus     : Locus_Id) return Publish_Result
    is
-      Result : Publish_Result :=
-        (Success      => False,
-         Locus        => Locus,
-         Error_Reason => [others => ' '],
-         Error_Len    => 0);
-
-      procedure Set_Error (Msg : String) is
-         Len : constant Natural :=
-           Natural'Min (Msg'Length, Result.Error_Reason'Length);
-      begin
-         Result.Success := False;
-         Result.Error_Len := Len;
-         Result.Error_Reason := [others => ' '];
-         if Len > 0 then
-            Result.Error_Reason (1 .. Len) := Msg (Msg'First .. Msg'First + Len - 1);
-         end if;
-      end Set_Error;
-
       Locus_Name : constant String :=
         (if Locus.Token.Length > 0
          then Locus.Token.Value (1 .. Locus.Token.Length)
@@ -75,21 +83,26 @@ package body HRA_N.Storage.Loam_Locus_Admission_Writer is
          end if;
       end Release;
 
+      function Fail
+        (Status  : Locus_Publish_Status;
+         Message : String) return Publish_Result
+      is
+      begin
+         Release;
+         return Make_Failure (Locus, Status, Message);
+      end Fail;
+
    begin
       if Root_Path'Length = 0 then
-         Set_Error ("canonical root directory must not be empty");
-         return Result;
+         return Fail (Invalid_Root_Directory, "canonical root directory must not be empty");
       elsif not Ada.Directories.Exists (Root_Path) then
-         Set_Error ("canonical root directory does not exist: " & Root_Path);
-         return Result;
+         return Fail (Invalid_Root_Directory, "canonical root directory does not exist: " & Root_Path);
       elsif not Valid_Locus_Token (Locus.Token) then
-         Set_Error ("locus token is empty or contains whitespace");
-         return Result;
+         return Fail (Invalid_Locus_Token, "locus token is empty or contains whitespace");
       end if;
 
       if not HRA_N.Storage.File_Lock.Acquire (Lock_Path, Lock_Handle) then
-         Set_Error ("could not acquire lock: " & Lock_Path);
-         return Result;
+         return Fail (Lock_Failure, "could not acquire lock: " & Lock_Path);
       end if;
 
       declare
@@ -97,9 +110,7 @@ package body HRA_N.Storage.Loam_Locus_Admission_Writer is
            HRA_N.Storage.Exact_File.Read_All (Target_Path);
       begin
          if not File_Read.Success then
-            Release;
-            Set_Error ("cannot read locus-admission.loam in " & Root_Path);
-            return Result;
+            return Fail (Cannot_Read_File, "cannot read locus-admission.loam in " & Root_Path);
          end if;
 
          declare
@@ -109,19 +120,14 @@ package body HRA_N.Storage.Loam_Locus_Admission_Writer is
               Locus_Reader.Read_Content (Existing_Text);
          begin
             if not Current.Success then
-               Release;
-               Set_Error
-                 ("current locus-admission.loam is malformed or unreadable: "
+               return Fail
+                 (Corrupt_Existing_File,
+                  "current locus-admission.loam is malformed or unreadable: "
                   & Current.Error_Reason (1 .. Current.Error_Len));
-               return Result;
             elsif Admits_Locus (Current.Vocabulary, Locus) then
-               Release;
-               Set_Error ("locus coordinate is already admitted: " & Locus_Name);
-               return Result;
+               return Fail (Already_Admitted, "locus coordinate is already admitted: " & Locus_Name);
             elsif Current.Vocabulary.Count = Max_Admitted_Loci then
-               Release;
-               Set_Error ("maximum admitted locus capacity reached");
-               return Result;
+               return Fail (Capacity_Exceeded, "maximum admitted locus capacity reached");
             end if;
 
             declare
@@ -139,42 +145,56 @@ package body HRA_N.Storage.Loam_Locus_Admission_Writer is
                Write_Len : Natural := 0;
             begin
                if not Candidate_Check.Success then
-                  Release;
-                  Set_Error ("candidate locus admission failed verification");
-                  return Result;
+                  return Fail (Verification_Failure, "candidate locus admission failed verification");
                elsif not Admits_Locus (Candidate_Check.Vocabulary, Locus) then
-                  Release;
-                  Set_Error ("candidate image does not admit proposed locus");
-                  return Result;
+                  return Fail (Verification_Failure, "candidate image does not admit proposed locus");
                elsif Candidate_Check.Vocabulary.Count /= Current.Vocabulary.Count + 1 then
-                  Release;
-                  Set_Error ("candidate vocabulary count mismatch");
-                  return Result;
+                  return Fail (Verification_Failure, "candidate vocabulary count mismatch");
                end if;
 
                if not HRA_N.Storage.Atomic_Writer.Write_File_Atomically
                  (Target_Path, Candidate, Write_Err, Write_Len)
                then
-                  Release;
-                  Set_Error
-                    ("failed atomic write to locus-admission.loam: "
+                  return Fail
+                    (Atomic_Write_Failure,
+                     "failed atomic write to locus-admission.loam: "
                      & Write_Err (1 .. Write_Len));
-                  return Result;
                end if;
 
                Release;
-               Result.Success := True;
-               return Result;
+               return Make_Success (Locus);
             end;
          end;
       end;
 
    exception
       when E : others =>
-         Release;
-         Set_Error ("unexpected failure in Publish_Locus: "
-                    & Ada.Exceptions.Exception_Message (E));
-         return Result;
+         return Fail
+           (Internal_Error,
+            "unexpected failure in Publish_Locus: "
+            & Ada.Exceptions.Exception_Message (E));
    end Publish_Locus;
+
+   function Format_Error (Result : Publish_Result) return String is
+   begin
+      if Result.Success then
+         return "";
+      elsif Result.Error_Len > 0 then
+         return Result.Error_Reason (1 .. Result.Error_Len);
+      else
+         case Result.Status is
+            when Invalid_Root_Directory => return "canonical root directory is invalid or does not exist";
+            when Invalid_Locus_Token    => return "locus token is empty or contains whitespace";
+            when Lock_Failure           => return "could not acquire locus writer lock";
+            when Cannot_Read_File       => return "cannot read locus-admission.loam";
+            when Corrupt_Existing_File  => return "current locus-admission.loam is malformed or unreadable";
+            when Already_Admitted       => return "locus coordinate is already admitted";
+            when Capacity_Exceeded      => return "maximum admitted locus capacity reached";
+            when Verification_Failure   => return "candidate locus admission failed verification";
+            when Atomic_Write_Failure   => return "failed atomic write to locus-admission.loam";
+            when Internal_Error         => return "internal locus admission writer error";
+         end case;
+      end if;
+   end Format_Error;
 
 end HRA_N.Storage.Loam_Locus_Admission_Writer;
