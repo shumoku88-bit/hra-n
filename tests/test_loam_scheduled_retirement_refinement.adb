@@ -65,8 +65,11 @@ package body Test_Loam_Scheduled_Retirement_Refinement is
            Qualify_One_Fresh_Retirement (Before, After);
       begin
          Assert
-           (Published.State = Retirement_Published_Fresh,
+           (Published.Success,
             "production retirement publisher succeeds");
+         Assert
+           (Published.State = Retirement_Published_Fresh,
+            "production retirement publisher state is fresh");
          Assert
            (Q.Status = Qualified,
             "production before/after image refines to proved retirement transition");

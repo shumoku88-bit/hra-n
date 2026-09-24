@@ -98,8 +98,11 @@ package body Test_Loam_Scheduled_Retirement_Writer is
          After : constant Read_Result := Read_File (Scheduled);
       begin
          Assert
-           (Published.State = Retirement_Published_Fresh,
+           (Published.Success,
             "fresh canonical Scheduled retirement succeeds");
+         Assert
+           (Published.State = Retirement_Published_Fresh,
+            "fresh canonical Scheduled retirement published state");
          Assert
            (After.Success
             and then After.Lifecycle.Ret_Count = 1
@@ -119,8 +122,18 @@ package body Test_Loam_Scheduled_Retirement_Writer is
              (Root, (Token => Make_Token ("scheduled-1")));
       begin
          Assert
-           (Duplicate.State = Retirement_Not_Published,
+           (not Duplicate.Success,
             "already retired Scheduled identity is rejected");
+         Assert
+           (Duplicate.Status = Scheduled_Not_Current_Open,
+            "duplicate retirement reports scheduled not current open");
+         Assert
+           (Format_Error (Duplicate) =
+              "selected Scheduled identity is no longer current-open",
+            "duplicate retirement formats error");
+         Assert
+           (Duplicate.State = Retirement_Not_Published,
+            "already retired Scheduled identity state");
          Assert
            (Read_Exact (Scheduled) = Scheduled_Before,
             "duplicate retirement rewrites no Scheduled bytes");
@@ -142,14 +155,18 @@ package body Test_Loam_Scheduled_Retirement_Writer is
              (Root, (Token => Make_Token ("scheduled-1")));
       begin
          Assert
-           (Interrupted.State = Retirement_Not_Published,
+           (not Interrupted.Success,
             "interrupted completion blocks retirement");
          Assert
-           (Interrupted.Error_Len > 0
-            and then Index
-              (Interrupted.Error_Reason (1 .. Interrupted.Error_Len),
-               "interrupted completion") > 0,
-            "interrupted completion rejection is explicit");
+           (Interrupted.Status = Interrupted_Completion,
+            "interrupted completion reports status");
+         Assert
+           (Format_Error (Interrupted) =
+              "selected Scheduled identity has an interrupted completion; retry completion before retirement",
+            "interrupted completion formats error");
+         Assert
+           (Interrupted.State = Retirement_Not_Published,
+            "interrupted completion state");
          Assert
            (Read_Exact (Scheduled) = Before,
             "interrupted completion rejection rewrites no Scheduled bytes");
@@ -177,14 +194,18 @@ package body Test_Loam_Scheduled_Retirement_Writer is
              (Root, (Token => Make_Token ("scheduled-1")));
       begin
          Assert
-           (Completed.State = Retirement_Not_Published,
+           (not Completed.Success,
             "completed Scheduled identity cannot be retired");
          Assert
-           (Completed.Error_Len > 0
-            and then Index
-              (Completed.Error_Reason (1 .. Completed.Error_Len),
-               "already completed") > 0,
-            "completed rejection is classified separately");
+           (Completed.Status = Already_Completed,
+            "completed Scheduled reports status");
+         Assert
+           (Format_Error (Completed) =
+              "selected Scheduled identity is already completed",
+            "completed Scheduled formats error");
+         Assert
+           (Completed.State = Retirement_Not_Published,
+            "completed Scheduled state");
       end;
 
       Reset_Root;
@@ -202,8 +223,51 @@ package body Test_Loam_Scheduled_Retirement_Writer is
              (Root, (Token => Make_Token ("scheduled-1")));
       begin
          Assert
-           (Replaced.State = Retirement_Not_Published,
+           (not Replaced.Success,
             "replaced Scheduled identity cannot be retired");
+         Assert
+           (Replaced.Status = Scheduled_Not_Current_Open,
+            "replaced Scheduled reports scheduled not current open");
+         Assert
+           (Format_Error (Replaced) =
+              "selected Scheduled identity is no longer current-open",
+            "replaced Scheduled formats error");
+         Assert
+           (Replaced.State = Retirement_Not_Published,
+            "replaced Scheduled state");
+      end;
+
+      declare
+         Empty_Root_Result : constant Publish_Result :=
+           Publish_Retirement ("", (Token => Make_Token ("scheduled-1")));
+      begin
+         Assert
+           (not Empty_Root_Result.Success,
+            "empty root directory is rejected");
+         Assert
+           (Empty_Root_Result.Status = Invalid_Root_Directory,
+            "invalid root directory status reported");
+         Assert
+           (Format_Error (Empty_Root_Result) =
+              "LOAM data root must not be empty",
+            "invalid root directory error formatted");
+      end;
+
+      declare
+         Invalid_Token_Result : constant Publish_Result :=
+           Publish_Retirement
+             (Root, (Token => (Length => 0, Value => [others => ' '])));
+      begin
+         Assert
+           (not Invalid_Token_Result.Success,
+            "invalid Scheduled token is rejected");
+         Assert
+           (Invalid_Token_Result.Status = Invalid_Scheduled_Token,
+            "invalid Scheduled token status reported");
+         Assert
+           (Format_Error (Invalid_Token_Result) =
+              "Scheduled retirement requires a valid Scheduled identity",
+            "invalid Scheduled token error formatted");
       end;
 
       Assert

@@ -52,7 +52,6 @@ package body HRA_N.Application.Scheduled_Command is
 
    use type Completion_Publisher.Completion_Publication_State;
    use type Completion_Protocol_Refinement.Qualification_Status;
-   use type Retirement_Publisher.Retirement_Publication_State;
    use type Retirement_Refinement.Qualification_Status;
    use type Replacement_Refinement.Qualification_Status;
 
@@ -502,16 +501,9 @@ package body HRA_N.Application.Scheduled_Command is
               Retirement_Publisher.Publish_Retirement
                 (Root_Path, (Token => Intent.Target_Id));
          begin
-            if Published.State =
-              Retirement_Publisher.Retirement_Not_Published
-            then
-               if Published.Error_Len > 0 then
-                  Set_Diagnostic
-                    (Published.Error_Reason (1 .. Published.Error_Len));
-               else
-                  Set_Diagnostic
-                    ("canonical Scheduled retirement was rejected");
-               end if;
+            if not Published.Success then
+               Set_Diagnostic
+                 (Retirement_Publisher.Format_Error (Published));
                return Result;
             end if;
 
