@@ -11,6 +11,7 @@ package body Test_Loam_Accounting_Role_Reader is
       HT : constant String := [1 => ASCII.HT];
       NL : constant String := [1 => ASCII.LF];
       Header : constant String := "LOAM-ACCOUNTING-ROLE-MAP" & HT & "1" & NL;
+      use type Reader.Role_Read_Status;
       Missing : constant String := "/tmp/hra_n_missing_accounting_role.loam";
    begin
       if Ada.Directories.Exists (Missing) then
@@ -21,6 +22,10 @@ package body Test_Loam_Accounting_Role_Reader is
       begin
          Assert (not R.Success and then not R.Present and then R.Error_Len > 0,
                  "missing canonical AccountingRole is required evidence");
+         Assert (R.Status = Reader.IO_Error,
+                 "missing canonical file status is IO_Error");
+         Assert (Reader.Format_Error (R)'Length > 0,
+                 "formatted error is non-empty for IO_Error");
       end;
 
       declare
@@ -29,6 +34,8 @@ package body Test_Loam_Accounting_Role_Reader is
          Assert (R.Success and then R.Present
                  and then Current_Entry_Count (R.Roles) = 0,
                  "header-only canonical AccountingRole is valid empty map");
+         Assert (Reader.Format_Error (R) = "",
+                 "formatted error is empty on success");
       end;
 
       declare
@@ -51,27 +58,40 @@ package body Test_Loam_Accounting_Role_Reader is
       end;
 
       declare
-         type Case_Array is array (Positive range <>) of Unbounded_String;
+         type Case_Record is record
+            Text   : Unbounded_String;
+            Status : Reader.Role_Read_Status;
+         end record;
+         type Case_Array is array (Positive range <>) of Case_Record;
          Cases : constant Case_Array :=
-           [To_Unbounded_String ("WRONG" & NL),
-            To_Unbounded_String (Header & "ROLE" & HT & "cash" & NL),
-            To_Unbounded_String
-              (Header & "ROLE" & HT & "cash" & HT & "ASSET" & HT & "extra" & NL),
-            To_Unbounded_String
-              (Header & "ROLE" & HT & "bad" & ASCII.CR & HT & "ASSET" & NL),
-            To_Unbounded_String
-              (Header & "ROLE" & HT & "cash" & HT & "UNKNOWN" & NL),
-            To_Unbounded_String
-              (Header & "ROLE" & HT & "cash" & HT & "ASSET" & NL &
-               "ROLE" & HT & "cash" & HT & "LIABILITY" & NL)];
+           [(Text => To_Unbounded_String ("WRONG" & NL),
+             Status => Reader.Unsupported_Header),
+            (Text => To_Unbounded_String (Header & "ROLE" & HT & "cash" & NL),
+             Status => Reader.Syntax_Error),
+            (Text => To_Unbounded_String
+               (Header & "ROLE" & HT & "cash" & HT & "ASSET" & HT & "extra" & NL),
+             Status => Reader.Syntax_Error),
+            (Text => To_Unbounded_String
+               (Header & "ROLE" & HT & "bad" & ASCII.CR & HT & "ASSET" & NL),
+             Status => Reader.Invalid_Token),
+            (Text => To_Unbounded_String
+               (Header & "ROLE" & HT & "cash" & HT & "UNKNOWN" & NL),
+             Status => Reader.Unknown_Vocabulary),
+            (Text => To_Unbounded_String
+               (Header & "ROLE" & HT & "cash" & HT & "ASSET" & NL &
+                "ROLE" & HT & "cash" & HT & "LIABILITY" & NL),
+             Status => Reader.Duplicate_Locus)];
       begin
          for I in Cases'Range loop
             declare
-               R : constant Reader.Read_Result := Reader.Read_Content (To_String (Cases (I)));
+               R : constant Reader.Read_Result := Reader.Read_Content (To_String (Cases (I).Text));
             begin
                Assert (not R.Success and then R.Error_Len > 0,
                        "malformed canonical AccountingRole case" &
                        Positive'Image (I) & " rejects");
+               Assert (R.Status = Cases (I).Status,
+                       "malformed canonical AccountingRole case" &
+                       Positive'Image (I) & " matches expected status");
             end;
          end loop;
       end;
@@ -88,6 +108,8 @@ package body Test_Loam_Accounting_Role_Reader is
          begin
             Assert (not R.Success and then R.Error_Len > 0,
                     "canonical AccountingRole capacity overflow rejects");
+            Assert (R.Status = Reader.Capacity_Exceeded,
+                    "capacity overflow status is Capacity_Exceeded");
          end;
       end;
    end Run;
