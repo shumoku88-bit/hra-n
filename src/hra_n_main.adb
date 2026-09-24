@@ -85,7 +85,6 @@ procedure HRA_N_Main is
       Put_Line ("  locus                  Admit or list accounting loci");
       Put_Line ("  role                   Assign or list accounting roles");
       Put_Line ("  route                  Configure or list routing rules");
-      Put_Line ("  window                 Configure or list budget evaluation windows");
       Put_Line ("  doctor, verify         Verify authority health and cryptographic soundness");
       Put_Line ("  init [OPTIONS] [DIR]   Initialize new household authority repository");
       Put_Line ("                         (default: Loam canonical data; --legacy: 3-stream)");
@@ -849,9 +848,11 @@ begin
          return;
       end if;
 
-      --  Branch: Evaluation windows
+      --  Branch: Evaluation windows (Retired)
       if Command = "window" or else Command = "windows" then
-         HRA_N.UI.Policy_CLI.Handle_Window_Command (Paths, Command_Idx + 1);
+         Put_Line ("[ERROR] 'window' command is retired: canonical authority evaluates dynamic calendar intervals.");
+         Put_Line ("        Use 'hra-n budget [START] [END]' instead.");
+         Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
          return;
       end if;
 
