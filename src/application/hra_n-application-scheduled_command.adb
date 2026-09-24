@@ -639,13 +639,8 @@ package body HRA_N.Application.Scheduled_Command is
                   Changes      => Changes));
          begin
             if not Published.Success then
-               if Published.Error_Len > 0 then
-                  Set_Diagnostic
-                    (Published.Error_Reason (1 .. Published.Error_Len));
-               else
-                  Set_Diagnostic
-                    ("canonical Scheduled replacement was rejected");
-               end if;
+               Set_Diagnostic
+                 (Replacement_Publisher.Format_Error (Published));
                return Result;
             end if;
 

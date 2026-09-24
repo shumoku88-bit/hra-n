@@ -183,6 +183,13 @@ package body Test_Loam_Scheduled_Replacement_Writer is
            (not Duplicate.Success,
             "already replaced Scheduled source is rejected");
          Assert
+           (Duplicate.Status = Source_Not_Current_Open,
+            "duplicate replacement reports source not current open");
+         Assert
+           (Format_Error (Duplicate) =
+              "selected Scheduled identity is no longer current-open",
+            "duplicate replacement formats error");
+         Assert
            (Read_Exact (Scheduled) = Before,
             "stale replacement rewrites no Scheduled bytes");
       end;
@@ -200,6 +207,13 @@ package body Test_Loam_Scheduled_Replacement_Writer is
          Assert
            (not Rejected.Success,
             "replacement Locus outside admission vocabulary fails closed");
+         Assert
+           (Rejected.Status = Locus_Not_Approved,
+            "unapproved locus reports locus not approved status");
+         Assert
+           (Format_Error (Rejected) =
+              "Scheduled replacement uses a Locus not approved for new publication",
+            "unapproved locus formats error");
          Assert
            (Read_Exact (Scheduled) = Before,
             "Locus rejection leaves Scheduled authority untouched");
@@ -224,11 +238,12 @@ package body Test_Loam_Scheduled_Replacement_Writer is
            (not Interrupted.Success,
             "interrupted completion claim blocks HRA-N replacement");
          Assert
-           (Interrupted.Error_Len > 0
-            and then Index
-              (Interrupted.Error_Reason (1 .. Interrupted.Error_Len),
-               "interrupted completion") > 0,
-            "interrupted completion refusal is explicit");
+           (Interrupted.Status = Interrupted_Completion,
+            "interrupted completion reports status");
+         Assert
+           (Format_Error (Interrupted) =
+              "selected Scheduled identity has an interrupted completion; retry completion before replacement",
+            "interrupted completion formats error");
          Assert
            (Read_Exact (Scheduled) = Before,
             "interrupted completion refusal rewrites no Scheduled bytes");
@@ -250,6 +265,63 @@ package body Test_Loam_Scheduled_Replacement_Writer is
          Assert
            (not Retired.Success,
             "retired Scheduled source cannot be replaced");
+         Assert
+           (Retired.Status = Source_Not_Current_Open,
+            "retired source reports source not current open");
+         Assert
+           (Format_Error (Retired) =
+              "selected Scheduled identity is no longer current-open",
+            "retired source formats error");
+      end;
+
+      declare
+         Empty_Root_Result : constant Publish_Result :=
+           Publish_Replacement ("", Draft);
+      begin
+         Assert
+           (not Empty_Root_Result.Success,
+            "empty root directory is rejected");
+         Assert
+           (Empty_Root_Result.Status = Invalid_Root_Directory,
+            "invalid root directory status reported");
+         Assert
+           (Format_Error (Empty_Root_Result) =
+              "LOAM data root must not be empty",
+            "invalid root directory error formatted");
+      end;
+
+      declare
+         Bad_Draft : Replacement_Draft := Draft;
+         Invalid_Token_Result : Publish_Result;
+      begin
+         Bad_Draft.Source.Token := (Length => 0, Value => [others => ' ']);
+         Invalid_Token_Result := Publish_Replacement (Root, Bad_Draft);
+         Assert
+           (not Invalid_Token_Result.Success,
+            "invalid source token is rejected");
+         Assert
+           (Invalid_Token_Result.Status = Invalid_Source_Token,
+            "invalid source token status reported");
+         Assert
+           (Format_Error (Invalid_Token_Result) =
+              "Scheduled replacement requires a valid source identity",
+            "invalid source token error formatted");
+      end;
+
+      declare
+         Unconserved_Result : constant Publish_Result :=
+           Publish_Replacement (Root, Draft (Left => -90, Right => 80));
+      begin
+         Assert
+           (not Unconserved_Result.Success,
+            "unconserved draft is rejected");
+         Assert
+           (Unconserved_Result.Status = Changes_Not_Conserved,
+            "unconserved status reported");
+         Assert
+           (Format_Error (Unconserved_Result) =
+              "Scheduled replacement changes must conserve exactly",
+            "unconserved error formatted");
       end;
 
       if Ada.Directories.Exists (Root) then
