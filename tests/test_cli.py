@@ -183,8 +183,14 @@ class TestHraNCli(unittest.TestCase):
                 with self.subTest(known=known, args=args):
                     res = self.run_cmd(*args)
                     self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-                    self.assertIn(diagnostic, res.stdout)
-                    self.assertIn("PARTIAL", res.stdout)
+                    if args[0] == 'report' and '--budget' in args:
+                        # Capacity is an independent successful observation;
+                        # it does not claim to observe Statement evidence.
+                        self.assertIn('FUNDING & BACKING', res.stdout)
+                        self.assertIn('Unavailable:', res.stdout)
+                    else:
+                        self.assertIn(diagnostic, res.stdout)
+                        self.assertIn("PARTIAL", res.stdout)
                     self.assertNotIn("NET WORTH", res.stdout)
                     self.assertNotIn("Net worth :", res.stdout)
                     self.assertNotIn("[SOLVENT", res.stdout)
@@ -255,13 +261,52 @@ class TestHraNCli(unittest.TestCase):
             for tab, expected in [
                 ('--budget', r'Total Budget Envelopes\s+120\s+19\s+101'),
                 ('--pace', r'Spent So Far\s*:\s*19 JPY'),
-                ('--audit', r'Active Envelope Requirements\s*:\s*101 JPY'),
+                ('--audit', r'\[5\. FUNDING & BACKING\]'),
                 ('--flow', r'Total Monthly Flow\s+0\s+19\s+-19'),
             ]:
                 with self.subTest(year=year, month=month, tab=tab):
                     res = self.run_cmd('report', tab, '-m', str(month), '-y', str(year))
                     self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
                     self.assertRegex(res.stdout, expected)
+
+    def test_f07_capacity_is_not_liquid_funding_or_safe_pace(self) -> None:
+        # A known, classified asset can be illiquid; neither it nor a budget
+        # entitlement is evidence of spendable funds or Scheduled coverage.
+        self.write_report_fixture('TX e1 2026-09-10 property:100 equity:-100 "house"\n')
+        with open(os.path.join(self.test_dir, 'policy.hra'), 'w', encoding='utf-8') as f:
+            f.write('ROLE property: ASSET\nROLE equity: EQUITY\n'
+                    'ZERO-ORIGIN property:jpy\nZERO-ORIGIN equity:jpy\n'
+                    'TRANSFER unallocated Food 80 jpy 2026-09-01\n')
+        for tab in ('--budget', '--pace', '--audit'):
+            with self.subTest(tab=tab):
+                res = self.run_cmd('report', tab, '-m', '9', '-y', '2026')
+                self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+                self.assertIn('Unavailable:', res.stdout)
+                self.assertNotIn('SOLVENT', res.stdout)
+                self.assertNotIn('Liquid Assets (Funding)', res.stdout)
+                self.assertNotIn('SAFE DAILY TARGET', res.stdout)
+                self.assertNotIn('Liquidity Deficit', res.stdout)
+                self.assertNotIn('headroom buffer', res.stdout)
+                self.assertNotIn('[TIGHT]', res.stdout)
+                self.assertNotIn('[OK]', res.stdout)
+                if tab == '--budget':
+                    self.assertRegex(res.stdout, r'Total Budget Envelopes\s+80\s+0\s+80')
+                elif tab == '--pace':
+                    self.assertIn('Remaining Budget', res.stdout)
+                    self.assertNotIn('JPY / day', res.stdout)
+        # A negative capacity balance is still not a liquidity finding.
+        with open(os.path.join(self.test_dir, 'policy.hra'), 'a', encoding='utf-8') as f:
+            f.write('ROLE cash: ASSET\nROUTE food INITIAL MANAGED Food\n')
+        with open(os.path.join(self.test_dir, 'journal.hra'), 'a', encoding='utf-8') as f:
+            f.write('TX e2 2026-09-20 cash:-90 food:90 "outlay"\n')
+        budget = self.run_cmd('report', '--budget', '-m', '9', '-y', '2026')
+        self.assertEqual(budget.returncode, 0, budget.stdout + budget.stderr)
+        self.assertRegex(budget.stdout, r'Total Budget Envelopes\s+80\s+90\s+-10')
+        self.assertIn('[NEGATIVE]', budget.stdout)
+        self.assertNotIn('Liquidity Deficit', budget.stdout)
+        # This is a refusal to infer funding, not a missing budget or zero cash.
+        self.assertIn('Scheduled pressure evidence', self.run_cmd(
+            'report', '--audit', '-m', '9', '-y', '2026').stdout)
 
     def test_versioned_month_end_budget(self) -> None:
         for args in [
@@ -1006,7 +1051,7 @@ class TestHraNCli(unittest.TestCase):
 
         res = self.run_cmd("report", "--pace", "--month", "9", "--year", "2026")
         self.assertEqual(res.returncode, 0, f"report --pace failed: {res.stderr}")
-        self.assertIn("DAILY SPENDING PACE & TARGET", res.stdout)
+        self.assertIn("MONTHLY CAPACITY OBSERVATION", res.stdout)
 
         res = self.run_cmd("report", "--audit", "--month", "9", "--year", "2026")
         self.assertEqual(res.returncode, 0, f"report --audit failed: {res.stderr}")

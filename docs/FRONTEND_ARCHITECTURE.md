@@ -79,9 +79,10 @@ require known origins for Asset/Liability/Equity, classification for all account
 and no JPY assertion conflicts. Income/Expense are retained flows, not inferred
 opening stocks. A zero net change or matching assertion alone does not establish
 an origin. Missing evidence produces `Query_Partial`, not invented balances.
-Renderers use report-level completeness before showing net worth, savings rate,
-or backing verdicts; partial numeric subtotals must be identified as retained
-changes. This is not a claim that all classified assets are liquid funding.
+Renderers use report-level completeness before showing net worth or savings rate;
+partial numeric subtotals must be identified as retained changes. Even complete
+classified balances cannot authorize a funding or backing verdict: funding
+coordinates, coverage, and Scheduled pressure require independent evidence.
 
 Monthly Budget/Pace/Audit use `Budget_Query.Project_Month` over the cached
 Journal/Policy snapshot, not three UI-local date constructions. The shared
@@ -92,9 +93,11 @@ The ordinary/explicit-window `budget` CLI and policy-window Budget TUI also use
 Budget_Query; CLI no longer bypasses its read/interval checks. This JPY-only
 query refuses any retained foreign capacity or journal effect before arithmetic,
 even outside the selected interval. Renderers propagate rejection rather than
-showing a numeric budget, SAFE verdict, or conservation PASS.
-This adapter change does not establish complete three-stream admission or make
-remaining UI-local pace/backing arithmetic a qualified shared semantic boundary.
+showing a numeric budget or conservation PASS. Budget/Pace/Audit explicitly
+report funding and pace recommendations unavailable: neither classified assets
+nor remaining capacity establish liquid funds or a safe daily target. The
+monthly calendar progress bar is presentation only. This refusal does not
+establish complete three-stream admission or a qualified positive funding query.
 
 ### Intents
 

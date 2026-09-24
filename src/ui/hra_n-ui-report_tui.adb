@@ -420,10 +420,9 @@ package body HRA_N.UI.Report_TUI is
                         Con_Str : constant String := Format_Quanta (Long_Long_Integer (Row.Consumption));
                         Rem_Str : constant String := Format_Quanta (Long_Long_Integer (Row.Remaining));
                         Badge   : constant String :=
-                          (if Row.Remaining < 0 then "[DEFICIT]"
-                           elsif Row.Remaining = 0 then "[EXHAUSTED]"
-                           elsif Row.Remaining < Row.Entitlement / 5 then "[WARN]"
-                           else "[OK]");
+                          (if Row.Remaining < 0 then "[NEGATIVE]"
+                           elsif Row.Remaining = 0 then "[ZERO]"
+                           else "[POSITIVE]");
                      begin
                         Emit ("  " & Pad_Right (Purp, 24) & " " &
                               Pad_Left (Ent_Str, 12) & " " &
@@ -439,7 +438,7 @@ package body HRA_N.UI.Report_TUI is
                      Pad_Left (Format_Quanta (Long_Long_Integer (B_Rep.Total_Consumption)), 12) & " " &
                      Pad_Left (Format_Quanta (Long_Long_Integer (B_Rep.Total_Remaining)), 12));
                Emit ("");
-               Emit ("  Unallocated Funds    : " &
+               Emit ("  Unallocated Capacity : " &
                      Pad_Left (Format_Quanta (Long_Long_Integer (B_Rep.Unallocated_Funds)), 12) & " JPY");
                Emit ("  Events Considered    : " & Trim (Natural'Image (B_Rep.Events_Considered), Both));
                Emit ("");
@@ -454,45 +453,14 @@ package body HRA_N.UI.Report_TUI is
                   Emit ("  ! Partial entitlements: retained capacity movements lack effective evidence");
                end if;
 
-               --  SOLVENCY & ENVELOPE BACKING (Liquid Assets vs Envelopes)
-               declare
-                  Stmt_Rep : constant Statement_Report :=
-                    Statement.Project
-                      (Journal      => Journal,
-                       Policy       => Policy,
-                       As_Of        => As_Of,
-                       Has_As_Of    => True,
-                       Snapshot     =>
-                         (if Paths.Is_Versioned
-                          then Make_Token (Snapshot_Id_Str (Paths))
-                          else Make_Token ("")),
-                       Is_Versioned => Paths.Is_Versioned);
-                  Funding_Assets  : constant Long_Long_Integer := Stmt_Rep.Summary.Total_Assets;
-                  Backing_Req     : constant Long_Long_Integer :=
-                    Long_Long_Integer (B_Rep.Total_Remaining);
-                  Backing_Surplus : constant Long_Long_Integer :=
-                    Funding_Assets - Backing_Req;
-               begin
-                  Emit ("");
-                  Emit ("--- SOLVENCY & ENVELOPE BACKING (Liquid Assets vs Envelopes) ---");
-                  if not Is_Complete (Stmt_Rep) then
-                     Emit (" [PARTIAL] Backing unavailable: " &
-                           Stmt_Rep.Diagnostic (1 .. Stmt_Rep.Diagnostic_Len));
-                  else
-                     Emit ("  Liquid Assets (Funding)       : " &
-                           Pad_Left (Format_Quanta (Funding_Assets), 14) & " JPY");
-                     Emit ("  Backing Required (Envelopes)  : " &
-                           Pad_Left (Format_Quanta (Backing_Req), 14) & " JPY");
-                     Emit ("  " & Repeat ('-', 56));
-                     if Backing_Surplus >= 0 then
-                        Emit ("  Backing Surplus (Buffer)      : " &
-                              Pad_Left (Format_Quanta (Backing_Surplus), 14) & " JPY  [SOLVENT - 100% Backed]");
-                     else
-                        Emit ("  Backing Shortfall (Deficit!)   : " &
-                              Pad_Left (Format_Quanta (Backing_Surplus), 14) & " JPY  [OVERALLOCATED - Illiquid]");
-                     end if;
-                  end if;
-               end;
+               --  Capacity is not physical funding. No selected funding
+               --  coordinates or Scheduled pressure were admitted here.
+               Emit ("");
+               Emit ("--- FUNDING & BACKING ---");
+               Emit ("  Unavailable: no selected funding coordinates or Scheduled pressure evidence.");
+               Emit ("  Remaining capacity is not a liquid balance or spendable cash.");
+               --  Budget status describes capacity only. Do not read a
+               --  Statement merely to manufacture a funding verdict.
             end;
 
          when Tab_Balances =>
@@ -571,7 +539,7 @@ package body HRA_N.UI.Report_TUI is
                   then 0
                   else Days_Total);
             begin
-               Emit ("--- DAILY SPENDING PACE & TARGET (" & Period_Str & ") ---");
+               Emit ("--- MONTHLY CAPACITY OBSERVATION (" & Period_Str & ") ---");
                Emit ("");
                Emit ("[CALENDAR HORIZON]");
                Emit ("  Month Length       : " & Trim (Natural'Image (Days_Total), Both) & " days");
@@ -603,69 +571,22 @@ package body HRA_N.UI.Report_TUI is
                      Pad_Left (Format_Quanta (Long_Long_Integer (B_Rep.Total_Remaining)), 14) & " JPY");
                Emit ("");
 
-               declare
-                  Tot_Ent  : constant Long_Long_Integer := Long_Long_Integer (B_Rep.Total_Entitlement);
-                  Tot_Con  : constant Long_Long_Integer := Long_Long_Integer (B_Rep.Total_Consumption);
-                  Tot_Rem  : constant Long_Long_Integer := Long_Long_Integer (B_Rep.Total_Remaining);
-                  Base_Day : constant Long_Long_Integer :=
-                    (if Days_Total > 0 then Tot_Ent / Long_Long_Integer (Days_Total) else 0);
-                  Act_Day  : constant Long_Long_Integer :=
-                    (if Elapsed_Days > 0 then Tot_Con / Long_Long_Integer (Elapsed_Days) else 0);
-                  Safe_Day : constant Long_Long_Integer :=
-                    (if Remaining_Days > 0 then Tot_Rem / Long_Long_Integer (Remaining_Days) else 0);
-                  Headroom : constant Long_Long_Integer := Safe_Day - Act_Day;
-               begin
-                  Emit ("[DAILY TARGET / SAFE-TO-SPEND]");
-                  Emit ("  Base Daily Allowance : " &
-                        Pad_Left (Format_Quanta (Base_Day), 12) & " JPY / day  (Budget / " &
-                        Trim (Natural'Image (Days_Total), Both) & " d)");
-                  Emit ("  Actual Daily Average : " &
-                        Pad_Left (Format_Quanta (Act_Day), 12) & " JPY / day  (Spent / " &
-                        Trim (Natural'Image (Elapsed_Days), Both) & " d)");
-                  Emit ("  SAFE DAILY TARGET    : " &
-                        Pad_Left (Format_Quanta (Safe_Day), 12) & " JPY / day  (Remaining / " &
-                        Trim (Natural'Image (Remaining_Days), Both) & " d)");
-
-                  if Remaining_Days = 0 then
-                     Emit ("  Pacing Status        : [COMPLETED] Month finalized");
-                  elsif Safe_Day < 0 then
-                     Emit ("  Pacing Status        : [DEFICIT] Budget exhausted! Over by " &
-                           Format_Quanta (abs Tot_Rem) & " JPY");
-                  elsif Headroom >= 0 then
-                     Emit ("  Pacing Status        : [ON TRACK] +" &
-                           Format_Quanta (Headroom) & " JPY/day headroom buffer");
-                  else
-                     Emit ("  Pacing Status        : [OVER PACING] -" &
-                           Format_Quanta (abs Headroom) & " JPY/day faster than allowance");
-                  end if;
-               end;
+               Emit ("[SPENDING PACE / DAILY TARGET]");
+               Emit ("  Unavailable: remaining capacity is not a safe spending target.");
+               Emit ("  No selected funding or Scheduled pressure evidence is included.");
                Emit ("");
-
-               Emit ("[PURPOSE PACING BREAKDOWN]");
-               Emit ("  " & Pad_Right ("Purpose", 20) & " " &
-                     Pad_Left ("Remaining", 12) & " " &
-                     Pad_Left ("Safe Target", 14) & "   Status");
-               Emit ("  " & Repeat ('-', 54));
-
+               Emit ("[PURPOSE REMAINING CAPACITY]");
+               Emit ("  " & Pad_Right ("Purpose", 20) & " " & Pad_Left ("Remaining", 12));
+               Emit ("  " & Repeat ('-', 34));
                if B_Rep.Row_Count = 0 then
                   Emit ("  (No Purpose envelopes defined)");
                else
                   for I in 1 .. B_Rep.Row_Count loop
                      declare
-                        Row      : HRA_N.Application.Budget_Window.Envelope_Row renames B_Rep.Rows (I);
-                        Purp     : constant String := Row.Purpose.Value (1 .. Row.Purpose.Length);
-                        Rem_Amt  : constant Long_Long_Integer := Long_Long_Integer (Row.Remaining);
-                        Purp_Day : constant Long_Long_Integer :=
-                          (if Remaining_Days > 0 then Rem_Amt / Long_Long_Integer (Remaining_Days) else 0);
-                        P_Status : constant String :=
-                          (if Rem_Amt < 0 then "[DEFICIT]"
-                           elsif Rem_Amt = 0 then "[EXHAUSTED]"
-                           elsif Remaining_Days > 0 and then Purp_Day < 500 then "[TIGHT]"
-                           else "[OK]");
+                        Row : HRA_N.Application.Budget_Window.Envelope_Row renames B_Rep.Rows (I);
                      begin
-                        Emit ("  " & Pad_Right (Purp, 20) & " " &
-                              Pad_Left (Format_Quanta (Rem_Amt), 12) & " " &
-                              Pad_Left (Format_Quanta (Purp_Day) & " /d", 14) & "   " & P_Status);
+                        Emit ("  " & Pad_Right (Row.Purpose.Value (1 .. Row.Purpose.Length), 20) & " " &
+                              Pad_Left (Format_Quanta (Long_Long_Integer (Row.Remaining)), 12));
                      end;
                   end loop;
                end if;
@@ -984,30 +905,10 @@ package body HRA_N.UI.Report_TUI is
                end if;
                Emit ("");
 
-               --  5. Solvency & Liquid Backing
-               Emit ("[5. SOLVENCY & ENVELOPE BACKING]");
-               declare
-                  Funding_Assets  : constant Long_Long_Integer := Stmt_Rep.Summary.Total_Assets;
-                  Backing_Req     : constant Long_Long_Integer := Long_Long_Integer (B_Rep.Total_Remaining);
-                  Backing_Surplus : constant Long_Long_Integer := Funding_Assets - Backing_Req;
-               begin
-                  if not Is_Complete (Stmt_Rep) then
-                     Emit (" [PARTIAL] Backing unavailable: " &
-                           Stmt_Rep.Diagnostic (1 .. Stmt_Rep.Diagnostic_Len));
-                  else
-                     Emit ("  Liquid Funding Assets        : " &
-                           Pad_Left (Format_Quanta (Funding_Assets), 14) & " JPY");
-                     Emit ("  Active Envelope Requirements : " &
-                           Pad_Left (Format_Quanta (Backing_Req), 14) & " JPY");
-                     if Backing_Surplus >= 0 then
-                        Emit ("  Surplus Liquidity Buffer     : " &
-                              Pad_Left (Format_Quanta (Backing_Surplus), 14) & " JPY  [SOLVENT - 100% Backed]");
-                     else
-                        Emit ("  Liquidity Deficit            : " &
-                              Pad_Left (Format_Quanta (Backing_Surplus), 14) & " JPY  [OVERALLOCATED]");
-                     end if;
-                  end if;
-               end;
+               --  5. Funding is an independent unavailable observation here.
+               Emit ("[5. FUNDING & BACKING]");
+               Emit ("  Unavailable: no selected funding coordinates or Scheduled pressure evidence.");
+               Emit ("  Conservation and known origins do not establish liquidity.");
             end;
       end case;
 
@@ -1109,17 +1010,15 @@ package body HRA_N.UI.Report_TUI is
                      Put_Clipped (Row_Idx, Txt);
                      HRA_N.UI.Terminal_Style.Reset;
                   elsif Index (Txt, "[PASS]") > 0
-                    or else Index (Txt, "[SOLVENT") > 0
-                    or else Index (Txt, "[OK]") > 0
+                    or else Index (Txt, "[POSITIVE]") > 0
                     or else Index (Txt, "[AFFIRMATIVE") > 0
                   then
                      HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Positive_Style);
                      Put_Clipped (Row_Idx, Txt);
                      HRA_N.UI.Terminal_Style.Reset;
                   elsif Index (Txt, "[FAIL]") > 0
-                    or else Index (Txt, "[DEFICIT]") > 0
+                    or else Index (Txt, "[NEGATIVE]") > 0
                     or else Index (Txt, "[ERROR]") > 0
-                    or else Index (Txt, "[OVERALLOCATED]") > 0
                   then
                      HRA_N.UI.Terminal_Style.Apply (HRA_N.UI.Terminal_Style.Negative_Style);
                      Put_Clipped (Row_Idx, Txt);

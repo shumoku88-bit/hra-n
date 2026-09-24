@@ -127,17 +127,21 @@ proof that adjacent counterexamples are covered:
   Versioned PTY fixtures check refusal on Budget/Pace/Audit, cached return and
   the policy-window Budget workspace; unrelated Statement remains available.
   This conservative whole-input guard is not multi-measure budget support.
-- `UI.Report_TUI.Generate_Report_Lines` still owns pacing and backing
-  arithmetic. Daily flow and MoM have moved to shared Application queries
-  (`Application.Daily_Flow_Query`, `Application.MoM_Query`); move remaining
-  semantic results into shared Application queries. Compare old HRA's
-  `Household_Report_Observation` (typed semantic report book) and Loam's
-  `StockFlowReview` (correction-aware half-open window over explicit coverage).
-- Budget/Audit backing currently equates classified assets with liquid funding.
-  Known origin alone does not establish liquidity or funding authority. Replace
-  this with explicitly selected funding coordinates before claiming backing
-  parity with old HRA; unknown/conflicting Statement evidence already suppresses
-  the current backing verdict.
+- F07 refusal slice: Budget/Pace/Audit continue to render the shared
+  `Budget_Query.Project_Month` capacity totals and exact month coordinates, but
+  no longer infer `SOLVENT`, `SAFE DAILY TARGET`, daily headroom, or liquid
+  funding from classified assets/remaining capacity. The old fixed 500 JPY
+  `TIGHT` and 20% `WARN` heuristics are removed. Funding and pace recommendation
+  are explicitly unavailable without selected funding coordinates and Scheduled
+  pressure evidence. Budget status refers only to capacity; it no longer runs
+  Statement solely for an unjustified backing verdict. Statement/Audit retain
+  their own independent partial diagnostics. Known stock origins do not establish
+  liquidity. CLI/PTY regressions qualify
+  the refusal, not a positive funding answer. Daily flow and MoM already
+  use shared Application queries (`Daily_Flow_Query`, `MoM_Query`). A positive
+  funding/pace answer still needs explicit source, date, coverage, Scheduled
+  pressure, shared Application projection and independent tests. Compare Loam
+  `CycleBudgetReview` and old HRA's `Household_Report_Observation` first.
 - Daily Flow separates gross/returned income and gross/refund expense.
   MoM separates discrete monthly flows (Income/Expense/Net Savings) from
   month-end balances (Net Worth) with cross-query consistency tests against
@@ -306,16 +310,16 @@ an adopted or qualified equivalence baseline.
 
 | Field | Current evidence |
 |---|---|
-| Review time | 2026-09-24 UTC; canonical Attention read authority slice |
-| HRA-N source | `062636cc56d430b82fd2c4c29d8942c201525c76` plus canonical Attention read change |
+| Review time | 2026-09-24 UTC; report F07 unsupported funding/pacing refusal slice |
+| HRA-N source | main `ff65dba95641a6c57545697c6cac4b5b44ea15d8` plus report F07 working change |
 | Prior audit comparison | Loam `6869de2`; numerical audit evidence remains pinned there |
-| Pinned Loam review tip | remote/local `7221f182dd8afe62e7cd98e59096c946a51c5328`; focused AttentionPersistence, TextEscape, AttentionInspection/Review, Publisher and TUI Administration review; previous tip to this tip has no Attention path changes |
+| Pinned Loam review tip | remote/local `d74ab24020a4802fb17c25ece82e221cdfe5d3f4`; focused `CycleBudgetReview` and funding selection/coverage dependencies; no changes to the reviewed CycleBudget source path since `7221f18` |
 | Repository scope | Local `../loam` main was clean; remote was fetched without changing the checkout |
-| Remote/CI | GitHub main and latest workflow runs queried; the five latest listed runs were successful. This is not whole-system HRA-N/Loam parity evidence |
-| Review scope | Attention v1 frame/escaping, missing vs empty review, closure inspection, complete-image writer protocol; HRA-N adopts only read authority and fail-closed CLI/TUI write refusal |
-| Executed qualification | HRA-N Ada unit, CLI and PTY suite, build and SPARK; Loam code unchanged and tests not rerun locally; GitHub CI to be checked on PR |
-| Adopted parity baseline | Attention v1 reader and open-only inspection on bounded admitted memory, independent of accounting authority; no canonical writer or whole-system parity claim |
-| Next review | Recheck relevant Loam authority/persistence deltas before merge and at the next affected slice; classify broader unreviewed Loam deltas separately rather than treating this focused review as exhaustive |
+| Remote/CI | GitHub main/open PRs/workflow runs rechecked: HRA-N main `ff65dba` CI green; old superseded PR runs canceled. Loam main `d74ab24` pinned; no whole-system parity or new PR CI claim until check completes |
+| Review scope | Distinguish explicit funding selection, physical balances, current coverage and independent failures from HRA-N's unsupported total-assets/remaining-capacity shortcuts; no positive funding parity adopted |
+| Executed qualification | HRA-N build, Ada unit + CLI + PTY suite; SPARK and GitHub CI to be checked on PR; Loam tests not rerun (no Loam source change) |
+| Adopted parity baseline | Only conservative refusal of unsupported funding/pace verdicts. A positive answer requires selected coordinates, date/window, coverage, Scheduled pressure and shared Application admission; no Loam funding parity claim |
+| Next review | Recheck Loam funding/coverage/Selected Scheduled deltas and HRA-N CI before merge; broader Loam deltas remain outside this focused review |
 
 ### Open adoption decisions
 

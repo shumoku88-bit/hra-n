@@ -140,7 +140,10 @@ Scalar financial reports currently reject non-JPY journal effects rather than
 combine or relabel measures; use `hra-n balance` for coordinate balances.
 Statement distinguishes classified changes from known balances: missing stock
 origin evidence or assertion conflicts produce `PARTIAL`, not a qualified net
-worth or backing verdict. Income/Expense remain retained flows.
+worth. Income/Expense remain retained flows. Budget/Pace/Audit show capacity
+amounts but withhold funding/backing and safe daily spending verdicts: asset
+classification and remaining capacity do not prove liquid funding or account
+for Scheduled pressure.
 `report --statement -m MM -y YYYY` selects a month-end as-of date, not a monthly
 P/L interval. Exact `--as-of` is supported only by one-shot Statement; monthly
 report tabs and `report --tui` require month/year coordinates instead.
