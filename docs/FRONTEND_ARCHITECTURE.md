@@ -205,8 +205,10 @@ The CLI remains intentionally non-interactive by default:
 - no hidden paging or prompts in script mode;
 - the same proposal/commit and stale-rejection path as the TUI.
 
-Interactive line prompts may be retained only where they are a thin adapter over
-a shared typed editor and do not duplicate the TUI.
+The legacy `record --cli` line editor was retired: it used only the three-stream
+Movement proposal/writer rather than canonical Actual. Use the TUI editor or
+one-shot movement on a canonical household; a line-prompt entrance would need
+its own qualified canonical workflow.
 
 ## 6. GUI/Web
 

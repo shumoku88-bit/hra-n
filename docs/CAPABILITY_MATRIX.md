@@ -310,16 +310,16 @@ an adopted or qualified equivalence baseline.
 
 | Field | Current evidence |
 |---|---|
-| Review time | 2026-09-24 UTC; canonical Balance shared observation slice |
-| HRA-N source | main `b7a12326f3b21826ac31a30a73dd3d47b36b231f` plus canonical Balance working change |
+| Review time | 2026-09-24 UTC; legacy-only line-prompt Actual writer retirement |
+| HRA-N source | main `59c87a50672e3db4be31bcf9782b745f8b8bda0c` plus Actual prompt retirement working change |
 | Prior audit comparison | Loam `6869de2`; numerical audit evidence remains pinned there |
-| Pinned Loam review tip | remote `17214f6468e1b4954457662d51a05113ce4e770a`; local `d74ab24` clean. New commits are CI/docs only; focused current `BalanceReview` source read locally with no relevant production delta |
+| Pinned Loam review tip | remote `3b80f8af094f356201d2fae9218c835d3f055ff0`; local `d74ab24` clean, behind. New commits have no Actual/Movement/Correction production-path delta; no parity adoption from these deltas |
 | Repository scope | Local `../loam` main was clean; remote was fetched without changing the checkout |
-| Remote/CI | GitHub HRA-N main `b7a1232` CI green and open PR list empty at session start; remote Loam `17214f6` checked. PR CI for this slice to be checked independently; no whole-system parity claim |
-| Review scope | Correction-frontier current Actual and independent zero-origin coverage in `BalanceReview`; Loam refuses uncovered selected coordinates while HRA-N displays uncovered coordinates as explicitly UNKNOWN. No selected-coordinate or assertion parity claim |
-| Executed qualification | HRA-N Ada unit, CLI, PTY, build and SPARK to be recorded by PR; Loam tests not rerun (no relevant Loam source change) |
-| Adopted parity baseline | Reuse admitted Actual correction frontier and independent coverage on HRA-N's shared Balance query; `PARTIAL` until canonical assertion evidence exists. Current roles cannot answer historical as-of. No full Loam BalanceReview parity or atomic cross-file identity |
-| Next review | Recheck upstream Balance/coverage/role deltas and PR CI before merge. Validate multi-measure, overflow and read-only mutation gate; broader deltas remain outside focused review |
+| Remote/CI | GitHub HRA-N main `59c87a5` CI green and open PR list empty at session start; remote Loam `3b80f8a` checked. PR CI for this slice to be checked independently; no whole-system cutover claim |
+| Review scope | Legacy `record --cli` was the sole caller of a separate journal-only interactive editor; retire that path without adding a replacement authority or changing shared canonical movement semantics |
+| Executed qualification | HRA-N build, Ada/CLI/PTY tests and architecture metrics; PR CI pending. Loam tests not rerun (no relevant Loam source change) |
+| Adopted parity baseline | No new Loam semantic parity claim. Remove 329 lines of exclusive legacy UI prompt rather than maintain another operational writer. Other legacy Actual entrances, init and Home remain transitional and are NOT retired by this slice |
+| Next review | Qualify canonical-only Actual/Home/Record and initialization together before deleting the main old journal writer: an isolated Actual.Query fallback removal rejected 33 old Home/Actual Ada tests, which still encode legacy-only behavior; port essential behavior tests, do not count that breakage as safe cutover |
 
 ### Open adoption decisions
 
