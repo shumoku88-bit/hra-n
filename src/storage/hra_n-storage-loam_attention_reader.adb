@@ -10,18 +10,35 @@ package body HRA_N.Storage.Loam_Attention_Reader is
    package US renames Ada.Strings.Unbounded;
    Header : constant String := "LOAM-ATTENTION-MEMORY" & ASCII.HT & "1";
 
+   function Make_Failure
+     (Status  : Attention_Read_Status;
+      Message : String;
+      Present : Boolean := True) return Read_Result
+   is
+      Result : Read_Result (Success => False);
+      N      : constant Natural :=
+        Natural'Min (Message'Length, Result.Diagnostic'Length);
+   begin
+      Result.Present        := Present;
+      Result.Status         := Status;
+      Result.Diagnostic_Len := N;
+      if N > 0 then
+         Result.Diagnostic (1 .. N) :=
+           Message (Message'First .. Message'First + N - 1);
+      end if;
+      return Result;
+   end Make_Failure;
+
    function Read_Content (Content : String) return Read_Result is
-      Result : Read_Result;
-      Pos : Natural := Content'First;
+      Result  : Read_Result (Success => True);
+      Pos     : Natural := Content'First;
       Line_No : Natural := 0;
 
-      function Fail (Message : String) return Read_Result is
-         N : constant Natural := Natural'Min (Message'Length, Result.Diagnostic'Length);
+      function Fail
+        (Status  : Attention_Read_Status;
+         Message : String) return Read_Result is
       begin
-         Result.Success := False;
-         Result.Diagnostic_Len := N;
-         Result.Diagnostic (1 .. N) := Message (Message'First .. Message'First + N - 1);
-         return Result;
+         return Make_Failure (Status, Message, Present => True);
       end Fail;
 
       function Valid_Id (S : String) return Boolean is
@@ -71,7 +88,7 @@ package body HRA_N.Storage.Loam_Attention_Reader is
    begin
       Result.Present := True;
       if Content'Length = 0 or else Content (Content'Last) /= ASCII.LF then
-         return Fail ("Attention frame requires a trailing newline");
+         return Fail (Missing_Final_Newline, "Attention frame requires a trailing newline");
       end if;
       while Pos <= Content'Last loop
          declare
@@ -91,14 +108,14 @@ package body HRA_N.Storage.Loam_Attention_Reader is
             begin
                if Line_No = 1 then
                   if Line /= Header then
-                     return Fail ("unsupported Attention header");
+                     return Fail (Unsupported_Header, "unsupported Attention header");
                   end if;
                else
                   for J in Line'Range loop
                      if Line (J) = ASCII.HT then
                         Count := Count + 1;
                         if Count > 5 then
-                           return Fail ("Attention row arity");
+                           return Fail (Syntax_Error, "Attention row arity");
                         end if;
                         Fields (Count) := US.To_Unbounded_String (Line (Start .. J - 1));
                         Start := J + 1;
@@ -106,7 +123,7 @@ package body HRA_N.Storage.Loam_Attention_Reader is
                   end loop;
                   Count := Count + 1;
                   if Count > 5 then
-                     return Fail ("Attention row arity");
+                     return Fail (Syntax_Error, "Attention row arity");
                   end if;
                   Fields (Count) := US.To_Unbounded_String (Line (Start .. Line'Last));
                   declare
@@ -118,14 +135,16 @@ package body HRA_N.Storage.Loam_Attention_Reader is
                      Due : Attention_Due;
                   begin
                      if not Valid_Id (Id) then
-                        return Fail ("invalid Attention id");
+                        return Fail (Invalid_Token, "invalid Attention id");
                      end if;
                      if Tag = "ITEM" then
-                        if Count /= 5 or else Result.Memory.Item_Count = Max_Attention_Items then
-                           return Fail ("Attention item arity or capacity");
+                        if Count /= 5 then
+                           return Fail (Syntax_Error, "Attention item arity or capacity");
+                        elsif Result.Memory.Item_Count = Max_Attention_Items then
+                           return Fail (Capacity_Exceeded, "Attention item arity or capacity");
                         end if;
                         if not Decode (US.To_String (Fields (5)), Context) then
-                           return Fail ("invalid or oversized Attention context escape");
+                           return Fail (Invalid_Escape, "invalid or oversized Attention context escape");
                         end if;
                         declare
                            Kind : constant String := US.To_String (Fields (3));
@@ -137,24 +156,26 @@ package body HRA_N.Storage.Loam_Attention_Reader is
                            elsif Kind = "DUE_UNDETERMINED" and then Date_Text = "-" then
                               Due := (Kind => Due_Undetermined);
                            else
-                              return Fail ("invalid Attention due kind or date");
+                              return Fail (Invalid_Due, "invalid Attention due kind or date");
                            end if;
                         end;
                         Result.Memory.Item_Count := Result.Memory.Item_Count + 1;
                         Result.Memory.Items (Result.Memory.Item_Count) :=
                           (Id => Make_Token (Id), Context => Context, Due => Due);
                      elsif Tag = "CLOSE" then
-                        if Count /= 4 or else Result.Memory.Close_Count = Max_Attention_Items then
-                           return Fail ("Attention closure arity or capacity");
+                        if Count /= 4 then
+                           return Fail (Syntax_Error, "Attention closure arity or capacity");
+                        elsif Result.Memory.Close_Count = Max_Attention_Items then
+                           return Fail (Capacity_Exceeded, "Attention closure arity or capacity");
                         end if;
                         if not Parse_Iso_Date (US.To_String (Fields (3)), Date_Value) then
-                           return Fail ("invalid Attention closure date");
+                           return Fail (Syntax_Error, "invalid Attention closure date");
                         end if;
                         declare
                            Kind : constant String := US.To_String (Fields (4));
                         begin
                            if Kind /= "RESOLVED" and then Kind /= "DROPPED" then
-                              return Fail ("invalid Attention closure kind");
+                              return Fail (Invalid_Closure, "invalid Attention closure kind");
                            end if;
                            Result.Memory.Close_Count := Result.Memory.Close_Count + 1;
                            Result.Memory.Closures (Result.Memory.Close_Count) :=
@@ -162,7 +183,7 @@ package body HRA_N.Storage.Loam_Attention_Reader is
                               Kind => (if Kind = "RESOLVED" then Closure_Resolved else Closure_Dropped));
                         end;
                      else
-                        return Fail ("unknown Attention row");
+                        return Fail (Syntax_Error, "unknown Attention row");
                      end if;
                   end;
                end if;
@@ -174,19 +195,18 @@ package body HRA_N.Storage.Loam_Attention_Reader is
         or else not Closure_References_Are_Closed (Result.Memory)
         or else not Closures_Are_One_To_One (Result.Memory)
       then
-         return Fail ("Attention identity or closure conflict");
+         return Fail (Conflict, "Attention identity or closure conflict");
       end if;
-      Result.Success := True;
       return Result;
    exception
-      when others => return Fail ("unexpected Attention reader failure");
+      when others => return Fail (Syntax_Error, "unexpected Attention reader failure");
    end Read_Content;
 
    function Read_File (Path : String) return Read_Result is
-      Result : Read_Result;
+      Result : Read_Result (Success => True);
    begin
       if not Ada.Directories.Exists (Path) then
-         Result.Success := True;
+         Result.Present := False;
          return Result;
       end if;
       declare
@@ -197,14 +217,31 @@ package body HRA_N.Storage.Loam_Attention_Reader is
             return Read_Content (US.To_String (Exact.Content));
          end if;
       end;
-      Result.Present := True;
-      Result.Diagnostic_Len := 28;
-      Result.Diagnostic (1 .. Result.Diagnostic_Len) := "cannot read Attention source";
-      return Result;
+      return Make_Failure (IO_Error, "cannot read Attention source", Present => True);
    exception
       when others =>
-         Result.Diagnostic_Len := 29;
-         Result.Diagnostic (1 .. Result.Diagnostic_Len) := "cannot probe Attention source";
-         return Result;
+         return Make_Failure (IO_Error, "cannot probe Attention source", Present => True);
    end Read_File;
+
+   function Format_Error (Result : Read_Result) return String is
+   begin
+      if Result.Success then
+         return "";
+      elsif Result.Diagnostic_Len > 0 then
+         return Result.Diagnostic (1 .. Result.Diagnostic_Len);
+      else
+         case Result.Status is
+            when Missing_Final_Newline => return "Attention frame requires a trailing newline";
+            when Unsupported_Header    => return "unsupported Attention header";
+            when Syntax_Error          => return "syntax error in Attention document";
+            when Invalid_Token         => return "invalid Attention id";
+            when Capacity_Exceeded     => return "Attention capacity exceeded";
+            when Invalid_Escape        => return "invalid or oversized Attention context escape";
+            when Invalid_Due           => return "invalid Attention due kind or date";
+            when Invalid_Closure       => return "invalid Attention closure kind";
+            when Conflict              => return "Attention identity or closure conflict";
+            when IO_Error              => return "cannot read Attention source";
+         end case;
+      end if;
+   end Format_Error;
 end HRA_N.Storage.Loam_Attention_Reader;
