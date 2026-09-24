@@ -55,6 +55,9 @@ package HRA_N.Application.Statement is
       Role_Snapshot    : Snapshot_Reference := (Kind => Snapshot_Unversioned);
       Role_Assignment_Count : Natural := 0;
       Role_History_Available : Boolean := True;
+      Locus_Snapshot   : Snapshot_Reference := (Kind => Snapshot_Unversioned);
+      Locus_Admission_Count : Natural := 0;
+      Current_Locus_Admission_Applied : Boolean := False;
       Assertion_Evidence_Available : Boolean := True;
       Has_As_Of        : Boolean           := False;
       As_Of_Date       : Date_Type         := (Year => 2026, Month => 1, Day => 1);
@@ -97,7 +100,8 @@ package HRA_N.Application.Statement is
       As_Of        : Date_Type := (Year => 2026, Month => 1, Day => 1);
       Has_As_Of    : Boolean   := False;
       Snapshot     : Token_Text := (Length => 0, Value => [others => ' ']);
-      Is_Versioned : Boolean := False) return Statement_Report;
+      Is_Versioned : Boolean := False;
+      Apply_Locus_Admission : Boolean := True) return Statement_Report;
 
    --  Legacy convenience wrapper preserving policy.hra behavior.
    function Project
@@ -117,12 +121,11 @@ package HRA_N.Application.Statement is
       Loci         : Locus_Vocabulary;
       Coverage_File_Present : Boolean;
       As_Of        : Date_Type := (Year => 2026, Month => 1, Day => 1);
-      Has_As_Of    : Boolean := False;
-      Policy_Snapshot : Snapshot_Reference := (Kind => Snapshot_Unversioned))
+      Has_As_Of    : Boolean := False)
       return Statement_Report;
 
-   --  Select canonical evidence while retaining only still-transitional legacy
-   --  Policy domains such as Locus vocabulary.
+   --  Select canonical evidence without consulting legacy Policy. The Policy
+   --  argument remains only for compatibility with legacy-only callers.
    function Execute_With_Policy
      (Paths     : Path_Config;
       Policy    : Policy_Result;

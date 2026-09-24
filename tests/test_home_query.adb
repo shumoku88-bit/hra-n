@@ -273,11 +273,10 @@ package body Test_Home_Query is
             Statement : constant HRA_N.Application.Statement.Statement_Report :=
               HRA_N.Application.Statement.Execute_Statement_Query (Paths);
          begin
-            Assert (Statement.Is_Versioned
-                    and then Equal_Token
-                      (Statement.Snapshot, Make_Token ("g00000001"))
-                    and then Statement.Actual_Snapshot.Kind = Snapshot_Unversioned,
-                    "Statement labels canonical Actual separately from versioned Policy");
+            Assert (not Statement.Is_Versioned
+                    and then Statement.Actual_Snapshot.Kind = Snapshot_Unversioned
+                    and then Statement.Locus_Snapshot.Kind = Snapshot_Unversioned,
+                    "canonical Statement has no legacy Policy snapshot identity");
             Assert (Statement.Status = Query_Partial
                     and then not Statement.Assertion_Evidence_Available,
                     "canonical Statement never claims complete without assertions");

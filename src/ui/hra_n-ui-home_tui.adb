@@ -489,10 +489,10 @@ package body HRA_N.UI.Home_TUI is
               (Scope        => HRA_N.Application.Actual_Query.Scope_All,
                Selected_Day => Selected,
                Ordering     => HRA_N.Application.Actual_Query.Order_Oldest_First));
+         Statement := HRA_N.Application.Statement.Execute_Statement_Query
+           (Current_Paths);
          PR := HRA_N.Storage.Policy_Reader.Read_Policy_File
                  (HRA_N.Application.Path_Resolver.Policy_Path_Str (Current_Paths));
-         Statement := HRA_N.Application.Statement.Execute_With_Policy
-           (Current_Paths, PR);
          Scheduled := HRA_N.Application.Scheduled_Query.Execute
            (Current_Paths,
             (Scope        => HRA_N.Application.Scheduled_Query.Scope_All,

@@ -85,9 +85,18 @@ class TestHraNCli(unittest.TestCase):
                 f"ROLE{ht}cash{ht}ASSET\n"
                 f"ROLE{ht}food{ht}EXPENSE\n"
             )
+        with open(os.path.join(self.test_dir, "locus-admission.loam"), "w", encoding="utf-8") as stream:
+            stream.write(
+                f"LOAM-LOCUS-ADMISSION-VOCABULARY{ht}1\n"
+                f"LOCUS{ht}cash\n"
+                f"LOCUS{ht}food\n"
+            )
         res = self.run_cmd("statement", "--as-of", "2026-09-15")
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-        self.assertIn("actual=UNVERSIONED / policy=UNVERSIONED", res.stdout)
+        self.assertIn(
+            "actual=UNVERSIONED / coverage=UNVERSIONED / role=UNVERSIONED / locus=UNVERSIONED",
+            res.stdout,
+        )
         self.assertIn("PARTIAL PROJECTION", res.stdout)
         self.assertIn("balance assertion evidence unavailable", res.stdout)
         self.assertIn("Events Aggregated   :  1", res.stdout)
