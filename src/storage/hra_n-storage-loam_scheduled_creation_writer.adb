@@ -22,6 +22,32 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
    HT : constant String := [1 => ASCII.HT];
    NL : constant String := [1 => ASCII.LF];
 
+   function Make_Failure
+     (Status  : Scheduled_Creation_Publish_Status;
+      Message : String) return Publish_Result
+   is
+      Result : Publish_Result (Success => False);
+      Len    : constant Natural :=
+        Natural'Min (Message'Length, Result.Error_Reason'Length);
+   begin
+      Result.Status := Status;
+      Result.Error_Len := Len;
+      if Len > 0 then
+         Result.Error_Reason (1 .. Len) :=
+           Message (Message'First .. Message'First + Len - 1);
+      end if;
+      return Result;
+   end Make_Failure;
+
+   function Make_Success
+     (Scheduled_Id : HRA_N.Core.Scheduled.Scheduled_Id) return Publish_Result
+   is
+      Result : Publish_Result (Success => True);
+   begin
+      Result.Scheduled_Id := Scheduled_Id;
+      return Result;
+   end Make_Success;
+
    function Valid_Token (Value : Token_Text) return Boolean is
    begin
       if Value.Length = 0 then
@@ -231,7 +257,6 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
      (Root_Path : String;
       Draft     : Creation_Draft) return Publish_Result
    is
-      Result : Publish_Result;
       Scheduled_Path : constant String :=
         Ada.Directories.Compose (Root_Path, "scheduled.loam");
       Actual_Path : constant String :=
@@ -244,25 +269,6 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
       Actual_Lock_Path : constant String :=
         Actual_Path & ".loam-writer-lock";
       Ownership : HRA_N.Storage.File_Lock.Ordered_Lock_Pair;
-
-      procedure Set_Error (Message : String) is
-         Len : constant Natural :=
-           Natural'Min (Message'Length, Result.Error_Reason'Length);
-      begin
-         Result.Success := False;
-         Result.Error_Reason := [others => ' '];
-         Result.Error_Len := Len;
-         if Len > 0 then
-            Result.Error_Reason (1 .. Len) :=
-              Message (Message'First .. Message'First + Len - 1);
-         end if;
-      end Set_Error;
-
-      function Fail (Message : String) return Publish_Result is
-      begin
-         Set_Error (Message);
-         return Result;
-      end Fail;
 
       procedure Release_All is
       begin
@@ -282,21 +288,31 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
             null;
       end Remove_Stage;
 
+      function Fail
+        (Status  : Scheduled_Creation_Publish_Status;
+         Message : String) return Publish_Result
+      is
+      begin
+         Remove_Stage;
+         Release_All;
+         return Make_Failure (Status, Message);
+      end Fail;
+
    begin
       if Root_Path'Length = 0 then
-         return Fail ("LOAM data root must not be empty");
+         return Fail (Invalid_Root_Directory, "LOAM data root must not be empty");
       elsif not Is_Valid_Date
         (Draft.Expected_Day.Year,
          Draft.Expected_Day.Month,
          Draft.Expected_Day.Day)
       then
-         return Fail ("Scheduled creation requires a valid occurrence date");
+         return Fail (Invalid_Occurrence_Date, "Scheduled creation requires a valid occurrence date");
       elsif not Equal_Token
         (Draft.Measure.Token, Make_Token ("jpy"))
       then
-         return Fail ("Scheduled creation currently requires Measure jpy");
+         return Fail (Unsupported_Measure, "Scheduled creation currently requires Measure jpy");
       elsif Draft.Changes.Count = 0 then
-         return Fail ("Scheduled creation requires at least one change");
+         return Fail (Empty_Changes, "Scheduled creation requires at least one change");
       end if;
 
       for I in 1 .. Draft.Changes.Count loop
@@ -304,7 +320,8 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
            or else Draft.Changes.Values (I).Amount = 0
          then
             return Fail
-              ("Scheduled creation requires valid Locus tokens and nonzero quantities");
+              (Invalid_Change_Token_Or_Zero,
+               "Scheduled creation requires valid Locus tokens and nonzero quantities");
          end if;
       end loop;
 
@@ -316,7 +333,7 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
             Changes      => Draft.Changes);
       begin
          if not Is_Conserved (Probe) then
-            return Fail ("Scheduled creation changes must conserve exactly");
+            return Fail (Unconserved_Changes, "Scheduled creation changes must conserve exactly");
          end if;
       end;
 
@@ -325,7 +342,7 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
       if not HRA_N.Storage.File_Lock.Acquire_Ordered_Pair
         (Scheduled_Lock_Path, Actual_Lock_Path, Ownership)
       then
-         return Fail ("cannot acquire shared LOAM Scheduled/Actual ownership");
+         return Fail (Lock_Failure, "cannot acquire shared LOAM Scheduled/Actual ownership");
       end if;
 
       declare
@@ -337,15 +354,13 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
            Locus_Reader.Read_File (Policy_Path);
       begin
          if not Scheduled_Bytes.Success then
-            Release_All;
-            return Fail ("cannot read current scheduled.loam authority");
+            return Fail (Cannot_Read_Scheduled, "cannot read current scheduled.loam authority");
          elsif not Actual_Bytes.Success then
-            Release_All;
-            return Fail ("cannot read current actual.loam authority");
+            return Fail (Cannot_Read_Actual, "cannot read current actual.loam authority");
          elsif not Policy.Success then
-            Release_All;
             return Fail
-              ("current locus-admission.loam is malformed or unsupported");
+              (Corrupt_Locus_Admission,
+               "current locus-admission.loam is malformed or unsupported");
          end if;
 
          declare
@@ -358,25 +373,25 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
                 (US.To_String (Actual_Bytes.Content));
          begin
             if not Current.Success then
-               Release_All;
                return Fail
-                 ("current scheduled.loam is malformed, unsupported, or over capacity");
+                 (Corrupt_Scheduled,
+                  "current scheduled.loam is malformed, unsupported, or over capacity");
             elsif not Actual.Success then
-               Release_All;
                return Fail
-                 ("current actual.loam is malformed, unsupported, or over capacity");
+                 (Corrupt_Actual,
+                  "current actual.loam is malformed, unsupported, or over capacity");
             elsif Current.Lifecycle.Sched_Count = Max_Scheduled_Entries then
-               Release_All;
                return Fail
-                 ("HRA-N Scheduled writer working-set capacity exceeded");
+                 (Working_Set_Exceeded,
+                  "HRA-N Scheduled writer working-set capacity exceeded");
             elsif not Lifecycle_Readable (Current.Lifecycle) then
-               Release_All;
                return Fail
-                 ("current Scheduled lifecycle is not application-readable");
+                 (Lifecycle_Not_Readable,
+                  "current Scheduled lifecycle is not application-readable");
             elsif not Changes_Admitted (Policy.Vocabulary, Draft.Changes) then
-               Release_All;
                return Fail
-                 ("Scheduled creation uses a Locus not approved for new publication");
+                 (Locus_Not_Admitted,
+                  "Scheduled creation uses a Locus not approved for new publication");
             end if;
 
             declare
@@ -391,11 +406,9 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
                Insert_At : constant Natural := Index (Existing_Text, Marker);
             begin
                if Fresh_Text'Length = 0 then
-                  Release_All;
-                  return Fail ("could not allocate fresh Scheduled identity");
+                  return Fail (Identity_Allocation_Failure, "could not allocate fresh Scheduled identity");
                elsif Insert_At = 0 then
-                  Release_All;
-                  return Fail ("Scheduled section insertion boundary is absent");
+                  return Fail (Insertion_Boundary_Absent, "Scheduled section insertion boundary is absent");
                end if;
 
                declare
@@ -414,18 +427,18 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
                   if not Candidate_Corresponds
                     (Current.Lifecycle, Admitted, Added)
                   then
-                     Release_All;
                      return Fail
-                       ("candidate Scheduled creation failed semantic correspondence");
+                       (Candidate_Correspondence_Failure,
+                        "candidate Scheduled creation failed semantic correspondence");
                   end if;
 
                   Remove_Stage;
                   if not HRA_N.Storage.Atomic_Writer.Write_Staging_File_Durably
                     (Stage_Path, Candidate, Error, Error_Len)
                   then
-                     Release_All;
                      return Fail
-                       ("cannot durably stage canonical Scheduled candidate");
+                       (Staging_Write_Failure,
+                        "cannot durably stage canonical Scheduled candidate");
                   end if;
 
                   declare
@@ -435,10 +448,9 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
                      if not Staged.Success
                        or else US.To_String (Staged.Content) /= Candidate
                      then
-                        Remove_Stage;
-                        Release_All;
                         return Fail
-                          ("staged Scheduled bytes do not match candidate generation");
+                          (Staging_Mismatch,
+                           "staged Scheduled bytes do not match candidate generation");
                      end if;
 
                      declare
@@ -449,10 +461,9 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
                         if not Candidate_Corresponds
                           (Current.Lifecycle, Staged_Image, Added)
                         then
-                           Remove_Stage;
-                           Release_All;
                            return Fail
-                             ("staged Scheduled generation failed semantic admission");
+                             (Staging_Admission_Failure,
+                              "staged Scheduled generation failed semantic admission");
                         end if;
                      end;
                   end;
@@ -460,15 +471,13 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
                   if not HRA_N.Storage.Atomic_Writer.Publish_Staged_File_Atomically
                     (Stage_Path, Scheduled_Path, Error, Error_Len)
                   then
-                     Release_All;
                      return Fail
-                       ("failed to switch canonical Scheduled authority");
+                       (Authority_Switch_Failure,
+                        "failed to switch canonical Scheduled authority");
                   end if;
 
-                  Result.Success := True;
-                  Result.Scheduled_Id := Added.Id;
                   Release_All;
-                  return Result;
+                  return Make_Success (Added.Id);
                end;
             end;
          end;
@@ -476,9 +485,65 @@ package body HRA_N.Storage.Loam_Scheduled_Creation_Writer is
 
    exception
       when others =>
-         Remove_Stage;
-         Release_All;
-         return Fail ("unexpected LOAM Scheduled creation writer failure");
+         return Fail (Internal_Error, "unexpected LOAM Scheduled creation writer failure");
    end Publish_Creation;
+
+   function Format_Error (Result : Publish_Result) return String is
+   begin
+      if Result.Success then
+         return "";
+      elsif Result.Error_Len > 0 then
+         return Result.Error_Reason (1 .. Result.Error_Len);
+      else
+         case Result.Status is
+            when Invalid_Root_Directory =>
+               return "LOAM data root must not be empty";
+            when Invalid_Occurrence_Date =>
+               return "Scheduled creation requires a valid occurrence date";
+            when Unsupported_Measure =>
+               return "Scheduled creation currently requires Measure jpy";
+            when Empty_Changes =>
+               return "Scheduled creation requires at least one change";
+            when Invalid_Change_Token_Or_Zero =>
+               return "Scheduled creation requires valid Locus tokens and nonzero quantities";
+            when Unconserved_Changes =>
+               return "Scheduled creation changes must conserve exactly";
+            when Lock_Failure =>
+               return "cannot acquire shared LOAM Scheduled/Actual ownership";
+            when Cannot_Read_Scheduled =>
+               return "cannot read current scheduled.loam authority";
+            when Cannot_Read_Actual =>
+               return "cannot read current actual.loam authority";
+            when Corrupt_Locus_Admission =>
+               return "current locus-admission.loam is malformed or unsupported";
+            when Corrupt_Scheduled =>
+               return "current scheduled.loam is malformed, unsupported, or over capacity";
+            when Corrupt_Actual =>
+               return "current actual.loam is malformed, unsupported, or over capacity";
+            when Working_Set_Exceeded =>
+               return "HRA-N Scheduled writer working-set capacity exceeded";
+            when Lifecycle_Not_Readable =>
+               return "current Scheduled lifecycle is not application-readable";
+            when Locus_Not_Admitted =>
+               return "Scheduled creation uses a Locus not approved for new publication";
+            when Identity_Allocation_Failure =>
+               return "could not allocate fresh Scheduled identity";
+            when Insertion_Boundary_Absent =>
+               return "Scheduled section insertion boundary is absent";
+            when Candidate_Correspondence_Failure =>
+               return "candidate Scheduled creation failed semantic correspondence";
+            when Staging_Write_Failure =>
+               return "cannot durably stage canonical Scheduled candidate";
+            when Staging_Mismatch =>
+               return "staged Scheduled bytes do not match candidate generation";
+            when Staging_Admission_Failure =>
+               return "staged Scheduled generation failed semantic admission";
+            when Authority_Switch_Failure =>
+               return "failed to switch canonical Scheduled authority";
+            when Internal_Error =>
+               return "unexpected LOAM Scheduled creation writer failure";
+         end case;
+      end if;
+   end Format_Error;
 
 end HRA_N.Storage.Loam_Scheduled_Creation_Writer;

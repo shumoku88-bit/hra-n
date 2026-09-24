@@ -199,8 +199,13 @@ package body Test_Loam_Scheduled_Creation_Writer is
            Publish_Creation (Root, Draft (To_Name => "unapproved"));
       begin
          Assert
-           (not Rejected.Success,
+           (not Rejected.Success
+            and then Rejected.Status = Locus_Not_Admitted,
             "unapproved Scheduled Locus fails closed");
+         Assert
+           (Format_Error (Rejected) =
+              "Scheduled creation uses a Locus not approved for new publication",
+            "format error matches Locus_Not_Admitted message");
          Assert
            (Read_Exact (Scheduled) = Before,
             "policy rejection leaves Scheduled authority untouched");
@@ -212,8 +217,13 @@ package body Test_Loam_Scheduled_Creation_Writer is
            Publish_Creation (Root, Draft (Measure => "usd"));
       begin
          Assert
-           (not Rejected.Success,
+           (not Rejected.Success
+            and then Rejected.Status = Unsupported_Measure,
             "current canonical Scheduled creation refuses non-JPY movement");
+         Assert
+           (Format_Error (Rejected) =
+              "Scheduled creation currently requires Measure jpy",
+            "format error matches Unsupported_Measure message");
          Assert
            (Read_Exact (Scheduled) = Before,
             "Measure rejection leaves Scheduled authority untouched");
@@ -226,8 +236,13 @@ package body Test_Loam_Scheduled_Creation_Writer is
              (Root, Draft (Left => -125, Right => 124));
       begin
          Assert
-           (not Rejected.Success,
+           (not Rejected.Success
+            and then Rejected.Status = Unconserved_Changes,
             "unbalanced Scheduled creation fails closed");
+         Assert
+           (Format_Error (Rejected) =
+              "Scheduled creation changes must conserve exactly",
+            "format error matches Unconserved_Changes message");
          Assert
            (Read_Exact (Scheduled) = Before,
             "balance rejection leaves Scheduled authority untouched");
@@ -244,8 +259,13 @@ package body Test_Loam_Scheduled_Creation_Writer is
               Publish_Creation (Root, Zero_Draft);
          begin
             Assert
-              (not Rejected.Success,
+              (not Rejected.Success
+               and then Rejected.Status = Invalid_Change_Token_Or_Zero,
                "zero-quantity Scheduled changes fail closed like Loam publisher");
+            Assert
+              (Format_Error (Rejected) =
+                 "Scheduled creation requires valid Locus tokens and nonzero quantities",
+               "format error matches Invalid_Change_Token_Or_Zero message");
             Assert
               (Read_Exact (Scheduled) = Before,
                "zero-quantity rejection leaves Scheduled authority untouched");
@@ -288,11 +308,46 @@ package body Test_Loam_Scheduled_Creation_Writer is
             "raw lifecycle reader retains cross-kind terminal conflict");
          Rejected := Publish_Creation (Root, Draft);
          Assert
-           (not Rejected.Success,
+           (not Rejected.Success
+            and then Rejected.Status = Lifecycle_Not_Readable,
             "Scheduled writer refuses cross-kind terminal conflict");
+         Assert
+           (Format_Error (Rejected) =
+              "current Scheduled lifecycle is not application-readable",
+            "format error matches Lifecycle_Not_Readable message");
          Assert
            (Read_Exact (Scheduled) = Before,
             "terminal conflict leaves Scheduled authority untouched");
+      end;
+
+      --  Input validation checks
+      declare
+         Empty_Root_Res : constant Publish_Result :=
+           Publish_Creation ("", Draft);
+         Bad_Date_Draft : Creation_Draft := Draft;
+         Empty_Changes_Draft : Creation_Draft := Draft;
+      begin
+         Bad_Date_Draft.Expected_Day := (Year => 2026, Month => 2, Day => 30);
+         Empty_Changes_Draft.Changes.Count := 0;
+         declare
+            Bad_Date_Res : constant Publish_Result :=
+              Publish_Creation (Root, Bad_Date_Draft);
+            Empty_Changes_Res : constant Publish_Result :=
+              Publish_Creation (Root, Empty_Changes_Draft);
+         begin
+            Assert
+              (not Empty_Root_Res.Success
+               and then Empty_Root_Res.Status = Invalid_Root_Directory,
+               "empty root yields Invalid_Root_Directory");
+            Assert
+              (not Bad_Date_Res.Success
+               and then Bad_Date_Res.Status = Invalid_Occurrence_Date,
+               "bad date yields Invalid_Occurrence_Date");
+            Assert
+              (not Empty_Changes_Res.Success
+               and then Empty_Changes_Res.Status = Empty_Changes,
+               "empty changes yields Empty_Changes");
+         end;
       end;
 
       --  A missing Actual completion endpoint is intentionally inert in
