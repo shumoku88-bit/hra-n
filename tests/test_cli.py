@@ -47,6 +47,24 @@ class TestHraNCli(unittest.TestCase):
             with open(os.path.join(self.test_dir, name), "w", encoding="utf-8") as f:
                 f.write(text)
 
+    def test_retired_journal_review_does_not_mask_canonical_actual(self) -> None:
+        self.write_report_fixture('TX old 2026-09-10 cash:-1 food:1 "old"\n')
+        with open(os.path.join(self.test_dir, 'actual.loam'), 'w', encoding='utf-8') as f:
+            f.write('LOAM-NORMALIZED-ACTUAL\t1\n'
+                    'TX\tnew\t2026-09-10\tDESC\tnew evidence\n'
+                    'EFFECT\tcash\tjpy\t-1\nEFFECT\tfood\tjpy\t1\nENDTX\n')
+        before = open(os.path.join(self.test_dir, 'journal.hra'), 'rb').read()
+        for args in (('review',), ('review', '2026-09-10')):
+            refused = self.run_cmd(*args)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn('Legacy journal review retired', refused.stdout)
+            self.assertNotIn('old', refused.stdout)
+        actual = self.run_cmd('actual', os.path.join(self.test_dir, 'actual.loam'), '2026-09-10')
+        self.assertEqual(actual.returncode, 0, actual.stdout + actual.stderr)
+        self.assertIn('new evidence', actual.stdout)
+        self.assertNotIn('old', actual.stdout)
+        self.assertEqual(open(os.path.join(self.test_dir, 'journal.hra'), 'rb').read(), before)
+
     def test_retired_legacy_interactive_prompt_cannot_write(self) -> None:
         self.write_report_fixture('TX e1 2026-09-10 cash:-1 food:1 "legacy"\n')
         legacy = os.path.join(self.test_dir, 'journal.hra')

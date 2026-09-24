@@ -80,7 +80,6 @@ procedure HRA_N_Main is
       Put_Line ("  budget                 Project budget window: [START] [END]");
       Put_Line ("  balances               List coordinate balances");
       Put_Line ("  statement, report      Print Balance Sheet and Profit & Loss statement");
-      Put_Line ("  review                 Query historical transactions by date or period");
       Put_Line ("  assert                 Assert physical balance for reconciliation: <LOCUS> <AMT> [DATE]");
       Put_Line ("  reconcile              Print balance reconciliation report");
       Put_Line ("  relation               Inspect and settle payables/receivables");
@@ -894,7 +893,13 @@ begin
          end;
       end if;
 
-      --  Load Journal for legacy review.
+      if Command = "review" then
+         Put_Line ("[ERROR] Legacy journal review retired; use actual /path/to/actual.loam [YYYY-MM-DD].");
+         Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         return;
+      end if;
+
+      --  Remaining legacy default status; never use it to answer canonical Actual.
       declare
          J_Res : constant Journal_Result := Read_Journal_File (J_Path);
       begin
@@ -905,37 +910,6 @@ begin
             return;
          end if;
 
-         if Command = "review" then
-         declare
-            Sys_Date : constant Date_Type := Get_System_Date;
-            Q        : Review_Query;
-         begin
-            if Rem_Args = 0 then
-               Q := (Kind => Query_Week, Ending_Date => Sys_Date);
-               Execute_Review
-                 (Events       => J_Res.Events,
-                  Validity     => J_Res.Validities,
-                  Descriptions => J_Res.Descriptions,
-                  Query        => Q);
-            else
-               declare
-                  Query_Str : constant String := Ada.Command_Line.Argument (Command_Idx + 1);
-               begin
-                  if Parse_Query (Query_Str, Sys_Date, Q) then
-                     Execute_Review
-                       (Events       => J_Res.Events,
-                        Validity     => J_Res.Validities,
-                        Descriptions => J_Res.Descriptions,
-                        Query        => Q);
-                  else
-                     Put_Line ("hra-n review: invalid query syntax: " & Query_Str);
-                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                  end if;
-               end;
-            end if;
-            return;
-         end;
-      else
          --  Default: Status summary and canonical balances
          HRA_N.UI.Status_CLI.Display_Status
            (Paths   => Paths,
@@ -944,7 +918,6 @@ begin
          if not Success then
             Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
          end if;
-      end if;
    end;
    end;
 end HRA_N_Main;

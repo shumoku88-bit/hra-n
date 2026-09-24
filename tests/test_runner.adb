@@ -46,7 +46,6 @@ with Test_Loam_Scheduled_Retirement_Refinement;
 with Test_Loam_Scheduled_Replacement_Writer;
 with Test_Loam_Scheduled_Replacement_Refinement;
 with Test_Validity;
-with Test_Review;
 with Test_Initializer;
 with Test_Path_Resolver;
 with Test_Atomic_Writer;
@@ -283,11 +282,6 @@ begin
    if Selected ("Test_Validity") then
       Announce ("Test_Validity");
       Test_Validity.Run;
-   end if;
-
-   if Selected ("Test_Review") then
-      Announce ("Test_Review");
-      Test_Review.Run;
    end if;
 
    if Selected ("Test_Initializer") then
