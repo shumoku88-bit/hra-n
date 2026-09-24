@@ -206,9 +206,12 @@ The CLI remains intentionally non-interactive by default:
 - the same proposal/commit and stale-rejection path as the TUI.
 
 The legacy `record --cli` line editor was retired: it used only the three-stream
-Movement proposal/writer rather than canonical Actual. Use the TUI editor or
-one-shot movement on a canonical household; a line-prompt entrance would need
-its own qualified canonical workflow.
+Movement proposal/writer rather than canonical Actual. The journal-only `review`
+CLI and its in-Application stdout renderer are retired as well: use the canonical
+`actual FILE [DATE]` query for all/day browsing, without assuming that legacy
+search/week semantics are supported. Use the TUI editor or one-shot movement
+on a canonical household; a line-prompt entrance would need its own qualified
+canonical workflow.
 
 ## 6. GUI/Web
 
