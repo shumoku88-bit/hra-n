@@ -30,6 +30,7 @@ with Test_Loam_Zero_Origin_Coverage_Reader;
 with Test_Loam_Locus_Admission_Reader;
 with Test_Loam_Locus_Admission_Writer;
 with Test_Loam_Attention_Reader;
+with Test_Loam_Actual_Routing_Writer;
 with Test_Loam_Actual_Writer;
 with Test_Loam_Actual_Correction_Writer;
 with Test_Loam_Actual_Reversal_Writer;
@@ -347,6 +348,11 @@ begin
    if Selected ("Test_Loam_Locus_Admission_Writer") then
       Announce ("Test_Loam_Locus_Admission_Writer");
       Test_Loam_Locus_Admission_Writer.Run;
+   end if;
+
+   if Selected ("Test_Loam_Actual_Routing_Writer") then
+      Announce ("Test_Loam_Actual_Routing_Writer");
+      Test_Loam_Actual_Routing_Writer.Run;
    end if;
 
    if Selected ("Test_Actual_Query") then

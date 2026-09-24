@@ -106,6 +106,9 @@ jobs:
       - name: Test LOAM Locus Admission Writer
         run: ./tests/bin/test_runner Test_Loam_Locus_Admission_Writer
 
+      - name: Test LOAM Actual Routing Writer
+        run: ./tests/bin/test_runner Test_Loam_Actual_Routing_Writer
+
       - name: Test LOAM Actual Writer
         run: ./tests/bin/test_runner Test_Loam_Actual_Writer
 

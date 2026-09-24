@@ -36,27 +36,33 @@ package body HRA_N.Storage.Loam_Actual_Routing_Writer is
       return True;
    end Valid_Token_Syntax;
 
+   function Make_Failure
+     (Status  : Routing_Publish_Status;
+      Message : String) return Publish_Result
+   is
+      Result : Publish_Result (Success => False);
+      Len    : constant Natural :=
+        Natural'Min (Message'Length, Result.Error_Reason'Length);
+   begin
+      Result.Status := Status;
+      Result.Error_Len := Len;
+      if Len > 0 then
+         Result.Error_Reason (1 .. Len) :=
+           Message (Message'First .. Message'First + Len - 1);
+      end if;
+      return Result;
+   end Make_Failure;
+
+   function Make_Success return Publish_Result is
+      Result : Publish_Result (Success => True);
+   begin
+      return Result;
+   end Make_Success;
+
    function Publish_Route
      (Root_Path : String;
       Draft     : Routing_Draft) return Publish_Result
    is
-      Result : Publish_Result :=
-        (Success      => False,
-         Error_Reason => [others => ' '],
-         Error_Len    => 0);
-
-      procedure Set_Error (Msg : String) is
-         Len : constant Natural :=
-           Natural'Min (Msg'Length, Result.Error_Reason'Length);
-      begin
-         Result.Success := False;
-         Result.Error_Len := Len;
-         Result.Error_Reason := [others => ' '];
-         if Len > 0 then
-            Result.Error_Reason (1 .. Len) := Msg (Msg'First .. Msg'First + Len - 1);
-         end if;
-      end Set_Error;
-
       Locus_Name : constant String :=
         (if Draft.Locus.Token.Length > 0
          then Draft.Locus.Token.Value (1 .. Draft.Locus.Token.Length)
@@ -83,22 +89,27 @@ package body HRA_N.Storage.Loam_Actual_Routing_Writer is
          end if;
       end Release;
 
+      function Fail
+        (Status  : Routing_Publish_Status;
+         Message : String) return Publish_Result
+      is
+      begin
+         Release;
+         return Make_Failure (Status, Message);
+      end Fail;
+
    begin
       if Root_Path'Length = 0 then
-         Set_Error ("canonical root directory must not be empty");
-         return Result;
+         return Fail (Invalid_Root_Directory, "canonical root directory must not be empty");
       elsif not Ada.Directories.Exists (Root_Path) then
-         Set_Error ("canonical root directory does not exist: " & Root_Path);
-         return Result;
+         return Fail (Invalid_Root_Directory, "canonical root directory does not exist: " & Root_Path);
       elsif not Valid_Token_Syntax (Locus_Name) then
-         Set_Error ("routing Locus must be a nonempty single-line token");
-         return Result;
+         return Fail (Invalid_Locus_Token, "routing Locus must be a nonempty single-line token");
       end if;
 
       if Draft.Managed then
          if not Valid_Token_Syntax (Purpose_Name) then
-            Set_Error ("route must be 'managed PURPOSE' or 'unmanaged'");
-            return Result;
+            return Fail (Invalid_Purpose_Token, "route must be 'managed PURPOSE' or 'unmanaged'");
          end if;
       end if;
 
@@ -107,15 +118,13 @@ package body HRA_N.Storage.Loam_Actual_Routing_Writer is
                                Draft.Effective_On.Month,
                                Draft.Effective_On.Day)
          then
-            Set_Error ("routing effective date must be a real calendar date in YYYY-MM-DD form");
-            return Result;
+            return Fail (Invalid_Effective_Date, "routing effective date must be a real calendar date in YYYY-MM-DD form");
          end if;
       end if;
 
       --  Gate: verify that Locus is admitted in locus-admission.loam
       if not Ada.Directories.Exists (Locus_Path) then
-         Set_Error ("locus-admission.loam not found in " & Root_Path);
-         return Result;
+         return Fail (Locus_Admission_Missing, "locus-admission.loam not found in " & Root_Path);
       end if;
 
       declare
@@ -123,19 +132,20 @@ package body HRA_N.Storage.Loam_Actual_Routing_Writer is
            Locus_Reader.Read_File (Locus_Path);
       begin
          if not Locus_Read.Success then
-            Set_Error ("cannot read locus admission vocabulary: "
-                       & Locus_Read.Error_Reason (1 .. Locus_Read.Error_Len));
-            return Result;
+            return Fail
+              (Locus_Admission_Read_Error,
+               "cannot read locus admission vocabulary: "
+               & Locus_Read.Error_Reason (1 .. Locus_Read.Error_Len));
          elsif not Admits_Locus (Locus_Read.Vocabulary, Draft.Locus) then
-            Set_Error ("locus coordinate is not admitted in locus-admission.loam: "
-                       & Locus_Name);
-            return Result;
+            return Fail
+              (Locus_Not_Admitted,
+               "locus coordinate is not admitted in locus-admission.loam: "
+               & Locus_Name);
          end if;
       end;
 
       if not HRA_N.Storage.File_Lock.Acquire (Lock_Path, Lock_Handle) then
-         Set_Error ("could not acquire lock: " & Lock_Path);
-         return Result;
+         return Fail (Lock_Failure, "could not acquire lock: " & Lock_Path);
       end if;
 
       declare
@@ -148,9 +158,7 @@ package body HRA_N.Storage.Loam_Actual_Routing_Writer is
                  HRA_N.Storage.Exact_File.Read_All (Target_Path);
             begin
                if not File_Read.Success then
-                  Release;
-                  Set_Error ("cannot read actual-routing.loam in " & Root_Path);
-                  return Result;
+                  return Fail (Cannot_Read_File, "cannot read actual-routing.loam in " & Root_Path);
                end if;
 
                Existing_Content := File_Read.Content;
@@ -160,10 +168,10 @@ package body HRA_N.Storage.Loam_Actual_Routing_Writer is
                     Routing_Reader.Read_Content (US.To_String (Existing_Content));
                begin
                   if not Parsed.Success then
-                     Release;
-                     Set_Error ("loam: malformed or unsupported Actual routing authority: "
-                                & Parsed.Error_Reason (1 .. Parsed.Error_Len));
-                     return Result;
+                     return Fail
+                       (Corrupt_Existing_File,
+                        "loam: malformed or unsupported Actual routing authority: "
+                        & Parsed.Error_Reason (1 .. Parsed.Error_Len));
                   end if;
 
                   --  Check for duplicate coordinate
@@ -177,10 +185,9 @@ package body HRA_N.Storage.Loam_Actual_Routing_Writer is
                            if Draft.Effective_Kind = Routing_Initial
                              or else Entry_Rec.Effective_On = Draft.Effective_On
                            then
-                              Release;
-                              Set_Error
-                                ("loam: Actual routing already has evidence at this locus/effective coordinate");
-                              return Result;
+                              return Fail
+                                (Duplicate_Coordinate,
+                                 "loam: Actual routing already has evidence at this locus/effective coordinate");
                            end if;
                         end if;
                      end;
@@ -222,19 +229,19 @@ package body HRA_N.Storage.Loam_Actual_Routing_Writer is
             Write_Len : Natural := 0;
          begin
             if not Candidate_Check.Success then
-               Release;
-               Set_Error ("candidate actual routing image failed verification: "
-                          & Candidate_Check.Error_Reason (1 .. Candidate_Check.Error_Len));
-               return Result;
+               return Fail
+                 (Verification_Failure,
+                  "candidate actual routing image failed verification: "
+                  & Candidate_Check.Error_Reason (1 .. Candidate_Check.Error_Len));
             end if;
 
             if not HRA_N.Storage.Atomic_Writer.Write_File_Atomically
               (Target_Path, Candidate, Write_Err, Write_Len)
             then
-               Release;
-               Set_Error ("failed atomic write to actual-routing.loam: "
-                          & Write_Err (1 .. Write_Len));
-               return Result;
+               return Fail
+                 (Atomic_Write_Failure,
+                  "failed atomic write to actual-routing.loam: "
+                  & Write_Err (1 .. Write_Len));
             end if;
          end;
 
@@ -245,10 +252,10 @@ package body HRA_N.Storage.Loam_Actual_Routing_Writer is
             Found : Boolean := False;
          begin
             if not Verify_Read.Success then
-               Release;
-               Set_Error ("readback verification failed: "
-                          & Verify_Read.Error_Reason (1 .. Verify_Read.Error_Len));
-               return Result;
+               return Fail
+                 (Readback_Failure,
+                  "readback verification failed: "
+                  & Verify_Read.Error_Reason (1 .. Verify_Read.Error_Len));
             end if;
 
             for I in 1 .. Verify_Read.Routing.Count loop
@@ -272,23 +279,47 @@ package body HRA_N.Storage.Loam_Actual_Routing_Writer is
             end loop;
 
             if not Found then
-               Release;
-               Set_Error ("readback verification failed: appended routing entry not found");
-               return Result;
+               return Fail (Readback_Failure, "readback verification failed: appended routing entry not found");
             end if;
          end;
 
          Release;
-         Result.Success := True;
-         return Result;
+         return Make_Success;
       end;
 
    exception
       when E : others =>
-         Release;
-         Set_Error ("unexpected exception in publish actual routing: "
-                    & Ada.Exceptions.Exception_Message (E));
-         return Result;
+         return Fail
+           (Internal_Error,
+            "unexpected exception in publish actual routing: "
+            & Ada.Exceptions.Exception_Message (E));
    end Publish_Route;
+
+   function Format_Error (Result : Publish_Result) return String is
+   begin
+      if Result.Success then
+         return "";
+      elsif Result.Error_Len > 0 then
+         return Result.Error_Reason (1 .. Result.Error_Len);
+      else
+         case Result.Status is
+            when Invalid_Root_Directory     => return "canonical root directory is invalid or does not exist";
+            when Invalid_Locus_Token        => return "routing Locus must be a nonempty single-line token";
+            when Invalid_Purpose_Token      => return "route must be 'managed PURPOSE' or 'unmanaged'";
+            when Invalid_Effective_Date     => return "routing effective date must be a real calendar date in YYYY-MM-DD form";
+            when Locus_Admission_Missing    => return "locus-admission.loam not found";
+            when Locus_Admission_Read_Error => return "cannot read locus admission vocabulary";
+            when Locus_Not_Admitted         => return "locus coordinate is not admitted in locus-admission.loam";
+            when Lock_Failure               => return "could not acquire actual routing writer lock";
+            when Cannot_Read_File           => return "cannot read actual-routing.loam";
+            when Corrupt_Existing_File      => return "loam: malformed or unsupported Actual routing authority";
+            when Duplicate_Coordinate       => return "loam: Actual routing already has evidence at this locus/effective coordinate";
+            when Verification_Failure       => return "candidate actual routing image failed verification";
+            when Atomic_Write_Failure       => return "failed atomic write to actual-routing.loam";
+            when Readback_Failure           => return "readback verification failed";
+            when Internal_Error             => return "internal actual routing writer error";
+         end case;
+      end if;
+   end Format_Error;
 
 end HRA_N.Storage.Loam_Actual_Routing_Writer;

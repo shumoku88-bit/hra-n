@@ -22,11 +22,35 @@ package HRA_N.Storage.Loam_Actual_Routing_Writer is
       Purpose        : Token_Text;
    end record;
 
-   type Publish_Result is record
-      Success      : Boolean := False;
-      Error_Reason : String (1 .. 192) := [others => ' '];
-      Error_Len    : Natural := 0;
+   type Routing_Publish_Status is
+     (Invalid_Root_Directory,
+      Invalid_Locus_Token,
+      Invalid_Purpose_Token,
+      Invalid_Effective_Date,
+      Locus_Admission_Missing,
+      Locus_Admission_Read_Error,
+      Locus_Not_Admitted,
+      Lock_Failure,
+      Cannot_Read_File,
+      Corrupt_Existing_File,
+      Duplicate_Coordinate,
+      Verification_Failure,
+      Atomic_Write_Failure,
+      Readback_Failure,
+      Internal_Error);
+
+   type Publish_Result (Success : Boolean := True) is record
+      case Success is
+         when True =>
+            null;
+         when False =>
+            Status       : Routing_Publish_Status := Internal_Error;
+            Error_Reason : String (1 .. 192) := [others => ' '];
+            Error_Len    : Natural := 0;
+      end case;
    end record;
+
+   function Format_Error (Result : Publish_Result) return String;
 
    --  Publish a new routing assertion in Root_Path/actual-routing.loam.
    --  Verifies that Locus is admitted in locus-admission.loam.
