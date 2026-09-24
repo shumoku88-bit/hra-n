@@ -2054,6 +2054,46 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("books", res_list.stdout)
         self.assertIn("UNMANAGED", res_list.stdout)
 
+    def test_canonical_capacity_transfer_and_rebalance(self):
+        # 1. Initialize canonical authority
+        self.assertEqual(self.run_cmd("init", "--canonical").returncode, 0)
+
+        # 2. Transfer from unallocated to groceries
+        res = self.run_cmd("capacity", "transfer", "unallocated", "groceries", "5000", "2026-09-25")
+        self.assertEqual(res.returncode, 0, f"transfer failed: {res.stdout}")
+        self.assertIn("[OK] Committed Canonical Capacity Transfer: capacity-1", res.stdout)
+        self.assertIn("groceries (+5000 jpy)", res.stdout)
+        self.assertIn("AUTHORITY: capacity.loam", res.stdout)
+
+        cap_path = os.path.join(self.test_dir, "capacity.loam")
+        with open(cap_path, "r", encoding="utf-8") as f:
+            cap_content = f.read()
+        self.assertIn("MOVEMENT\tcapacity-1\t2026-09-25\tjpy\n", cap_content)
+        self.assertIn("CHANGE\tUNALLOCATED\t-5000\n", cap_content)
+        self.assertIn("CHANGE\tPURPOSE\tgroceries\t5000\n", cap_content)
+
+        # 3. Reject transfer that causes negative Purpose entitlement
+        neg = self.run_cmd("capacity", "transfer", "groceries", "unallocated", "6000", "2026-09-26")
+        self.assertNotEqual(neg.returncode, 0)
+        self.assertIn("negative", neg.stdout + neg.stderr)
+
+        # 4. Balanced rebalance between Purpose coordinates
+        reb = self.run_cmd("capacity", "rebalance", "2026-09-27", "groceries:-2000", "dining:2000")
+        self.assertEqual(reb.returncode, 0, f"rebalance failed: {reb.stdout}")
+        self.assertIn("[OK] Committed Canonical Capacity Rebalance: capacity-2", reb.stdout)
+        self.assertIn("AUTHORITY: capacity.loam", reb.stdout)
+
+        # 5. Reject unbalanced rebalance
+        unbal = self.run_cmd("capacity", "rebalance", "2026-09-28", "groceries:1000")
+        self.assertNotEqual(unbal.returncode, 0)
+
+        # 6. Capacity listing inspection
+        cap_list = self.run_cmd("capacity")
+        self.assertEqual(cap_list.returncode, 0)
+        self.assertIn("groceries: 3000", cap_list.stdout)
+        self.assertIn("dining: 2000", cap_list.stdout)
+        self.assertIn("unallocated: -5000", cap_list.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

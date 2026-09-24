@@ -9,6 +9,7 @@ with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Application.Capacity_Command; use HRA_N.Application.Capacity_Command;
 with HRA_N.Application.Capacity_Query; use HRA_N.Application.Capacity_Query;
 with HRA_N.Application.Review; use HRA_N.Application.Review;
+with HRA_N.Storage.Loam_Capacity_Writer;
 with HRA_N.UI.Output; use HRA_N.UI.Output;
 
 package body HRA_N.UI.Capacity_CLI is
@@ -142,43 +143,79 @@ package body HRA_N.UI.Capacity_CLI is
                      Date_Val := Parsed_D;
                   end;
                end if;
-               declare
-                  Intent : constant Transfer_Intent :=
-                    (From_Coord   => From_C,
-                     To_Coord     => To_C,
-                     Amount       => Amount,
-                     Currency     => Make_Token ("jpy"),
-                     Effective_On => Date_Val);
-                  Prop_Res : constant Proposal_Result :=
-                    Propose_Transfer (Paths, Intent);
-               begin
-                  if not Prop_Res.Success then
-                     Put_Line ("[ERROR] Transfer rejected: " &
-                               Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                     return;
-                  end if;
+               if Paths.Is_Canonical then
                   declare
-                     Receipt : constant Capacity_Receipt := Commit (Prop_Res.Proposal);
+                     Data_Dir : constant String := Data_Dir_Str (Paths);
+                     Draft    : constant
+                       HRA_N.Storage.Loam_Capacity_Writer.Capacity_Draft :=
+                         HRA_N.Storage.Loam_Capacity_Writer.Make_Transfer_Draft
+                           (Source       => From_C,
+                            Destination  => To_C,
+                            Amount       => Amount,
+                            Effective_On => Date_Val,
+                            Currency     => Make_Token ("jpy"));
+                     Pub_Res  : constant
+                       HRA_N.Storage.Loam_Capacity_Writer.Publish_Result :=
+                         HRA_N.Storage.Loam_Capacity_Writer.Publish_Capacity
+                           (Data_Dir, Draft);
                   begin
-                     if Receipt.Success then
-                        Put_Line ("============================================================");
-                        Put_Line (" [OK] Committed Capacity Transfer: " &
-                                  Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                        Put_Line ("      SNAPSHOT: " &
-                                  Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-                        Put_Line ("      FLOW:     " & From_Str & " (-" &
-                                  Trim (Amt_Str, Ada.Strings.Both) & " jpy) -> " &
-                                  To_Str & " (+" &
-                                  Trim (Amt_Str, Ada.Strings.Both) & " jpy)");
-                        Put_Line ("      EFFECTIVE: " & Format_Iso_Date (Date_Val));
-                        Put_Line ("============================================================");
-                        Success := True;
-                     else
-                        Put_Line ("[ERROR] Transfer commit rejected: " &
-                                  Receipt.Error (1 .. Receipt.Error_Len));
+                     if not Pub_Res.Success then
+                        Put_Line ("[ERROR] Transfer rejected: " &
+                                  Pub_Res.Error_Reason (1 .. Pub_Res.Error_Len));
+                        return;
                      end if;
+
+                     Put_Line ("============================================================");
+                     Put_Line (" [OK] Committed Canonical Capacity Transfer: " &
+                               Pub_Res.Movement_Id (1 .. Pub_Res.Movement_Len));
+                     Put_Line ("      FLOW:     " & From_Str & " (-" &
+                               Trim (Amt_Str, Ada.Strings.Both) & " jpy) -> " &
+                               To_Str & " (+" &
+                               Trim (Amt_Str, Ada.Strings.Both) & " jpy)");
+                     Put_Line ("      EFFECTIVE: " & Format_Iso_Date (Date_Val));
+                     Put_Line ("      AUTHORITY: capacity.loam");
+                     Put_Line ("============================================================");
+                     Success := True;
                   end;
-               end;
+               else
+                  declare
+                     Intent : constant Transfer_Intent :=
+                       (From_Coord   => From_C,
+                        To_Coord     => To_C,
+                        Amount       => Amount,
+                        Currency     => Make_Token ("jpy"),
+                        Effective_On => Date_Val);
+                     Prop_Res : constant Proposal_Result :=
+                       Propose_Transfer (Paths, Intent);
+                  begin
+                     if not Prop_Res.Success then
+                        Put_Line ("[ERROR] Transfer rejected: " &
+                                  Prop_Res.Error (1 .. Prop_Res.Error_Len));
+                        return;
+                     end if;
+                     declare
+                        Receipt : constant Capacity_Receipt := Commit (Prop_Res.Proposal);
+                     begin
+                        if Receipt.Success then
+                           Put_Line ("============================================================");
+                           Put_Line (" [OK] Committed Capacity Transfer: " &
+                                     Receipt.Primary_Id (1 .. Receipt.Primary_Len));
+                           Put_Line ("      SNAPSHOT: " &
+                                     Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                           Put_Line ("      FLOW:     " & From_Str & " (-" &
+                                     Trim (Amt_Str, Ada.Strings.Both) & " jpy) -> " &
+                                     To_Str & " (+" &
+                                     Trim (Amt_Str, Ada.Strings.Both) & " jpy)");
+                           Put_Line ("      EFFECTIVE: " & Format_Iso_Date (Date_Val));
+                           Put_Line ("============================================================");
+                           Success := True;
+                        else
+                           Put_Line ("[ERROR] Transfer commit rejected: " &
+                                     Receipt.Error (1 .. Receipt.Error_Len));
+                        end if;
+                     end;
+                  end;
+               end if;
             end;
          elsif Sub = "rebalance" then
             if Rem_Args < 4 then
@@ -235,33 +272,68 @@ package body HRA_N.UI.Capacity_CLI is
                      end;
                   end;
                end loop;
-               declare
-                  Prop_Res : constant Proposal_Result :=
-                    Propose_Rebalance (Paths, Intent);
-               begin
-                  if not Prop_Res.Success then
-                     Put_Line ("[ERROR] Rebalance rejected: " &
-                               Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                     return;
-                  end if;
+               if Paths.Is_Canonical then
                   declare
-                     Receipt : constant Capacity_Receipt := Commit (Prop_Res.Proposal);
+                     Data_Dir : constant String := Data_Dir_Str (Paths);
+                     Draft    : HRA_N.Storage.Loam_Capacity_Writer.Capacity_Draft;
                   begin
-                     if Receipt.Success then
+                     Draft.Effective_On := Date_Val;
+                     Draft.Currency     := Make_Token ("jpy");
+                     Draft.Change_Count := Natural (Intent.Count);
+                     for I in 1 .. Natural (Intent.Count) loop
+                        Draft.Changes (I) := Intent.Changes (I);
+                     end loop;
+
+                     declare
+                        Pub_Res : constant
+                          HRA_N.Storage.Loam_Capacity_Writer.Publish_Result :=
+                            HRA_N.Storage.Loam_Capacity_Writer.Publish_Capacity
+                              (Data_Dir, Draft);
+                     begin
+                        if not Pub_Res.Success then
+                           Put_Line ("[ERROR] Rebalance rejected: " &
+                                     Pub_Res.Error_Reason (1 .. Pub_Res.Error_Len));
+                           return;
+                        end if;
+
                         Put_Line ("============================================================");
-                        Put_Line (" [OK] Committed Capacity Rebalance: " &
-                                  Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                        Put_Line ("      SNAPSHOT: " &
-                                  Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                        Put_Line (" [OK] Committed Canonical Capacity Rebalance: " &
+                                  Pub_Res.Movement_Id (1 .. Pub_Res.Movement_Len));
                         Put_Line ("      EFFECTIVE: " & Format_Iso_Date (Date_Val));
+                        Put_Line ("      AUTHORITY: capacity.loam");
                         Put_Line ("============================================================");
                         Success := True;
-                     else
-                        Put_Line ("[ERROR] Rebalance commit rejected: " &
-                                  Receipt.Error (1 .. Receipt.Error_Len));
-                     end if;
+                     end;
                   end;
-               end;
+               else
+                  declare
+                     Prop_Res : constant Proposal_Result :=
+                       Propose_Rebalance (Paths, Intent);
+                  begin
+                     if not Prop_Res.Success then
+                        Put_Line ("[ERROR] Rebalance rejected: " &
+                                  Prop_Res.Error (1 .. Prop_Res.Error_Len));
+                        return;
+                     end if;
+                     declare
+                        Receipt : constant Capacity_Receipt := Commit (Prop_Res.Proposal);
+                     begin
+                        if Receipt.Success then
+                           Put_Line ("============================================================");
+                           Put_Line (" [OK] Committed Capacity Rebalance: " &
+                                     Receipt.Primary_Id (1 .. Receipt.Primary_Len));
+                           Put_Line ("      SNAPSHOT: " &
+                                     Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                           Put_Line ("      EFFECTIVE: " & Format_Iso_Date (Date_Val));
+                           Put_Line ("============================================================");
+                           Success := True;
+                        else
+                           Put_Line ("[ERROR] Rebalance commit rejected: " &
+                                     Receipt.Error (1 .. Receipt.Error_Len));
+                        end if;
+                     end;
+                  end;
+               end if;
             end;
          else
             Put_Line ("Usage: hra-n capacity [transfer|rebalance]");
