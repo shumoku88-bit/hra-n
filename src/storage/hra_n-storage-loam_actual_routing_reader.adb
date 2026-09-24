@@ -102,40 +102,44 @@ package body HRA_N.Storage.Loam_Actual_Routing_Reader is
       end if;
    end Split_Tabs;
 
+   function Make_Failure
+     (Status  : Routing_Read_Status;
+      At_Line : Natural;
+      Message : String) return Read_Result
+   is
+      Result : Read_Result (Success => False);
+      N      : constant Natural :=
+        Natural'Min (Message'Length, Result.Error_Reason'Length);
+   begin
+      Result.Status     := Status;
+      Result.Error_Line := At_Line;
+      Result.Error_Len  := N;
+      if N > 0 then
+         Result.Error_Reason (1 .. N) :=
+           Message (Message'First .. Message'First + N - 1);
+      end if;
+      return Result;
+   end Make_Failure;
+
    function Read_Content (Content : String) return Read_Result is
-      Result   : Read_Result;
+      Result   : Read_Result (Success => True);
       Position : Natural :=
         (if Content'Length = 0 then 0 else Content'First);
       Line_No  : Natural := 0;
 
-      procedure Set_Error (At_Line : Natural; Message : String) is
-         Len : constant Natural :=
-           Natural'Min (Message'Length, Result.Error_Reason'Length);
-      begin
-         Result.Success := False;
-         Result.Error_Line := At_Line;
-         Result.Error_Reason := [others => ' '];
-         Result.Error_Len := Len;
-         if Len > 0 then
-            Result.Error_Reason (1 .. Len) :=
-              Message (Message'First .. Message'First + Len - 1);
-         end if;
-      end Set_Error;
-
       function Fail
-        (At_Line : Natural;
-         Message : String) return Read_Result
-      is
+        (Status  : Routing_Read_Status;
+         At_Line : Natural;
+         Message : String) return Read_Result is
       begin
-         Set_Error (At_Line, Message);
-         return Result;
+         return Make_Failure (Status, At_Line, Message);
       end Fail;
 
    begin
       if Content'Length = 0 then
-         return Fail (0, "LOAM actual routing document is empty");
+         return Fail (Document_Empty, 0, "LOAM actual routing document is empty");
       elsif Content (Content'Last) /= ASCII.LF then
-         return Fail (0, "LOAM actual routing document does not end with LF");
+         return Fail (Missing_Final_Newline, 0, "LOAM actual routing document does not end with LF");
       end if;
 
       declare
@@ -144,12 +148,12 @@ package body HRA_N.Storage.Loam_Actual_Routing_Reader is
       begin
          Next_Line (Content, Position, Line, Success);
          if not Success then
-            return Fail (1, "Failed reading header line");
+            return Fail (Malformed_Header, 1, "Failed reading header line");
          end if;
          Line_No := 1;
 
          if US.To_String (Line) /= Header then
-            return Fail (1, "Invalid header: expected " & Header);
+            return Fail (Malformed_Header, 1, "Invalid header: expected " & Header);
          end if;
 
          loop
@@ -161,7 +165,7 @@ package body HRA_N.Storage.Loam_Actual_Routing_Reader is
                Raw : constant String := US.To_String (Line);
             begin
                if Raw'Length = 0 then
-                  return Fail (Line_No, "Empty line encountered");
+                  return Fail (Syntax_Error, Line_No, "Empty line encountered");
                end if;
 
                declare
@@ -171,7 +175,7 @@ package body HRA_N.Storage.Loam_Actual_Routing_Reader is
                   Split_Tabs (Raw, Fields, Field_Count);
 
                   if Field_Count < 4 then
-                     return Fail (Line_No, "Too few fields in ROUTE row");
+                     return Fail (Syntax_Error, Line_No, "Too few fields in ROUTE row");
                   end if;
 
                   declare
@@ -179,7 +183,7 @@ package body HRA_N.Storage.Loam_Actual_Routing_Reader is
                        Raw (Fields (1).First .. Fields (1).Last);
                   begin
                      if Tag /= "ROUTE" then
-                        return Fail (Line_No, "Unknown row tag: " & Tag);
+                        return Fail (Syntax_Error, Line_No, "Unknown row tag: " & Tag);
                      end if;
                   end;
 
@@ -191,7 +195,7 @@ package body HRA_N.Storage.Loam_Actual_Routing_Reader is
                      Entry_Rec : Routing_Entry;
                   begin
                      if not Valid_Token (Locus_Str) then
-                        return Fail (Line_No, "Invalid locus token: " & Locus_Str);
+                        return Fail (Invalid_Token, Line_No, "Invalid locus token: " & Locus_Str);
                      end if;
                      Entry_Rec.Locus := (Token => Make_Token (Locus_Str));
 
@@ -203,7 +207,7 @@ package body HRA_N.Storage.Loam_Actual_Routing_Reader is
                         begin
                            if Managed_Str = "MANAGED" then
                               if Field_Count < 5 then
-                                 return Fail (Line_No, "MANAGED route missing purpose");
+                                 return Fail (Syntax_Error, Line_No, "MANAGED route missing purpose");
                               end if;
                               Entry_Rec.Managed := True;
                               declare
@@ -211,20 +215,20 @@ package body HRA_N.Storage.Loam_Actual_Routing_Reader is
                                    Raw (Fields (5).First .. Fields (5).Last);
                               begin
                                  if not Valid_Token (Purp_Str) then
-                                    return Fail (Line_No, "Invalid purpose token: " & Purp_Str);
+                                    return Fail (Invalid_Token, Line_No, "Invalid purpose token: " & Purp_Str);
                                  end if;
                                  Entry_Rec.Purpose := Make_Token (Purp_Str);
                               end;
                            elsif Managed_Str = "UNMANAGED" then
                               Entry_Rec.Managed := False;
                            else
-                              return Fail (Line_No, "Expected MANAGED or UNMANAGED, got: " & Managed_Str);
+                              return Fail (Syntax_Error, Line_No, "Expected MANAGED or UNMANAGED, got: " & Managed_Str);
                            end if;
                         end;
 
                      elsif Mode_Str = "FROM" then
                         if Field_Count < 5 then
-                           return Fail (Line_No, "FROM route missing date or managed state");
+                           return Fail (Syntax_Error, Line_No, "FROM route missing date or managed state");
                         end if;
                         Entry_Rec.Effective_Kind := Routing_From_Date;
                         declare
@@ -235,13 +239,13 @@ package body HRA_N.Storage.Loam_Actual_Routing_Reader is
                            Parsed_Date : Date_Type;
                         begin
                            if not Parse_Iso_Date (Date_Str, Parsed_Date) then
-                              return Fail (Line_No, "Invalid date in FROM route: " & Date_Str);
+                              return Fail (Syntax_Error, Line_No, "Invalid date in FROM route: " & Date_Str);
                            end if;
                            Entry_Rec.Effective_On := Parsed_Date;
 
                            if Managed_Str = "MANAGED" then
                               if Field_Count < 6 then
-                                 return Fail (Line_No, "MANAGED FROM route missing purpose");
+                                 return Fail (Syntax_Error, Line_No, "MANAGED FROM route missing purpose");
                               end if;
                               Entry_Rec.Managed := True;
                               declare
@@ -249,23 +253,23 @@ package body HRA_N.Storage.Loam_Actual_Routing_Reader is
                                    Raw (Fields (6).First .. Fields (6).Last);
                               begin
                                  if not Valid_Token (Purp_Str) then
-                                    return Fail (Line_No, "Invalid purpose token: " & Purp_Str);
+                                    return Fail (Invalid_Token, Line_No, "Invalid purpose token: " & Purp_Str);
                                  end if;
                                  Entry_Rec.Purpose := Make_Token (Purp_Str);
                               end;
                            elsif Managed_Str = "UNMANAGED" then
                               Entry_Rec.Managed := False;
                            else
-                              return Fail (Line_No, "Expected MANAGED or UNMANAGED, got: " & Managed_Str);
+                              return Fail (Syntax_Error, Line_No, "Expected MANAGED or UNMANAGED, got: " & Managed_Str);
                            end if;
                         end;
 
                      else
-                        return Fail (Line_No, "Unknown route mode: " & Mode_Str);
+                        return Fail (Syntax_Error, Line_No, "Unknown route mode: " & Mode_Str);
                      end if;
 
                      if Result.Routing.Count = Max_Routing_Entries then
-                        return Fail (Line_No, "Exceeded maximum routing entries");
+                        return Fail (Capacity_Exceeded, Line_No, "Exceeded maximum routing entries");
                      end if;
 
                      Result.Routing.Count := Result.Routing.Count + 1;
@@ -277,47 +281,56 @@ package body HRA_N.Storage.Loam_Actual_Routing_Reader is
       end;
 
       if not Coordinates_Are_Unique (Result.Routing) then
-         return Fail (Line_No, "Duplicate routing coordinate in actual-routing.loam");
+         return Fail (Duplicate_Coordinate, Line_No, "Duplicate routing coordinate in actual-routing.loam");
       end if;
 
-      Result.Success := True;
       return Result;
    exception
       when others =>
-         return Fail (Line_No, "unexpected LOAM actual routing reader failure");
+         return Fail (Syntax_Error, Line_No, "unexpected LOAM actual routing reader failure");
    end Read_Content;
 
    function Read_File (Path : String) return Read_Result is
-      Result : Read_Result;
-      Msg    : constant String := "required LOAM actual routing file is missing or unreadable";
+      Msg : constant String := "required LOAM actual routing file is missing or unreadable";
    begin
       if not Ada.Directories.Exists (Path) then
-         Result.Error_Len := Msg'Length;
-         Result.Error_Reason (1 .. Msg'Length) := Msg;
-         return Result;
+         return Make_Failure (IO_Error, 0, Msg);
       end if;
       if Ada.Directories.Kind (Path) /= Ada.Directories.Ordinary_File then
-         Result.Error_Len := Msg'Length;
-         Result.Error_Reason (1 .. Msg'Length) := Msg;
-         return Result;
+         return Make_Failure (IO_Error, 0, Msg);
       end if;
       declare
          Exact : constant HRA_N.Storage.Exact_File.Read_Result :=
            HRA_N.Storage.Exact_File.Read_All (Path);
       begin
          if not Exact.Success then
-            Result.Error_Len := Msg'Length;
-            Result.Error_Reason (1 .. Msg'Length) := Msg;
-            return Result;
+            return Make_Failure (IO_Error, 0, Msg);
          end if;
          return Read_Content (US.To_String (Exact.Content));
       end;
    exception
       when others =>
-         Result.Success := False;
-         Result.Error_Len := Msg'Length;
-         Result.Error_Reason (1 .. Msg'Length) := Msg;
-         return Result;
+         return Make_Failure (IO_Error, 0, Msg);
    end Read_File;
+
+   function Format_Error (Result : Read_Result) return String is
+   begin
+      if Result.Success then
+         return "";
+      elsif Result.Error_Len > 0 then
+         return Result.Error_Reason (1 .. Result.Error_Len);
+      else
+         case Result.Status is
+            when Document_Empty        => return "LOAM actual routing document is empty";
+            when Missing_Final_Newline => return "LOAM actual routing document does not end with LF";
+            when Malformed_Header      => return "malformed LOAM actual routing header";
+            when Syntax_Error          => return "syntax error in LOAM actual routing document";
+            when Invalid_Token         => return "invalid token in LOAM actual routing document";
+            when Capacity_Exceeded     => return "exceeded maximum routing entries";
+            when Duplicate_Coordinate  => return "duplicate routing coordinate";
+            when IO_Error              => return "required LOAM actual routing file is missing or unreadable";
+         end case;
+      end if;
+   end Format_Error;
 
 end HRA_N.Storage.Loam_Actual_Routing_Reader;
