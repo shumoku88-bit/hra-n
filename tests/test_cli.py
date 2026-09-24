@@ -403,7 +403,7 @@ class TestHraNCli(unittest.TestCase):
 
     def test_versioned_month_end_budget(self) -> None:
         for args in [
-            ('init',),
+            ('init', '--legacy'),
             ('capacity', 'transfer', 'unallocated', 'Food', '100', '2026-09-01'),
             ('capacity', 'transfer', 'unallocated', 'Food', '20', '2026-09-30'),
             ('route', 'set', 'food', 'Food', 'initial'),
@@ -494,8 +494,8 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("usd", res.stdout)
 
     def test_cli_lifecycle(self) -> None:
-        # 1. Initialize household
-        res = self.run_cmd("init")
+        # 1. Initialize household (legacy 3-stream regression)
+        res = self.run_cmd("init", "--legacy")
         self.assertEqual(res.returncode, 0, f"init failed: {res.stderr}")
         self.assertIn("[OK] Initialized new household authority", res.stdout)
         self.assertEqual(self.current_snapshot(), "g00000001")
@@ -1920,6 +1920,15 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("split", "2026-09-24", "cash:-1500", "food:1000")
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("balance to zero", res.stdout)
+
+    def test_canonical_init_default(self):
+        # Default 'init' (without --canonical) now initializes canonical Loam authority
+        res = self.run_cmd("init")
+        self.assertEqual(res.returncode, 0, f"default init failed: {res.stdout}")
+        self.assertIn("[OK] Initialized new canonical Loam authority", res.stdout)
+        self.assertTrue(os.path.isfile(os.path.join(self.test_dir, "actual.loam")))
+        self.assertTrue(os.path.isfile(os.path.join(self.test_dir, "locus-admission.loam")))
+        self.assertTrue(os.path.isfile(os.path.join(self.test_dir, "capacity.loam")))
 
     def test_canonical_init_lifecycle(self):
         # 1. Initialize canonical Loam authority

@@ -22,7 +22,7 @@ class TestHouseholdObservation(unittest.TestCase):
 
     def setUp(self) -> None:
         self.test_dir = tempfile.mkdtemp(prefix="hra_n_observation_test_")
-        init = self.run_hra("init")
+        init = self.run_hra("init", "--legacy")
         self.assertEqual(init.returncode, 0, init.stderr + init.stdout)
 
     def tearDown(self) -> None:

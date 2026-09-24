@@ -88,7 +88,7 @@ procedure HRA_N_Main is
       Put_Line ("  window                 Configure or list budget evaluation windows");
       Put_Line ("  doctor, verify         Verify authority health and cryptographic soundness");
       Put_Line ("  init [OPTIONS] [DIR]   Initialize new household authority repository");
-      Put_Line ("                         (--canonical: Loam canonical data; --legacy: 3-stream)");
+      Put_Line ("                         (default: Loam canonical data; --legacy: 3-stream)");
    end Print_Help;
 begin
    Resolve_From_Cli (Paths, Command_Str, Cmd_Len, Command_Idx);
@@ -109,7 +109,7 @@ begin
       --  Branch: Initializer for a new household authority
       if Command = "init" then
          declare
-            Canonical_Mode : Boolean := False;
+            Canonical_Mode : Boolean := True;
             Target_Found   : Boolean := False;
             Target_Buf     : String (1 .. 256) := [others => ' '];
             Target_Len     : Natural := 0;
