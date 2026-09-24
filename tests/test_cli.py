@@ -401,9 +401,9 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn('Scheduled pressure evidence', self.run_cmd(
             'report', '--audit', '-m', '9', '-y', '2026').stdout)
 
-    def test_versioned_month_end_budget(self) -> None:
+    def test_canonical_month_end_budget(self) -> None:
         for args in [
-            ('init', '--legacy'),
+            ('init', '--canonical'),
             ('capacity', 'transfer', 'unallocated', 'Food', '100', '2026-09-01'),
             ('capacity', 'transfer', 'unallocated', 'Food', '20', '2026-09-30'),
             ('route', 'set', 'food', 'Food', 'initial'),
@@ -412,7 +412,6 @@ class TestHraNCli(unittest.TestCase):
         ]:
             res = self.run_cmd(*args)
             self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-        selected = self.current_snapshot()
         res = self.run_cmd('report', '--budget', '-m', '9', '-y', '2026')
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         self.assertRegex(res.stdout, r'Total Budget Envelopes\s+120\s+10\s+110')
@@ -420,7 +419,6 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd('budget', '2026-09-01', '2026-10-01')
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         self.assertRegex(res.stdout, r'Food\s+120 JPY\s+10 JPY\s+110 JPY')
-        self.assertEqual(self.current_snapshot(), selected)
 
     def test_month_end_unrepresentable_boundary(self) -> None:
         self.write_report_fixture('')

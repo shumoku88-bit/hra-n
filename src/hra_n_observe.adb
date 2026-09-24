@@ -102,7 +102,7 @@ begin
          Capacity : constant HRA_N.Application.Capacity_Query.Capacity_View :=
            HRA_N.Application.Capacity_Query.Execute (Paths);
       begin
-         if Balances.Status /= HRA_N.Application.Frontend_Types.Query_Complete then
+         if Balances.Status = HRA_N.Application.Frontend_Types.Query_Rejected then
             if Balances.Diagnostic_Len > 0 then
                Fail
                  (Balances.Diagnostic (1 .. Balances.Diagnostic_Len));
@@ -110,7 +110,7 @@ begin
                Fail ("balance query rejected");
             end if;
             return;
-         elsif Budget.Status /= HRA_N.Application.Frontend_Types.Query_Complete then
+         elsif Budget.Status = HRA_N.Application.Frontend_Types.Query_Rejected then
             if Budget.Diagnostic_Len > 0 then
                Fail (Budget.Diagnostic (1 .. Budget.Diagnostic_Len));
             else

@@ -5,7 +5,6 @@
 
 with Ada.Command_Line;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
-with HRA_N.Application.Policy_Command; use HRA_N.Application.Policy_Command;
 with HRA_N.Application.Policy_Query;   use HRA_N.Application.Policy_Query;
 with HRA_N.Application.Review;         use HRA_N.Application.Review;
 with HRA_N.Core.Accounting_Role;       use HRA_N.Core.Accounting_Role;
@@ -69,12 +68,13 @@ package body HRA_N.UI.Policy_CLI is
             Locus_Str : constant String := Ada.Command_Line.Argument (Start_Arg + 1);
             Role_Str_Arg : constant String := Ada.Command_Line.Argument (Start_Arg + 2);
             Role_Val  : Accounting_Role;
-            Date_Val  : Date_Type := Get_System_Date;
-            Has_Rep   : Boolean := False;
-            Rep_Str   : String (1 .. 64) := [others => ' '];
-            Rep_Len   : Natural := 0;
-            Intent    : Role_Intent;
          begin
+            if not Paths.Is_Canonical then
+               Put_Error_Line ("[ERROR] Canonical Loam repository required for role assignment");
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               return;
+            end if;
+
             if not Parse_Role (Role_Str_Arg, Role_Val) then
                Put_Error_Line ("hra-n role assign: invalid accounting role: " & Role_Str_Arg);
                Put_Error_Line ("Valid roles: ASSET, LIABILITY, EQUITY, INCOME, EXPENSE");
@@ -82,95 +82,30 @@ package body HRA_N.UI.Policy_CLI is
                return;
             end if;
 
-            if Rem_Args >= 4 then
-               declare
-                  D_Str : constant String := Ada.Command_Line.Argument (Start_Arg + 3);
-               begin
-                  if not Parse_Iso_Date (D_Str, Date_Val) then
-                     Put_Error_Line ("hra-n role assign: invalid ISO date: " & D_Str);
-                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                     return;
+            declare
+               Data_Dir : constant String := Data_Dir_Str (Paths);
+               Draft : constant
+                 HRA_N.Storage.Loam_Accounting_Role_Writer.Role_Draft :=
+                   (Locus => (Token => Make_Token (Locus_Str)),
+                    Role  => Role_Val);
+               Pub_Res : constant
+                 HRA_N.Storage.Loam_Accounting_Role_Writer.Publish_Result :=
+                   HRA_N.Storage.Loam_Accounting_Role_Writer.Publish_Role
+                     (Data_Dir, Draft);
+            begin
+               if not Pub_Res.Success then
+                  Put_Error_Line ("hra-n role assign rejected:");
+                  if Pub_Res.Error_Len > 0 then
+                     Put_Error_Line ("  " & Pub_Res.Error_Reason (1 .. Pub_Res.Error_Len));
                   end if;
-               end;
-            end if;
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  return;
+               end if;
 
-            if Rem_Args >= 5 then
-               declare
-                  R_Arg : constant String := Ada.Command_Line.Argument (Start_Arg + 4);
-               begin
-                  Has_Rep := True;
-                  Rep_Len := Natural'Min (R_Arg'Length, Rep_Str'Length);
-                  Rep_Str (1 .. Rep_Len) := R_Arg (R_Arg'First .. R_Arg'First + Rep_Len - 1);
-               end;
-            end if;
-
-            Intent :=
-              (Id             => (Length => 0, Value => [others => ' ']),
-               Locus          => (Token => Make_Token (Locus_Str)),
-               Role           => Role_Val,
-               Effective_From => Date_Val,
-               Has_Replaces   => Has_Rep,
-               Replaces_Id    => Make_Token (Rep_Str (1 .. Rep_Len)));
-
-            if Paths.Is_Canonical then
-               declare
-                  Data_Dir : constant String := Data_Dir_Str (Paths);
-                  Draft : constant
-                    HRA_N.Storage.Loam_Accounting_Role_Writer.Role_Draft :=
-                      (Locus => (Token => Make_Token (Locus_Str)),
-                       Role  => Role_Val);
-                  Pub_Res : constant
-                    HRA_N.Storage.Loam_Accounting_Role_Writer.Publish_Result :=
-                      HRA_N.Storage.Loam_Accounting_Role_Writer.Publish_Role
-                        (Data_Dir, Draft);
-               begin
-                  if not Pub_Res.Success then
-                     Put_Error_Line ("hra-n role assign rejected:");
-                     if Pub_Res.Error_Len > 0 then
-                        Put_Error_Line ("  " & Pub_Res.Error_Reason (1 .. Pub_Res.Error_Len));
-                     end if;
-                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                     return;
-                  end if;
-
-                  Put_Line ("[OK] Committed Canonical Role Assignment: " &
-                            Locus_Str & " -> " & Role_Str_Arg);
-                  Put_Line ("AUTHORITY: accounting-role.loam");
-               end;
-            else
-               declare
-                  Prop_Res : constant Proposal_Result :=
-                    Propose_Role (Paths, Intent);
-               begin
-                  if not Prop_Res.Success then
-                     Put_Error_Line ("hra-n role assign rejected:");
-                     if Prop_Res.Error_Len > 0 then
-                        Put_Error_Line ("  " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                     end if;
-                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                     return;
-                  end if;
-
-                  declare
-                     Receipt : constant Policy_Receipt :=
-                       Commit (Prop_Res.Proposal);
-                  begin
-                     if not Receipt.Success then
-                        Put_Error_Line ("hra-n role assign commit failed:");
-                        if Receipt.Error_Len > 0 then
-                           Put_Error_Line ("  " & Receipt.Error (1 .. Receipt.Error_Len));
-                        end if;
-                        Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                        return;
-                     end if;
-
-                     Put_Line ("[OK] Committed Role Assignment: " &
-                               Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                     Put_Line ("SNAPSHOT: " &
-                               Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-                  end;
-               end;
-            end if;
+               Put_Line ("[OK] Committed Canonical Role Assignment: " &
+                         Locus_Str & " -> " & Role_Str_Arg);
+               Put_Line ("AUTHORITY: accounting-role.loam");
+            end;
          end;
       else
          --  Listing active roles

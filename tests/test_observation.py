@@ -22,7 +22,7 @@ class TestHouseholdObservation(unittest.TestCase):
 
     def setUp(self) -> None:
         self.test_dir = tempfile.mkdtemp(prefix="hra_n_observation_test_")
-        init = self.run_hra("init", "--legacy")
+        init = self.run_hra("init")
         self.assertEqual(init.returncode, 0, init.stderr + init.stdout)
 
     def tearDown(self) -> None:
@@ -57,8 +57,7 @@ class TestHouseholdObservation(unittest.TestCase):
         self.assertGreater(len(lines), 0)
         self.assertEqual(lines[-1], "HOBS1\tmeta\tstatus\tcomplete")
         self.assertIn("HOBS1\tmeta\timplementation\thra-n", lines)
-        self.assertIn("HOBS1\tmeta\tsnapshot_kind\tversioned", lines)
-        self.assertIn("HOBS1\tmeta\tsnapshot_id\tg00000001", lines)
+        self.assertIn("HOBS1\tmeta\tsnapshot_kind\tunversioned", lines)
         self.assertIn("HOBS1\tmeta\twindow_start\t2026-09-01", lines)
         self.assertIn("HOBS1\tmeta\twindow_end_exclusive\t2026-10-01", lines)
         self.assertTrue(

@@ -5,7 +5,6 @@
 
 with Ada.Command_Line;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
-with HRA_N.Application.Policy_Command; use HRA_N.Application.Policy_Command;
 with HRA_N.Application.Policy_Query;   use HRA_N.Application.Policy_Query;
 with HRA_N.Core.Types;                 use HRA_N.Core.Types;
 with HRA_N.Storage.Loam_Locus_Admission_Writer;
@@ -34,67 +33,35 @@ package body HRA_N.UI.Locus_CLI is
                Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
                return;
             end if;
-            if Paths.Is_Canonical then
-               declare
-                  Data_Dir : constant String := Data_Dir_Str (Paths);
-                  Target_Locus : constant Locus_Id :=
-                    (Token => Make_Token (Text));
-                  Pub_Res : constant
-                    HRA_N.Storage.Loam_Locus_Admission_Writer.Publish_Result :=
-                      HRA_N.Storage.Loam_Locus_Admission_Writer.Publish_Locus
-                        (Data_Dir, Target_Locus);
-               begin
-                  if not Pub_Res.Success then
-                     Put_Error_Line ("hra-n locus add rejected:");
-                     if Pub_Res.Error_Len > 0 then
-                        Put_Error_Line
-                          ("  " & Pub_Res.Error_Reason (1 .. Pub_Res.Error_Len));
-                     end if;
-                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                     return;
-                  end if;
-                  Put_Line
-                    ("[OK] Admitted Canonical Locus: " & Text);
-                  Put_Line
-                    ("AUTHORITY: locus-admission.loam");
-               end;
-            else
-               declare
-                  Intent : constant Locus_Intent :=
-                    (Locus => (Token => Make_Token (Text)));
-                  Proposed : constant Proposal_Result :=
-                    Propose_Locus (Paths, Intent);
-               begin
-                  if not Proposed.Success then
-                     Put_Error_Line ("hra-n locus add rejected:");
-                     if Proposed.Error_Len > 0 then
-                        Put_Error_Line
-                          ("  " & Proposed.Error (1 .. Proposed.Error_Len));
-                     end if;
-                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                     return;
-                  end if;
-                  declare
-                     Receipt : constant Policy_Receipt := Commit (Proposed.Proposal);
-                  begin
-                     if not Receipt.Success then
-                        Put_Error_Line ("hra-n locus add commit failed:");
-                        if Receipt.Error_Len > 0 then
-                           Put_Error_Line
-                             ("  " & Receipt.Error (1 .. Receipt.Error_Len));
-                        end if;
-                        Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-                        return;
-                     end if;
-                     Put_Line
-                       ("[OK] Admitted Locus: "
-                        & Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-                     Put_Line
-                       ("SNAPSHOT: "
-                        & Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-                  end;
-               end;
+            if not Paths.Is_Canonical then
+               Put_Error_Line ("[ERROR] Canonical Loam repository required for locus modification");
+               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               return;
             end if;
+
+            declare
+               Data_Dir : constant String := Data_Dir_Str (Paths);
+               Target_Locus : constant Locus_Id :=
+                 (Token => Make_Token (Text));
+               Pub_Res : constant
+                 HRA_N.Storage.Loam_Locus_Admission_Writer.Publish_Result :=
+                   HRA_N.Storage.Loam_Locus_Admission_Writer.Publish_Locus
+                     (Data_Dir, Target_Locus);
+            begin
+               if not Pub_Res.Success then
+                  Put_Error_Line ("hra-n locus add rejected:");
+                  if Pub_Res.Error_Len > 0 then
+                     Put_Error_Line
+                       ("  " & Pub_Res.Error_Reason (1 .. Pub_Res.Error_Len));
+                  end if;
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                  return;
+               end if;
+               Put_Line
+                 ("[OK] Admitted Canonical Locus: " & Text);
+               Put_Line
+                 ("AUTHORITY: locus-admission.loam");
+            end;
          end;
       elsif Remaining = 0
         or else (Remaining = 1
