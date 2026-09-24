@@ -166,7 +166,8 @@ package body HRA_N.Application.Home_Query is
       if Result.Status = Query_Complete
         and then (not Same_Snapshot (Actual.Snapshot, Snapshot)
                   or else not Same_Snapshot (Scheduled.Snapshot, Snapshot)
-                  or else not Same_Snapshot (Statement.Actual_Snapshot, Snapshot))
+                  or else not Same_Snapshot (Statement.Actual_Snapshot, Snapshot)
+                  or else not Same_Snapshot (Attention.Snapshot, Snapshot))
       then
          --  UNVERSIONED never proves correspondence between authorities.
          Result.Status := Query_Partial;
