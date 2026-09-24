@@ -59,7 +59,11 @@ package HRA_N.Application.Balance_Query is
 
    type Balance_Row_Array is array (Balance_Row_Index) of Balance_Row;
 
+   type Balance_Source is (Legacy_Balance, Canonical_Balance);
+
    type Balance_View is record
+      Source               : Balance_Source := Legacy_Balance;
+      Assertion_Evidence_Available : Boolean := True;
       Status               : Frontend_Types.Query_Status :=
         Frontend_Types.Query_Rejected;
       Snapshot             : Frontend_Types.Snapshot_Reference :=
@@ -94,6 +98,8 @@ package HRA_N.Application.Balance_Query is
       Snapshot : Frontend_Types.Snapshot_Reference := (Kind => Frontend_Types.Snapshot_Unversioned))
       return Balance_View;
 
+   --  Select canonical accounting independently of Attention. Canonical
+   --  assertions are not yet readable: no zero-conflict claim is inferred.
    function Execute
      (Paths   : HRA_N.Application.Path_Resolver.Path_Config;
       Request : Query := (Scope => Scope_All, Has_As_Of => False, As_Of_Date => (2026, 1, 1)))

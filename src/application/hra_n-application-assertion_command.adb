@@ -5,6 +5,7 @@
 
 with Ada.Strings.Fixed; use Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
+with HRA_N.Application.Canonical_Authority;
 with HRA_N.Storage.Exact_File; use HRA_N.Storage.Exact_File;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
 with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
@@ -14,6 +15,7 @@ with HRA_N.Storage.Generation_Transaction;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 
 package body HRA_N.Application.Assertion_Command is
+   use type HRA_N.Application.Canonical_Authority.Authority_State;
 
    procedure Format_Assertion_Id
      (Num    : Positive;
@@ -141,6 +143,12 @@ package body HRA_N.Application.Assertion_Command is
          return Fail ("assertion description contains invalid characters");
       end if;
 
+      if HRA_N.Application.Canonical_Authority.Probe (Data_Dir_Str (Paths)).State
+        /= HRA_N.Application.Canonical_Authority.Legacy_Only
+      then
+         return Fail ("canonical balance assertions are not writable by HRA-N");
+      end if;
+
       Journal := Read_Journal_File (Journal_Path_Str (Paths));
       Policy  := Read_Policy_File (Policy_Path_Str (Paths));
       Sched   := Read_Scheduled_Journal_File (Scheduled_Path_Str (Paths));
@@ -210,6 +218,20 @@ package body HRA_N.Application.Assertion_Command is
             Receipt.Error (1 .. Receipt.Error_Len) := Message;
          end;
          return Receipt;
+      end if;
+
+      if HRA_N.Application.Canonical_Authority.Probe
+        (Proposal.Base_Dir (1 .. Proposal.Base_Len)).State
+          /= HRA_N.Application.Canonical_Authority.Legacy_Only
+      then
+         declare
+            Message : constant String :=
+              "canonical balance assertions are not writable by HRA-N";
+         begin
+            Receipt.Error_Len := Message'Length;
+            Receipt.Error (1 .. Receipt.Error_Len) := Message;
+            return Receipt;
+         end;
       end if;
 
       declare

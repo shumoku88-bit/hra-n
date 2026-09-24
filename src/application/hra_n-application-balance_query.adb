@@ -3,11 +3,18 @@
 --  Package body: HRA_N.Application.Balance_Query
 -------------------------------------------------------------------------------
 
+with Ada.Directories;
+with HRA_N.Application.Canonical_Authority;
+with HRA_N.Storage.Loam_Actual_Reader;
+with HRA_N.Storage.Loam_Accounting_Role_Reader;
+with HRA_N.Storage.Loam_Zero_Origin_Coverage_Reader;
+with HRA_N.Storage.Loam_Locus_Admission_Reader;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Core.Assertion; use HRA_N.Core.Assertion;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
 
 package body HRA_N.Application.Balance_Query is
+   use type Frontend_Types.Query_Status;
 
    function Date_Less_Or_Equal (Left, Right : Date_Type) return Boolean is
    begin
@@ -55,6 +62,17 @@ package body HRA_N.Application.Balance_Query is
          return Left_Mea < Right_Mea;
       end;
    end Row_Less;
+
+   function Can_Add (Left, Right : Long_Long_Integer) return Boolean is
+   begin
+      if Right > 0 then
+         return Left <= Long_Long_Integer'Last - Right;
+      elsif Right < 0 then
+         return Left >= Long_Long_Integer'First - Right;
+      else
+         return True;
+      end if;
+   end Can_Add;
 
    function Project_With_Evidence
      (Journal  : Journal_Result;
@@ -214,6 +232,10 @@ package body HRA_N.Application.Balance_Query is
                                        if Equal_Token (Eff.Locus.Token, Loc)
                                          and then Equal_Token (Eff.Measure.Token, Mea)
                                        then
+                                          if not Can_Add (Bal, Long_Long_Integer (Eff.Amount.Quanta)) then
+                                             Fail ("balance accumulation overflow");
+                                             return Result;
+                                          end if;
                                           Bal := Bal + Long_Long_Integer (Eff.Amount.Quanta);
                                           Cnt := Cnt + 1;
                                        end if;
@@ -272,6 +294,12 @@ package body HRA_N.Application.Balance_Query is
                                                             if Equal_Token (Eff.Locus.Token, Loc)
                                                               and then Equal_Token (Eff.Measure.Token, Mea)
                                                             then
+                                                               if not Can_Add
+                                                                 (Assert_Bal, Long_Long_Integer (Eff.Amount.Quanta))
+                                                               then
+                                                                  Fail ("assertion balance accumulation overflow");
+                                                                  return Result;
+                                                               end if;
                                                                Assert_Bal := Assert_Bal +
                                                                  Long_Long_Integer (Eff.Amount.Quanta);
                                                             end if;
@@ -399,6 +427,15 @@ package body HRA_N.Application.Balance_Query is
    is
       Result : Balance_View;
       Snap   : Frontend_Types.Snapshot_Reference;
+      use HRA_N.Application.Canonical_Authority;
+
+      procedure Reject (Message : String) is
+         Len : constant Natural := Natural'Min (Message'Length, Result.Diagnostic'Length);
+      begin
+         Result.Status := Frontend_Types.Query_Rejected;
+         Result.Diagnostic_Len := Len;
+         Result.Diagnostic (1 .. Len) := Message (Message'First .. Message'First + Len - 1);
+      end Reject;
    begin
       if not Paths.Resolution_Ok then
          Result.Status := Frontend_Types.Query_Rejected;
@@ -407,6 +444,9 @@ package body HRA_N.Application.Balance_Query is
          return Result;
       end if;
 
+      Result.Scope := Request.Scope;
+      Result.Has_As_Of := Request.Has_As_Of;
+      Result.As_Of_Date := Request.As_Of_Date;
       Snap :=
         (if Paths.Is_Versioned
          then (Kind     => Frontend_Types.Snapshot_Versioned,
@@ -414,12 +454,86 @@ package body HRA_N.Application.Balance_Query is
          else (Kind     => Frontend_Types.Snapshot_Unversioned));
 
       declare
-         J_Res : constant Journal_Result :=
-           Read_Journal_File (Path_Resolver.Journal_Path_Str (Paths));
-         P_Res : constant Policy_Result :=
-           Read_Policy_File (Path_Resolver.Policy_Path_Str (Paths));
+         Authority : constant Authority_Probe :=
+           Probe (Path_Resolver.Data_Dir_Str (Paths));
       begin
-         return Project (J_Res, P_Res, Request, Snap);
+         case Authority.State is
+            when Probe_Failed =>
+               Reject ("balance authority probe: " &
+                 Authority.Diagnostic (1 .. Authority.Diagnostic_Len));
+               return Result;
+            when Legacy_Only =>
+               declare
+                  J_Res : constant Journal_Result :=
+                    Read_Journal_File (Path_Resolver.Journal_Path_Str (Paths));
+                  P_Res : constant Policy_Result :=
+                    Read_Policy_File (Path_Resolver.Policy_Path_Str (Paths));
+               begin
+                  return Project (J_Res, P_Res, Request, Snap);
+               end;
+            when Canonical_Present =>
+               Result.Source := Canonical_Balance;
+               Result.Assertion_Evidence_Available := False;
+               declare
+                  Root : constant String := Path_Resolver.Data_Dir_Str (Paths);
+                  Roles : constant HRA_N.Storage.Loam_Accounting_Role_Reader.Read_Result :=
+                    HRA_N.Storage.Loam_Accounting_Role_Reader.Read_File
+                      (Ada.Directories.Compose (Root, "accounting-role.loam"));
+                  Coverage : constant HRA_N.Storage.Loam_Zero_Origin_Coverage_Reader.Read_Result :=
+                    HRA_N.Storage.Loam_Zero_Origin_Coverage_Reader.Read_File
+                      (Ada.Directories.Compose (Root, "zero-origin-coverage.loam"));
+                  Loci : constant HRA_N.Storage.Loam_Locus_Admission_Reader.Read_Result :=
+                    HRA_N.Storage.Loam_Locus_Admission_Reader.Read_File
+                      (Ada.Directories.Compose (Root, "locus-admission.loam"));
+               begin
+                  if not Roles.Success then
+                     Reject ("accounting-role.loam: " & Roles.Error_Reason (1 .. Roles.Error_Len));
+                  elsif not Coverage.Success then
+                     Reject ("zero-origin-coverage.loam: " & Coverage.Error_Reason (1 .. Coverage.Error_Len));
+                  elsif not Loci.Success then
+                     Reject ("locus-admission.loam: " & Loci.Error_Reason (1 .. Loci.Error_Len));
+                  else
+                     declare
+                        Actual : constant HRA_N.Storage.Loam_Actual_Reader.Loam_Actual_Result :=
+                          HRA_N.Storage.Loam_Actual_Reader.Read_Loam_Actual_File
+                            (Ada.Directories.Compose (Root, "actual.loam"));
+                        Journal : Journal_Result;
+                     begin
+                        if not Actual.Success then
+                           Reject ("actual.loam: " & Actual.Error_Reason (1 .. Actual.Error_Len));
+                        else
+                           Journal.Success := True;
+                           for E of Actual.Events loop
+                              Journal.Events.Append (E);
+                           end loop;
+                           Journal.Validities := Actual.Validities;
+                           Journal.Descriptions := Actual.Descriptions;
+                           Journal.Metadata := Actual.Metadata;
+                           Result := Project_With_Evidence
+                             (Journal, (Kind => Current_Role_Evidence, Current => Roles.Roles),
+                              Coverage.Coverage, Request, (Kind => Frontend_Types.Snapshot_Unversioned));
+                           Result.Source := Canonical_Balance;
+                           Result.Assertion_Evidence_Available := False;
+                           if Result.Status /= Frontend_Types.Query_Rejected then
+                              Result.Status := Frontend_Types.Query_Partial;
+                              declare
+                                 Message : constant String :=
+                                   (if Request.Has_As_Of
+                                    then "canonical current roles have no historical as-of authority; "
+                                    else "") &
+                                   "balance assertion evidence unavailable; canonical sources unbound";
+                              begin
+                                 Result.Diagnostic_Len := Natural'Min (Message'Length, Result.Diagnostic'Length);
+                                 Result.Diagnostic (1 .. Result.Diagnostic_Len) :=
+                                   Message (1 .. Result.Diagnostic_Len);
+                              end;
+                           end if;
+                        end if;
+                     end;
+                  end if;
+                  return Result;
+               end;
+         end case;
       end;
    end Execute;
 

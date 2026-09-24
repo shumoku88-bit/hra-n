@@ -168,6 +168,65 @@ class TestHraNCli(unittest.TestCase):
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("actual.loam", res.stdout + res.stderr)
 
+    def test_canonical_balance_authority_and_assertion_refusal(self) -> None:
+        self.write_report_fixture('TX legacy 2026-09-01 cash:-999 food:999 "legacy"\n', known_stock=True)
+        ht = '\t'
+        actual = os.path.join(self.test_dir, 'actual.loam')
+        with open(actual, 'w', encoding='utf-8') as f:
+            f.write(f'LOAM-NORMALIZED-ACTUAL{ht}1\n'
+                    f'TX{ht}old{ht}2026-09-01{ht}DESC{ht}old\n'
+                    f'EFFECT{ht}cash{ht}jpy{ht}-10\nEFFECT{ht}food{ht}jpy{ht}10\nENDTX\n'
+                    f'TX{ht}new{ht}2026-09-01{ht}DESC{ht}new\n'
+                    f'REPLACES{ht}old\n'
+                    f'EFFECT{ht}cash{ht}jpy{ht}-20\nEFFECT{ht}food{ht}jpy{ht}20\nENDTX\n')
+        with open(os.path.join(self.test_dir, 'accounting-role.loam'), 'w', encoding='utf-8') as f:
+            f.write('LOAM-ACCOUNTING-ROLE-MAP\t1\nROLE\tcash\tASSET\nROLE\tfood\tEXPENSE\n')
+        coverage = os.path.join(self.test_dir, 'zero-origin-coverage.loam')
+        with open(coverage, 'w', encoding='utf-8') as f:
+            f.write('LOAM-ZERO-ORIGIN-COVERAGE\t1\nCOORDINATE\tcash\tjpy\n')
+        locus = os.path.join(self.test_dir, 'locus-admission.loam')
+        with open(locus, 'w', encoding='utf-8') as f:
+            f.write('LOAM-LOCUS-ADMISSION-VOCABULARY\t1\nLOCUS\tcash\nLOCUS\tfood\n')
+        for args, expected, absent in [
+            (('balance',), 'cash', '999'),
+            (('balance', '--known'), 'cash', 'food'),
+            (('balance', '--unknown'), 'food', 'cash'),
+        ]:
+            with self.subTest(args=args):
+                view = self.run_cmd(*args)
+                self.assertEqual(view.returncode, 0, view.stdout + view.stderr)
+                self.assertIn('PARTIAL', view.stdout)
+                self.assertIn('canonical Actual/Coverage/Role (UNVERSIONED)', view.stdout)
+                self.assertIn('assertion evidence unavailable', view.stdout)
+                self.assertIn(expected, view.stdout)
+                self.assertNotIn(absent, view.stdout)
+        historical = self.run_cmd('balance', '--as-of', '2026-09-01')
+        self.assertIn('current roles have no historical as-of authority', historical.stdout)
+        before = open(os.path.join(self.test_dir, 'journal.hra'), 'rb').read()
+        rejected = self.run_cmd('assert', 'cash', '0', '2026-09-20', 'jpy')
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn('proposal rejected', rejected.stdout + rejected.stderr)
+        self.assertEqual(open(os.path.join(self.test_dir, 'journal.hra'), 'rb').read(), before)
+        os.unlink(locus)
+        missing = self.run_cmd('balance')
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertIn('locus-admission.loam', missing.stdout + missing.stderr)
+        with open(locus, 'w', encoding='utf-8') as f:
+            f.write('LOAM-LOCUS-ADMISSION-VOCABULARY\t1\n')
+        with open(coverage, 'w', encoding='utf-8') as f:
+            f.write('BROKEN\n')
+        malformed = self.run_cmd('balance')
+        self.assertNotEqual(malformed.returncode, 0)
+        self.assertIn('zero-origin-coverage.loam', malformed.stdout + malformed.stderr)
+        with open(coverage, 'w', encoding='utf-8') as f:
+            f.write('LOAM-ZERO-ORIGIN-COVERAGE\t1\nCOORDINATE\tcash\tjpy\n')
+        for name in ('policy.hra', 'journal.hra', 'scheduled.hra'):
+            os.unlink(os.path.join(self.test_dir, name))
+        canonical_only = self.run_cmd('balance', '--known')
+        self.assertEqual(canonical_only.returncode, 0, canonical_only.stdout + canonical_only.stderr)
+        self.assertIn('cash', canonical_only.stdout)
+        self.assertIn('PARTIAL', canonical_only.stdout)
+
     def test_statement_origin_and_conflict_across_surfaces(self) -> None:
         journal = 'TX e0001 2026-09-10 cash:-10 food:10 "purchase"\n'
         for known, assertion, diagnostic in [

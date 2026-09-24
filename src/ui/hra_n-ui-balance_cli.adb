@@ -59,6 +59,12 @@ package body HRA_N.UI.Balance_CLI is
 
       Put_Line ("============================================================");
       Put_Line (" HRA-N Coordinate Balances");
+      if View.Status = Query_Partial then
+         Put_Line (" Evidence : PARTIAL - " & View.Diagnostic (1 .. View.Diagnostic_Len));
+      end if;
+      if View.Source = Canonical_Balance then
+         Put_Line (" Source   : canonical Actual/Coverage/Role (UNVERSIONED)");
+      end if;
       if View.Snapshot.Kind = Snapshot_Versioned then
          Put_Line (" Snapshot : " &
                    View.Snapshot.Identity.Value (1 .. View.Snapshot.Identity.Length));
