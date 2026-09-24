@@ -94,6 +94,9 @@ jobs:
       - name: Test LOAM AccountingRole Reader
         run: ./tests/bin/test_runner Test_Loam_Accounting_Role_Reader
 
+      - name: Test LOAM AccountingRole Writer
+        run: ./tests/bin/test_runner Test_Loam_Accounting_Role_Writer
+
       - name: Test LOAM Attention Reader
         run: ./tests/bin/test_runner Test_Loam_Attention_Reader
 
