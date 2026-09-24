@@ -88,7 +88,7 @@ package body Test_Assertion is
       if Ada.Directories.Exists (Test_Dir) then
          Ada.Directories.Delete_Tree (Test_Dir);
       end if;
-      Assert (Initialize_Household (Test_Dir).Success, "Fixture initializes");
+      Assert (Initialize_Legacy_Household (Test_Dir).Success, "Fixture initializes");
 
       --  Record an initial transaction: bank -> cash 10000 on 2026-09-01
       declare

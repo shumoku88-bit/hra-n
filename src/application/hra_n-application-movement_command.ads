@@ -101,6 +101,12 @@ package HRA_N.Application.Movement_Command is
      (Root_Path : String;
       Intent    : Movement_Intent) return Canonical_Record_Result;
 
+   --  Publish one multi-effect split Movement directly to canonical actual.loam,
+   --  then resolve the new identity through the snapshot-bound Actual detail reader.
+   function Record_Split_Loam_Actual
+     (Root_Path : String;
+      Intent    : Record_Split_Intent) return Canonical_Record_Result;
+
    --  Publish one practical correction directly to canonical actual.loam.
    --  Loam correction inherits the target occurrence date.  If the CLI/user
    --  explicitly supplied a date, it is admitted only when it already equals

@@ -695,6 +695,198 @@ package body HRA_N.Application.Movement_Command is
          return Result;
    end Record_Loam_Actual;
 
+   function Record_Split_Loam_Actual
+     (Root_Path : String;
+      Intent    : Record_Split_Intent) return Canonical_Record_Result
+   is
+      use type HRA_N.Application.Frontend_Types.Query_Status;
+
+      Result : Canonical_Record_Result;
+
+      procedure Set_Diagnostic (Message : String) is
+         Len : constant Natural :=
+           Natural'Min (Message'Length, Result.Diagnostic'Length);
+      begin
+         Result.Diagnostic := [others => ' '];
+         Result.Diagnostic_Len := Len;
+         if Len > 0 then
+            Result.Diagnostic (1 .. Len) :=
+              Message (Message'First .. Message'First + Len - 1);
+         end if;
+      end Set_Diagnostic;
+
+      function Description_Is_Canonical
+        (Value : Token_Text) return Boolean
+      is
+      begin
+         for I in 1 .. Value.Length loop
+            if Value.Value (I) in ASCII.LF | ASCII.CR then
+               return False;
+            end if;
+         end loop;
+         return True;
+      end Description_Is_Canonical;
+
+   begin
+      if Root_Path'Length = 0 then
+         Set_Diagnostic ("canonical data root must not be empty");
+         return Result;
+      elsif Intent.Count < 2 then
+         Set_Diagnostic ("split needs at least two changes");
+         return Result;
+      elsif not Is_Valid_Date
+        (Intent.Valid_On.Year, Intent.Valid_On.Month, Intent.Valid_On.Day)
+      then
+         Set_Diagnostic ("split occurrence date is invalid");
+         return Result;
+      elsif not Description_Is_Canonical (Intent.Description) then
+         Set_Diagnostic
+           ("split description is not canonically encodable");
+         return Result;
+      end if;
+
+      declare
+         Sum            : Long_Long_Integer := 0;
+         Positive_Found : Boolean := False;
+         Negative_Found : Boolean := False;
+      begin
+         for I in 1 .. Intent.Count loop
+            declare
+               C_I : constant Split_Change := Intent.Changes (I);
+            begin
+               if C_I.Amount = 0 then
+                  Set_Diagnostic ("split change amount must not be zero");
+                  return Result;
+               elsif not Equal_Token (C_I.Measure.Token, Make_Token ("jpy")) then
+                  Set_Diagnostic
+                    ("split entrance admits jpy only; multi-currency movements require independent facts");
+                  return Result;
+               end if;
+
+               for J in I + 1 .. Intent.Count loop
+                  if Equal_Token (C_I.Locus.Token, Intent.Changes (J).Locus.Token) then
+                     Set_Diagnostic ("duplicate locus coordinate in split");
+                     return Result;
+                  end if;
+               end loop;
+
+               Sum := Sum + Long_Long_Integer (C_I.Amount);
+               if C_I.Amount > 0 then
+                  Positive_Found := True;
+               else
+                  Negative_Found := True;
+               end if;
+            end;
+         end loop;
+
+         if Sum /= 0 then
+            Set_Diagnostic ("split changes must balance to zero");
+            return Result;
+         elsif not Positive_Found or else not Negative_Found then
+            Set_Diagnostic ("split must have both positive and negative changes");
+            return Result;
+         end if;
+      end;
+
+      declare
+         Items : Effect_List;
+         Desc_Text : constant String :=
+           (if Intent.Description.Length = 0
+            then ""
+            else Intent.Description.Value
+              (1 .. Intent.Description.Length));
+         Description : constant Description_Text :=
+           Make_Description (Desc_Text);
+      begin
+         Items.Count := Effect_Count_Type (Intent.Count);
+         for I in 1 .. Intent.Count loop
+            Items.Values (Effect_Index_Type (I)) :=
+              (Key     => No_Effect_Key,
+               Locus   => Intent.Changes (I).Locus,
+               Measure => Intent.Changes (I).Measure,
+               Amount  => (Quanta => Intent.Changes (I).Amount));
+         end loop;
+
+         declare
+            Published : constant HRA_N.Storage.Loam_Actual_Writer.Publish_Result :=
+              HRA_N.Storage.Loam_Actual_Writer.Publish_Movement
+                (Root_Path   => Root_Path,
+                 Valid_On    => Intent.Valid_On,
+                 Description => Description,
+                 Effects     => Items);
+         begin
+            if not Published.Success then
+               if Published.Error_Len > 0 then
+                  Set_Diagnostic
+                    (Published.Error_Reason (1 .. Published.Error_Len));
+               else
+                  Set_Diagnostic ("canonical Actual publication was rejected");
+               end if;
+               return Result;
+            end if;
+
+            Result.State := Canonical_Published_Readback_Unverified;
+            Result.Event_Id := Published.Event_Id;
+
+            declare
+               Actual_Path : constant String :=
+                 Ada.Directories.Compose (Root_Path, "actual.loam");
+               Detail : constant
+                 HRA_N.Application.Actual_Detail_Query.Actual_Detail_View :=
+                   HRA_N.Application.Actual_Detail_Query.Execute_Loam_Actual
+                     (Actual_Path, Published.Event_Id);
+               Matches : Boolean :=
+                 Detail.Status =
+                   HRA_N.Application.Frontend_Types.Query_Complete
+                 and then Equal_Token
+                   (Detail.Event_Id, Published.Event_Id)
+                 and then Detail.Has_Date
+                 and then Equal_Date (Detail.Valid_On, Intent.Valid_On)
+                 and then Equal_Description
+                   (Detail.Description, Description)
+                 and then Detail.Effect_Count = Natural (Intent.Count);
+            begin
+               if Matches then
+                  for I in 1 .. Intent.Count loop
+                     if not Equal_Token
+                       (Detail.Effects (I).Locus, Intent.Changes (I).Locus.Token)
+                       or else not Equal_Token
+                         (Detail.Effects (I).Measure, Intent.Changes (I).Measure.Token)
+                       or else Detail.Effects (I).Amount /= Intent.Changes (I).Amount
+                     then
+                        Matches := False;
+                        exit;
+                     end if;
+                  end loop;
+               end if;
+
+               if Matches then
+                  Result.State := Canonical_Published_Readback_Verified;
+                  Result.Diagnostic := [others => ' '];
+                  Result.Diagnostic_Len := 0;
+               else
+                  Set_Diagnostic
+                    ("snapshot-bound detail does not match published split");
+               end if;
+               return Result;
+            end;
+         end;
+      end;
+
+   exception
+      when E : others =>
+         if Result.State = Canonical_Not_Published then
+            Set_Diagnostic
+              ("unexpected canonical split publication failure: "
+               & Ada.Exceptions.Exception_Message (E));
+         else
+            Set_Diagnostic
+              ("split was published; application read-back failed: "
+               & Ada.Exceptions.Exception_Message (E));
+         end if;
+         return Result;
+   end Record_Split_Loam_Actual;
+
    function Correct_Loam_Actual
      (Root_Path              : String;
       Intent                 : Correction_Intent;

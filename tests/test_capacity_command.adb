@@ -26,7 +26,7 @@ package body Test_Capacity_Command is
       if Ada.Directories.Exists (Test_Dir) then
          Ada.Directories.Delete_Tree (Test_Dir);
       end if;
-      Assert (Initialize_Household (Test_Dir).Success,
+      Assert (Initialize_Legacy_Household (Test_Dir).Success,
               "Capacity fixture initializes");
 
       --  Fresh households carry no capacity evidence: vacuously complete.

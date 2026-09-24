@@ -16,8 +16,14 @@ package HRA_N.Application.Initializer is
       Error_Len    : Natural           := 0;
    end record;
 
-   --  Initialize a new household directory. Refuses a selected generation or
-   --  legacy root authority; unselected crash residue is retryable.
+   --  Initialize a new canonical Loam household directory. Creates the foundational
+   --  Loam files (actual.loam, locus-admission.loam, accounting-role.loam,
+   --  zero-origin-coverage.loam, scheduled.loam, capacity.loam, actual-routing.loam).
+   --  Refuses to overwrite existing canonical or legacy authorities.
    function Initialize_Household (Base_Dir : String) return Init_Result;
+
+   --  Initialize a legacy three-stream versioned household directory (.hra/generations/g00000001).
+   --  Retained for legacy backward compatibility and regression test fixtures.
+   function Initialize_Legacy_Household (Base_Dir : String) return Init_Result;
 
 end HRA_N.Application.Initializer;

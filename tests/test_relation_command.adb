@@ -27,7 +27,7 @@ package body Test_Relation_Command is
       if Ada.Directories.Exists (Test_Dir) then
          Ada.Directories.Delete_Tree (Test_Dir);
       end if;
-      Assert (Initialize_Household (Test_Dir).Success,
+      Assert (Initialize_Legacy_Household (Test_Dir).Success,
               "Relation fixture initializes");
       Append_Initial_Policy (Test_Dir, "LOCUS shop" & ASCII.LF);
 

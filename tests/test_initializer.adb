@@ -23,25 +23,27 @@ package body Test_Initializer is
          Ada.Directories.Delete_Tree (Test_Dir);
       end if;
 
-      --  1. Fresh initialization
+      --  1. Fresh Canonical Loam initialization
       declare
          Res : constant Init_Result := Initialize_Household (Test_Dir);
       begin
-         Assert (Res.Success, "Fresh household initialization succeeds");
+         Assert (Res.Success, "Fresh canonical household initialization succeeds");
          declare
             Paths : constant Path_Config := Resolve_Paths (Test_Dir);
          begin
-            Assert (Paths.Resolution_Ok, "Initial snapshot resolves");
-            Assert (Paths.Is_Versioned, "Initial snapshot is versioned");
-            Assert (Snapshot_Id_Str (Paths) = "g00000001", "Initial snapshot identity is stable");
-            Assert (Ada.Directories.Exists (Journal_Path_Str (Paths)), "journal.hra created");
-            Assert (Ada.Directories.Exists (Policy_Path_Str (Paths)), "policy.hra created");
-            Assert (Ada.Directories.Exists (Scheduled_Path_Str (Paths)), "scheduled.hra created");
-            Assert (Ada.Directories.Exists (Test_Dir & "/.hra/CURRENT"), "CURRENT selector created");
+            Assert (Paths.Resolution_Ok, "Initial canonical paths resolve");
+            Assert (Paths.Is_Canonical, "Initial authority is identified as canonical Loam");
+            Assert (Ada.Directories.Exists (Test_Dir & "/actual.loam"), "actual.loam created");
+            Assert (Ada.Directories.Exists (Test_Dir & "/locus-admission.loam"), "locus-admission.loam created");
+            Assert (Ada.Directories.Exists (Test_Dir & "/accounting-role.loam"), "accounting-role.loam created");
+            Assert (Ada.Directories.Exists (Test_Dir & "/zero-origin-coverage.loam"), "zero-origin-coverage.loam created");
+            Assert (Ada.Directories.Exists (Test_Dir & "/scheduled.loam"), "scheduled.loam created");
+            Assert (Ada.Directories.Exists (Test_Dir & "/capacity.loam"), "capacity.loam created");
+            Assert (Ada.Directories.Exists (Test_Dir & "/actual-routing.loam"), "actual-routing.loam created");
          end;
       end;
 
-      --  2. Doctor health audit on fresh household
+      --  2. Doctor health audit on fresh canonical household
       declare
          Report : Doctor_Report;
       begin
@@ -50,21 +52,43 @@ package body Test_Initializer is
             Report        => Report,
             Quiet         => True);
 
-         Assert (Report.Overall_Healthy, "Newly initialized household is 100% healthy");
-         Assert_Equal_Int (0, Long_Long_Integer (Report.Total_Events), "Fresh household has 0 events");
-         Assert_Equal_Int (5, Long_Long_Integer (Report.Total_Loci), "Fresh household has 5 role assignments");
-         Assert_Equal_Int (2, Long_Long_Integer (Report.Total_Coverage), "Fresh household has 2 zero-origin coords");
+         Assert (Report.Overall_Healthy, "Newly initialized canonical household is 100% healthy");
+         Assert_Equal_Int (0, Long_Long_Integer (Report.Total_Events), "Fresh canonical household has 0 events");
+         Assert_Equal_Int (5, Long_Long_Integer (Report.Total_Loci), "Fresh canonical household has 5 role assignments");
+         Assert_Equal_Int (2, Long_Long_Integer (Report.Total_Coverage), "Fresh canonical household has 2 zero-origin coords");
       end;
 
       --  3. Idempotency & safety check: Refuse to overwrite existing authority
       declare
          Res2 : constant Init_Result := Initialize_Household (Test_Dir);
       begin
-         Assert (not Res2.Success, "Initializer safely refuses to overwrite existing authority");
+         Assert (not Res2.Success, "Initializer safely refuses to overwrite existing canonical authority");
       end;
 
-      --  4. A selected generation is immutable; direct appends are rejected
-      --  and all writes go through the generation transaction.
+      --  Clean up before legacy initialization test
+      if Ada.Directories.Exists (Test_Dir) then
+         Ada.Directories.Delete_Tree (Test_Dir);
+      end if;
+
+      --  4. Fresh Legacy initialization & immutability test
+      declare
+         Res_Leg : constant Init_Result := Initialize_Legacy_Household (Test_Dir);
+      begin
+         Assert (Res_Leg.Success, "Fresh legacy household initialization succeeds");
+         declare
+            Paths : constant Path_Config := Resolve_Paths (Test_Dir);
+         begin
+            Assert (Paths.Resolution_Ok, "Initial legacy snapshot resolves");
+            Assert (Paths.Is_Versioned, "Initial legacy snapshot is versioned");
+            Assert (Snapshot_Id_Str (Paths) = "g00000001", "Initial snapshot identity is stable");
+            Assert (Ada.Directories.Exists (Journal_Path_Str (Paths)), "journal.hra created");
+            Assert (Ada.Directories.Exists (Policy_Path_Str (Paths)), "policy.hra created");
+            Assert (Ada.Directories.Exists (Scheduled_Path_Str (Paths)), "scheduled.hra created");
+            Assert (Ada.Directories.Exists (Test_Dir & "/.hra/CURRENT"), "CURRENT selector created");
+         end;
+      end;
+
+      --  5. Legacy selected generation is immutable; direct appends are rejected
       declare
          Paths : constant Path_Config := Resolve_Paths (Test_Dir);
          Effs  : Effect_List;
@@ -88,7 +112,7 @@ package body Test_Initializer is
             Valid_On     => (Year => 2026, Month => 9, Day => 4),
             Effects      => Effs,
             Description  => "Initial test grocery");
-         Assert (not App_Res.Success, "Direct mutation of selected generation is rejected");
+         Assert (not App_Res.Success, "Direct mutation of legacy selected generation is rejected");
       end;
 
       --  Clean up

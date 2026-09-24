@@ -6,6 +6,7 @@
 with Ada.Command_Line;
 with Ada.Directories;
 with Ada.Environment_Variables;
+with HRA_N.Application.Canonical_Authority;
 with HRA_N.Storage.Generation; use HRA_N.Storage.Generation;
 
 package body HRA_N.Application.Path_Resolver is
@@ -81,6 +82,16 @@ package body HRA_N.Application.Path_Resolver is
             Len := Natural'Min (Env'Length, Max_Path_Length);
             Dir (1 .. Len) := Env (Env'First .. Env'First + Len - 1);
          end;
+      --  Tier 1.5: Loam canonical sibling or local directory
+      elsif Ada.Directories.Exists ("../loam-data/actual.loam") then
+         Len := 12;
+         Dir (1 .. 12) := "../loam-data";
+      elsif Ada.Directories.Exists ("./loam-data/actual.loam") then
+         Len := 11;
+         Dir (1 .. 11) := "./loam-data";
+      elsif Ada.Directories.Exists ("./actual.loam") then
+         Len := 1;
+         Dir (1 .. 1) := ".";
       --  Tier 2: Local ./hra-data
       elsif Ada.Directories.Exists ("./hra-data/journal.hra")
         or else Ada.Directories.Exists ("./hra-data/.hra/CURRENT")
@@ -105,6 +116,25 @@ package body HRA_N.Application.Path_Resolver is
 
       Config.Data_Len := Len;
       Config.Data_Dir (1 .. Len) := Dir (1 .. Len);
+
+      declare
+         Root  : constant String := Dir (1 .. Len);
+         J_Str : constant String := Root & "/journal.hra";
+         P_Str : constant String := Root & "/policy.hra";
+         S_Str : constant String := Root & "/scheduled.hra";
+      begin
+         if J_Str'Length <= Max_Path_Length
+           and then P_Str'Length <= Max_Path_Length
+           and then S_Str'Length <= Max_Path_Length
+         then
+            Config.Journ_Len := J_Str'Length;
+            Config.Journal_Path (1 .. Config.Journ_Len) := J_Str;
+            Config.Pol_Len := P_Str'Length;
+            Config.Policy_Path (1 .. Config.Pol_Len) := P_Str;
+            Config.Sched_Len := S_Str'Length;
+            Config.Scheduled_Path (1 .. Config.Sched_Len) := S_Str;
+         end if;
+      end;
 
       declare
          Base         : constant String := Dir (1 .. Len);
@@ -177,6 +207,27 @@ package body HRA_N.Application.Path_Resolver is
               or else not Ada.Directories.Exists (Scheduled_Path_Str (Config)))
          then
             Set_Error ("selected generation is incomplete");
+         end if;
+      end;
+
+      declare
+         use type HRA_N.Application.Canonical_Authority.Authority_State;
+         use type Ada.Directories.File_Kind;
+         Base : constant String := Dir (1 .. Len);
+      begin
+         if Ada.Directories.Exists (Base)
+           and then Ada.Directories.Kind (Base) = Ada.Directories.Directory
+         then
+            declare
+               Probe_Result : constant HRA_N.Application.Canonical_Authority.Authority_Probe :=
+                 HRA_N.Application.Canonical_Authority.Probe (Base);
+            begin
+               if Probe_Result.State =
+                 HRA_N.Application.Canonical_Authority.Canonical_Present
+               then
+                  Config.Is_Canonical := True;
+               end if;
+            end;
          end if;
       end;
 

@@ -16,6 +16,7 @@ package HRA_N.Application.Path_Resolver is
       Data_Dir       : String (1 .. Max_Path_Length) := [others => ' '];
       Data_Len       : Natural                       := 0;
 
+      Is_Canonical   : Boolean                       := False;
       Is_Versioned   : Boolean                       := False;
       Snapshot_Id    : String (1 .. Max_Snapshot_Id_Length) := [others => ' '];
       Snapshot_Len   : Natural                       := 0;

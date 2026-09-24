@@ -12,3 +12,5 @@ gnatprove/
 .DS_Store
 config/
 .formal-tools/
+__pycache__/
+*.pyc

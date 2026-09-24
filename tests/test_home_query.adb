@@ -29,7 +29,7 @@ package body Test_Home_Query is
       end if;
 
       declare
-         Init : constant Init_Result := Initialize_Household (Test_Dir);
+         Init : constant Init_Result := Initialize_Legacy_Household (Test_Dir);
       begin
          Assert (Init.Success, "Home query fixture initializes");
       end;

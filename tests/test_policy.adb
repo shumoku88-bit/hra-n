@@ -282,7 +282,7 @@ package body Test_Policy is
          Ada.Directories.Delete_Tree (Test_Dir);
       end if;
 
-      Assert (Initialize_Household (Test_Dir).Success, "Fixture initializes");
+      Assert (Initialize_Legacy_Household (Test_Dir).Success, "Fixture initializes");
       Append_Initial_Policy (Test_Dir, "LOCUS crypto" & ASCII.LF);
       Paths := Resolve_Paths (Test_Dir);
 

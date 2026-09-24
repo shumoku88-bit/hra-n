@@ -6,6 +6,7 @@
 with Ada.Command_Line;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
+with HRA_N.Application.Canonical_Authority;
 with HRA_N.Application.Movement_Command; use HRA_N.Application.Movement_Command;
 with HRA_N.Application.Review; use HRA_N.Application.Review;
 with HRA_N.UI.Output; use HRA_N.UI.Output;
@@ -205,36 +206,88 @@ package body HRA_N.UI.Split_CLI is
       end if;
 
       Intent.Description := Make_Token (Desc_Val (1 .. Desc_Len));
+
       declare
-         Prop_Res : constant Proposal_Result :=
-           Propose_Split (Paths, Intent);
+         Probe_Result : constant HRA_N.Application.Canonical_Authority.Authority_Probe :=
+           HRA_N.Application.Canonical_Authority.Probe (Data_Dir_Str (Paths));
       begin
-         if not Prop_Res.Success then
-            Put_Line ("[ERROR] Split rejected: " &
-                      Prop_Res.Error (1 .. Prop_Res.Error_Len));
-            return;
-         end if;
-         declare
-            Receipt : constant Movement_Receipt :=
-              Commit (Prop_Res.Proposal);
-         begin
-            if Receipt.Success then
-               Put_Line ("============================================================");
-               Put_Line (" [OK] Committed Split: " &
-                         Receipt.Primary_Id (1 .. Receipt.Primary_Len));
-               Put_Line ("      SNAPSHOT: " &
-                         Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
-               Put_Line ("      DATE:     " & Format_Iso_Date (Date_Val));
-               if Desc_Len > 0 then
-                  Put_Line ("      DESC:     " & Desc_Val (1 .. Desc_Len));
-               end if;
-               Put_Line ("============================================================");
-               Success := True;
-            else
-               Put_Line ("[ERROR] Split commit rejected: " &
-                         Receipt.Error (1 .. Receipt.Error_Len));
-            end if;
-         end;
+         case Probe_Result.State is
+            when HRA_N.Application.Canonical_Authority.Canonical_Present =>
+               declare
+                  Canonical : constant Canonical_Record_Result :=
+                    Record_Split_Loam_Actual (Data_Dir_Str (Paths), Intent);
+               begin
+                  if Canonical.State = Canonical_Not_Published then
+                     Put_Line
+                       ("[ERROR] Canonical split rejected: "
+                        & Canonical.Diagnostic (1 .. Canonical.Diagnostic_Len));
+                     return;
+                  end if;
+
+                  Put_Line ("============================================================");
+                  Put_Line
+                    (" [OK] Committed Canonical Split: "
+                     & Canonical.Event_Id.Value (1 .. Canonical.Event_Id.Length));
+                  Put_Line ("      AUTHORITY: actual.loam");
+                  Put_Line ("      DATE:      " & Format_Iso_Date (Date_Val));
+                  if Desc_Len > 0 then
+                     Put_Line ("      DESC:      " & Desc_Val (1 .. Desc_Len));
+                  end if;
+
+                  if Canonical.State = Canonical_Published_Readback_Verified then
+                     Put_Line ("      READ-BACK: snapshot-bound verified");
+                  else
+                     Put_Line
+                       (" [WARN] Publication succeeded; snapshot-bound read-back was not verified");
+                     if Canonical.Diagnostic_Len > 0 then
+                        Put_Line
+                          ("        "
+                           & Canonical.Diagnostic (1 .. Canonical.Diagnostic_Len));
+                     end if;
+                  end if;
+                  Put_Line ("============================================================");
+                  Success := True;
+               end;
+
+            when HRA_N.Application.Canonical_Authority.Legacy_Only =>
+               declare
+                  Prop_Res : constant Proposal_Result :=
+                    Propose_Split (Paths, Intent);
+               begin
+                  if not Prop_Res.Success then
+                     Put_Line ("[ERROR] Split rejected: " &
+                               Prop_Res.Error (1 .. Prop_Res.Error_Len));
+                     return;
+                  end if;
+                  declare
+                     Receipt : constant Movement_Receipt :=
+                       Commit (Prop_Res.Proposal);
+                  begin
+                     if Receipt.Success then
+                        Put_Line ("============================================================");
+                        Put_Line (" [OK] Committed Split: " &
+                                  Receipt.Primary_Id (1 .. Receipt.Primary_Len));
+                        Put_Line ("      SNAPSHOT: " &
+                                  Receipt.Snapshot_Id (1 .. Receipt.Snapshot_Len));
+                        Put_Line ("      DATE:     " & Format_Iso_Date (Date_Val));
+                        if Desc_Len > 0 then
+                           Put_Line ("      DESC:     " & Desc_Val (1 .. Desc_Len));
+                        end if;
+                        Put_Line ("============================================================");
+                        Success := True;
+                     else
+                        Put_Line ("[ERROR] Split commit rejected: " &
+                                  Receipt.Error (1 .. Receipt.Error_Len));
+                     end if;
+                  end;
+               end;
+
+            when HRA_N.Application.Canonical_Authority.Probe_Failed =>
+               Put_Line
+                 ("[ERROR] Authority probe failed: "
+                  & Probe_Result.Diagnostic (1 .. Probe_Result.Diagnostic_Len));
+               return;
+         end case;
       end;
    end Dispatch;
 

@@ -1354,6 +1354,25 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("2026-09-01  ev1  Breakfast", day.stdout)
         self.assertNotIn("ev2", day.stdout)
 
+        # Structured detail query via CLI
+        detail = self.run_cmd("actual", path, "ev1")
+        self.assertEqual(detail.returncode, 0, detail.stdout + detail.stderr)
+        self.assertIn("HRA-N Actual Detail (Loam canonical, read-only)", detail.stdout)
+        self.assertIn("Identity    : ev1", detail.stdout)
+        self.assertIn("Description : Breakfast", detail.stdout)
+        self.assertIn("cash", detail.stdout)
+        self.assertIn("food", detail.stdout)
+
+        # Default data directory resolution
+        auto_all = self.run_cmd("-d", self.test_dir, "actual")
+        self.assertEqual(auto_all.returncode, 0, auto_all.stdout + auto_all.stderr)
+        self.assertIn("2026-09-02  ev2  Dinner", auto_all.stdout)
+
+        auto_detail = self.run_cmd("-d", self.test_dir, "actual", "ev2")
+        self.assertEqual(auto_detail.returncode, 0, auto_detail.stdout + auto_detail.stderr)
+        self.assertIn("Identity    : ev2", auto_detail.stdout)
+        self.assertIn("Description : Dinner", auto_detail.stdout)
+
         with open(path, "rb") as handle:
             self.assertEqual(handle.read(), before)
 
@@ -1878,6 +1897,79 @@ class TestHraNCli(unittest.TestCase):
         with open(actual_path, "r", encoding="utf-8") as f:
             self.assertEqual(f.read(), actual_after)
 
+    def test_canonical_split_publication(self):
+        with open(os.path.join(self.test_dir, "locus-admission.loam"), "w", encoding="utf-8") as f:
+            f.write("LOAM-LOCUS-ADMISSION-VOCABULARY\t1\nLOCUS\tcash\nLOCUS\tfood\nLOCUS\tmisc\n")
+        with open(os.path.join(self.test_dir, "actual.loam"), "w", encoding="utf-8") as f:
+            f.write("LOAM-NORMALIZED-ACTUAL\t1\n")
+
+        res = self.run_cmd("split", "2026-09-24", "cash:-1500", "food:1000", "misc:500", "--desc", "Party")
+        self.assertEqual(res.returncode, 0, f"split failed: {res.stdout}")
+        self.assertIn("[OK] Committed Canonical Split: record-1", res.stdout)
+        self.assertIn("READ-BACK: snapshot-bound verified", res.stdout)
+
+        with open(os.path.join(self.test_dir, "actual.loam"), "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("TX\trecord-1\t2026-09-24\tDESC\tParty\n", content)
+        self.assertIn("EFFECT\tcash\tjpy\t-1500\n", content)
+        self.assertIn("EFFECT\tfood\tjpy\t1000\n", content)
+        self.assertIn("EFFECT\tmisc\tjpy\t500\n", content)
+        self.assertIn("ENDTX\n", content)
+
+        # Unbalanced fails
+        res = self.run_cmd("split", "2026-09-24", "cash:-1500", "food:1000")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("balance to zero", res.stdout)
+
+    def test_canonical_init_lifecycle(self):
+        # 1. Initialize canonical Loam authority
+        res = self.run_cmd("init", "--canonical")
+        self.assertEqual(res.returncode, 0, f"init --canonical failed: {res.stdout}")
+        self.assertIn("[OK] Initialized new canonical Loam authority", res.stdout)
+        self.assertIn("actual.loam", res.stdout)
+
+        for filename in [
+            "actual.loam",
+            "locus-admission.loam",
+            "accounting-role.loam",
+            "zero-origin-coverage.loam",
+            "scheduled.loam",
+            "capacity.loam",
+            "actual-routing.loam",
+        ]:
+            self.assertTrue(
+                os.path.isfile(os.path.join(self.test_dir, filename)),
+                f"{filename} should be created by init --canonical",
+            )
+
+        # 2. Doctor audit on fresh canonical authority
+        doc = self.run_cmd("doctor")
+        self.assertEqual(doc.returncode, 0, f"doctor failed: {doc.stdout}")
+        self.assertIn("100% HEALTHY", doc.stdout)
+
+        # 3. Balance inquiry on fresh canonical authority
+        bal = self.run_cmd("balance")
+        self.assertEqual(bal.returncode, 0, f"balance failed: {bal.stdout}")
+        self.assertIn("cash", bal.stdout)
+        self.assertIn("bank", bal.stdout)
+
+        # 4. Record first canonical movement
+        rec = self.run_cmd("movement", "bank", "cash", "10000", "2026-09-25", "ATM")
+        self.assertEqual(rec.returncode, 0, f"movement failed: {rec.stdout}")
+        self.assertIn("[OK] Committed Canonical Movement", rec.stdout)
+
+        # 5. Check post-movement balance
+        bal_after = self.run_cmd("balance")
+        self.assertEqual(bal_after.returncode, 0)
+        self.assertIn("10,000", bal_after.stdout)
+        self.assertIn("-10,000", bal_after.stdout)
+
+        # 6. Idempotency & safety: refusing to overwrite
+        reinit = self.run_cmd("init", "--canonical")
+        self.assertNotEqual(reinit.returncode, 0)
+        self.assertIn("already exists", reinit.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
+

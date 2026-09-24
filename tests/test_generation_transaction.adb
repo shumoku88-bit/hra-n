@@ -36,7 +36,7 @@ package body Test_Generation_Transaction is
          Ada.Directories.Delete_Tree (Test_Dir);
       end if;
 
-      Assert (Initialize_Household (Test_Dir).Success,
+      Assert (Initialize_Legacy_Household (Test_Dir).Success,
               "Generation transaction fixture initializes");
 
       declare
@@ -180,7 +180,7 @@ package body Test_Generation_Transaction is
          if Ada.Directories.Exists (Concurrent_Dir) then
             Ada.Directories.Delete_Tree (Concurrent_Dir);
          end if;
-         Assert (Initialize_Household (Concurrent_Dir).Success,
+         Assert (Initialize_Legacy_Household (Concurrent_Dir).Success,
                  "Concurrent transaction fixture initializes");
          declare
             First_Result  : Commit_Result;

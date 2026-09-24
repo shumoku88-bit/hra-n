@@ -22,7 +22,7 @@ package body Test_Attention_Command is
       if Ada.Directories.Exists (Test_Dir) then
          Ada.Directories.Delete_Tree (Test_Dir);
       end if;
-      Assert (Initialize_Household (Test_Dir).Success,
+      Assert (Initialize_Legacy_Household (Test_Dir).Success,
               "Attention fixture initializes");
 
       --  Empty authority carries no matters.

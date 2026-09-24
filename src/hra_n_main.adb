@@ -6,7 +6,6 @@
 with Ada.Command_Line;
 with HRA_N.Core.Types;                use HRA_N.Core.Types;
 with HRA_N.Core.Validity;             use HRA_N.Core.Validity;
-with HRA_N.Storage.Journal_Reader;    use HRA_N.Storage.Journal_Reader;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Initializer;   use HRA_N.Application.Initializer;
 with HRA_N.Application.Doctor;        use HRA_N.Application.Doctor;
@@ -88,7 +87,8 @@ procedure HRA_N_Main is
       Put_Line ("  route                  Configure or list routing rules");
       Put_Line ("  window                 Configure or list budget evaluation windows");
       Put_Line ("  doctor, verify         Verify authority health and cryptographic soundness");
-      Put_Line ("  init [DIR]             Initialize new household authority repository");
+      Put_Line ("  init [OPTIONS] [DIR]   Initialize new household authority repository");
+      Put_Line ("                         (--canonical: Loam canonical data; --legacy: 3-stream)");
    end Print_Help;
 begin
    Resolve_From_Cli (Paths, Command_Str, Cmd_Len, Command_Idx);
@@ -98,7 +98,6 @@ begin
       Arg_Count : constant Natural := Ada.Command_Line.Argument_Count;
       Rem_Args  : constant Natural :=
         (if Arg_Count >= Command_Idx then Arg_Count - Command_Idx else 0);
-      J_Path    : constant String  := Journal_Path_Str (Paths);
       Data_Dir  : constant String  := Data_Dir_Str (Paths);
    begin
       --  Branch: Help message
@@ -110,24 +109,57 @@ begin
       --  Branch: Initializer for a new household authority
       if Command = "init" then
          declare
-            Target : constant String :=
-              (if Rem_Args >= 1
-               then Ada.Command_Line.Argument (Command_Idx + 1)
-               else Data_Dir);
-            Init_Res : constant Init_Result := Initialize_Household (Target);
+            Canonical_Mode : Boolean := False;
+            Target_Found   : Boolean := False;
+            Target_Buf     : String (1 .. 256) := [others => ' '];
+            Target_Len     : Natural := 0;
          begin
-            if Init_Res.Success then
-               Put_Line ("============================================================");
-               Put_Line (" [OK] Initialized new household authority at: " & Target);
-               Put_Line ("      Created journal.hra, policy.hra, scheduled.hra");
-               Put_Line ("============================================================");
-               Put_Line ("Run 'hra-n movement' to record your first transaction!");
-            else
-               Put_Line ("[ERROR] Initialization failed: " &
-                         Init_Res.Error_Reason (1 .. Init_Res.Error_Len));
-               Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-            end if;
-            return;
+            for I in Command_Idx + 1 .. Arg_Count loop
+               declare
+                  Arg : constant String := Ada.Command_Line.Argument (I);
+               begin
+                  if Arg = "--canonical" or else Arg = "-c" then
+                     Canonical_Mode := True;
+                  elsif Arg = "--legacy" then
+                     Canonical_Mode := False;
+                  elsif not Target_Found then
+                     Target_Len := Natural'Min (Arg'Length, Target_Buf'Length);
+                     Target_Buf (1 .. Target_Len) := Arg (Arg'First .. Arg'First + Target_Len - 1);
+                     Target_Found := True;
+                  end if;
+               end;
+            end loop;
+
+            declare
+               Target : constant String :=
+                 (if Target_Found
+                  then Target_Buf (1 .. Target_Len)
+                  else Data_Dir);
+               Init_Res : constant Init_Result :=
+                 (if Canonical_Mode
+                  then Initialize_Household (Target)
+                  else Initialize_Legacy_Household (Target));
+            begin
+               if Init_Res.Success then
+                  Put_Line ("============================================================");
+                  if Canonical_Mode then
+                     Put_Line (" [OK] Initialized new canonical Loam authority at: " & Target);
+                     Put_Line ("      Created actual.loam, locus-admission.loam,");
+                     Put_Line ("      accounting-role.loam, zero-origin-coverage.loam,");
+                     Put_Line ("      scheduled.loam, capacity.loam, actual-routing.loam");
+                  else
+                     Put_Line (" [OK] Initialized new household authority at: " & Target);
+                     Put_Line ("      Created journal.hra, policy.hra, scheduled.hra");
+                  end if;
+                  Put_Line ("============================================================");
+                  Put_Line ("Run 'hra-n movement' to record your first transaction!");
+               else
+                  Put_Line ("[ERROR] Initialization failed: " &
+                            Init_Res.Error_Reason (1 .. Init_Res.Error_Len));
+                  Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+               end if;
+               return;
+            end;
          end;
       end if;
 
@@ -717,9 +749,10 @@ begin
       --  authority and requires an explicit normalized Actual file path.
       if Command = "actual" then
          HRA_N.UI.Actual_CLI.Dispatch
-           (Command_Idx => Command_Idx,
-            Rem_Args    => Rem_Args,
-            Success     => Success);
+           (Command_Idx      => Command_Idx,
+            Rem_Args         => Rem_Args,
+            Default_Data_Dir => Data_Dir,
+            Success          => Success);
          if not Success then
             Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
          end if;
@@ -899,25 +932,12 @@ begin
          return;
       end if;
 
-      --  Remaining legacy default status; never use it to answer canonical Actual.
-      declare
-         J_Res : constant Journal_Result := Read_Journal_File (J_Path);
-      begin
-         if not J_Res.Success then
-            Put_Line ("[ERROR] Failed to load journal: " &
-                      J_Res.Error_Reason (1 .. J_Res.Error_Len));
-            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-            return;
-         end if;
-
-         --  Default: Status summary and canonical balances
-         HRA_N.UI.Status_CLI.Display_Status
-           (Paths   => Paths,
-            Events  => J_Res.Events,
-            Success => Success);
-         if not Success then
-            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-         end if;
-   end;
+      --  Status summary and canonical balances
+      HRA_N.UI.Status_CLI.Display_Status
+        (Paths   => Paths,
+         Success => Success);
+      if not Success then
+         Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+      end if;
    end;
 end HRA_N_Main;
