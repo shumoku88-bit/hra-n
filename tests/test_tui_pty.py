@@ -240,6 +240,69 @@ def test_mom_partial_stock_tui() -> None:
     print('MoM PTY: unknown/unclassified stock and one-month conflict remain unavailable')
 
 
+def test_report_rejected_query_tui() -> None:
+    """An overfull query stays rejected across Balance/Audit tab navigation."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    harness = os.path.join(root, 'tests', 'bin', 'tui_harness')
+    today = datetime.date.today().isoformat()
+    with tempfile.TemporaryDirectory(prefix='hra_n_report_refusal_pty_') as household:
+        fixtures = {
+            'journal.hra': ''.join(
+                f'TX e{i} {today} cash:-1 locus{i}:1\n' for i in range(1, 130)),
+            'policy.hra': 'ROLE cash: ASSET\nZERO-ORIGIN cash:jpy\n',
+            'scheduled.hra': '',
+        }
+        for name, text in fixtures.items():
+            with open(os.path.join(household, name), 'w', encoding='utf-8') as stream:
+                stream.write(text)
+        pid, fd = pty.fork()
+        if pid == 0:
+            env = os.environ.copy()
+            env['TERM'] = 'xterm-256color'
+            os.execve(harness, [harness, household], env)
+        reaped = False
+        try:
+            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 80, 160, 0, 0))
+            output = bytearray()
+            read_until(fd, output, b'Markers:')
+            os.write(fd, b'p')
+            read_until(fd, output, b'Esc/q: back')
+            for key, message in [
+                (b'3', b'Balance query rejected: balance coordinate limit exceeded'),
+                (b'7', b'Audit projection rejected'),
+                (b'3', b'Balance query rejected: balance coordinate limit exceeded'),
+            ]:
+                start = len(output)
+                os.write(fd, key)
+                read_until(fd, output, message)
+                text = bytes(output[start:])
+                # Curses may leave unchanged badge cells on screen without
+                # re-emitting their bytes when switching rejected tabs.
+                assert b'[PASS]' not in text and b'NET WORTH (' not in text, text
+            os.write(fd, b'q')
+            read_until(fd, output, b'Evidence')
+            os.write(fd, b'q')
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                exited, status = os.waitpid(pid, os.WNOHANG)
+                if exited:
+                    reaped = True
+                    assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+                    break
+                if select.select([fd], [], [], 0.05)[0]:
+                    try:
+                        os.read(fd, 4096)
+                    except OSError:
+                        pass
+            assert reaped, 'Rejected report PTY did not quit'
+        finally:
+            if not reaped:
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+            os.close(fd)
+    print('Report PTY: Balance/Audit rejection remains visible on cached return')
+
+
 def test_month_end_budget(foreign_capacity: bool = False) -> None:
     """Cached Budget/Pace/Audit include month end and exclude next month."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1678,5 +1741,6 @@ if __name__ == "__main__":
     test_statement_evidence()
     test_mom_role_change_tui()
     test_mom_partial_stock_tui()
+    test_report_rejected_query_tui()
     test_month_end_budget()
     test_month_end_budget(foreign_capacity=True)
