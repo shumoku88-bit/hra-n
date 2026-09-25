@@ -291,7 +291,11 @@ class TestHraNCli(unittest.TestCase):
             res = self.run_cmd("home")
             self.assertIn("PARTIAL", res.stdout)
             res = self.run_cmd("report", "--mom", "-m", "9", "-y", "2026")
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
             self.assertIn("[PARTIAL]", res.stdout)
+            self.assertIn("Net worth unavailable", res.stdout)
+            self.assertRegex(res.stdout, r"NET WORTH \(Month-End Stock\)\s+Unavailable\s+(?:0|Unavailable)\s+Unavailable")
+            self.assertNotRegex(res.stdout, r"NET WORTH \(Month-End Stock\)\s+-?\d")
 
         # A future conflicting assertion must not contaminate an earlier day.
         res = self.run_cmd("statement", "--as-of", "2026-09-15")
@@ -302,6 +306,61 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("COMPLETE FINANCIAL STATEMENT", res.stdout)
         res = self.run_cmd("status")
         self.assertIn("Net worth : -10", res.stdout)
+
+    def test_mom_only_current_stock_unavailable(self) -> None:
+        # Research inheritance: unknown stock and unresolved classification
+        # must not turn into a confident month-end number. A conflicting
+        # current assertion leaves the prior endpoint available independently.
+        for current_effect, extra_role, assertion, prior in [
+            ('cash:-10 bank:10', 'ROLE bank: ASSET\n', '', 'Unavailable'),
+            ('cash:-10 unknown:10', '', '', 'Unavailable'),
+            ('cash:-10 food:10', '', 'ASSERT a1 2026-09-20 cash:jpy 0\n', '-5'),
+        ]:
+            with self.subTest(current_effect=current_effect, assertion=assertion):
+                self.write_report_fixture(
+                    'TX e1 2026-08-10 cash:-5 food:5\n'
+                    f'TX e2 2026-09-10 {current_effect}\n' + assertion)
+                with open(os.path.join(self.test_dir, 'policy.hra'), 'w', encoding='utf-8') as stream:
+                    stream.write('ROLE cash: ASSET\nROLE food: EXPENSE\n'
+                                 + extra_role + 'ZERO-ORIGIN cash:jpy\n')
+                res = self.run_cmd('report', '--mom', '-m', '9', '-y', '2026')
+                self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+                self.assertIn('[PARTIAL]', res.stdout)
+                self.assertRegex(res.stdout,
+                                 rf'NET WORTH \(Month-End Stock\)\s+Unavailable\s+{prior}\s+Unavailable')
+                self.assertNotRegex(res.stdout, r'NET WORTH \(Month-End Stock\)\s+-?\d')
+
+    def test_mom_role_change_and_cross_month_lifecycle(self) -> None:
+        # External CLI observation only; semantic expectations live in Test_MoM_Query.
+        self.write_report_fixture('TX e1 2026-08-20 cash:-10 food:10\n')
+        with open(os.path.join(self.test_dir, 'policy.hra'), 'w', encoding='utf-8') as stream:
+            stream.write('ROLE cash: ASSET\n'
+                         'ROLE r1 2026-01-01 food EXPENSE\n'
+                         'ROLE r2 2026-09-01 food ASSET REPLACES r1\n'
+                         'ZERO-ORIGIN cash:jpy food:jpy\n')
+        mom = self.run_cmd('report', '--mom', '-m', '9', '-y', '2026')
+        flow = self.run_cmd('report', '--flow', '-m', '9', '-y', '2026')
+        self.assertEqual(mom.returncode, 0, mom.stdout + mom.stderr)
+        self.assertEqual(flow.returncode, 0, flow.stdout + flow.stderr)
+        self.assertRegex(mom.stdout, r'food\s+0\s+10\s+-10')
+        self.assertRegex(mom.stdout, r'Total Expense\s+0\s+10\s+-10')
+        self.assertRegex(flow.stdout, r'Total Monthly Flow\s+0\s+0\s+0')
+
+        self.write_report_fixture(
+            'TX e1 2026-08-15 cash:-10 food:10\n'
+            'TX e2 2026-09-02 cash:-20 food:20 replaces:e1\n'
+            'TX e3 2026-09-03 cash:20 food:-20 reverses:e2\n'
+            'TX e4 2026-08-16 cash:-7 food:7\n'
+            'TX e5 2026-09-04 cash:7 food:-7 reverses:e4\n'
+            'TX e6 2026-08-17 cash:-3 food:3\n'
+            'TX e7 2026-09-05 cash:-3 food:3 replaces:e6\n')
+        mom = self.run_cmd('report', '--mom', '-m', '9', '-y', '2026')
+        flow = self.run_cmd('report', '--flow', '-m', '9', '-y', '2026')
+        self.assertEqual(mom.returncode, 0, mom.stdout + mom.stderr)
+        self.assertEqual(flow.returncode, 0, flow.stdout + flow.stderr)
+        self.assertRegex(mom.stdout, r'food\s+-4\s+7\s+-11')
+        self.assertRegex(mom.stdout, r'Total Expense\s+-4\s+7\s+-11')
+        self.assertRegex(flow.stdout, r'Total Monthly Flow\s+0\s+-4\s+4')
 
     def test_monthly_reports_reject_exact_day_requests(self) -> None:
         self.write_report_fixture(

@@ -29,6 +29,10 @@ package HRA_N.Application.MoM_Query is
    end record;
 
    type Stock_Summary is record
+      --  Amounts are meaningful only at an available endpoint. A difference
+      --  requires both endpoints; a partial report must not turn change into stock.
+      Current_Available : Boolean := False;
+      Prior_Available   : Boolean := False;
       Current_Amt : Long_Long_Integer := 0;
       Prior_Amt   : Long_Long_Integer := 0;
       Difference  : Long_Long_Integer := 0;

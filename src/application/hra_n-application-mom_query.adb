@@ -1,5 +1,6 @@
 with Ada.Unchecked_Deallocation;
 with HRA_N.Application.Statement; use HRA_N.Application.Statement;
+with HRA_N.Application.Daily_Flow_Query; use HRA_N.Application.Daily_Flow_Query;
 
 package body HRA_N.Application.MoM_Query is
 
@@ -38,6 +39,11 @@ package body HRA_N.Application.MoM_Query is
       return MoM_View
    is
       Result : MoM_View;
+      Prev_Y : Year_Type;
+      Prev_M : Month_Type;
+      Cur_Stmt  : Statement_Report_Access := null;
+      Prev_Stmt : Statement_Report_Access := null;
+      Rows_Exceeded : Boolean := False;
 
       procedure Fail (Message : String; Status : Query_Status := Query_Rejected) is
       begin
@@ -47,46 +53,13 @@ package body HRA_N.Application.MoM_Query is
            Message (Message'First .. Message'First + Result.Diagnostic_Len - 1);
       end Fail;
 
-      function Find_Account_Amt
-        (Stmt  : Statement_Report_Access;
-         Locus : Token_Text) return Long_Long_Integer
-      is
-      begin
-         for I in 1 .. Stmt.Account_Count loop
-            if Equal_Token (Stmt.Accounts (I).Locus.Token, Locus) then
-               return Stmt.Accounts (I).Natural_Amt;
-            end if;
-         end loop;
-         return 0;
-      end Find_Account_Amt;
-
-      type Locus_Array is array (1 .. Max_Comparison_Rows) of Token_Text;
-      type Locus_Collector is record
-         Count  : Natural := 0;
-         Tokens : Locus_Array;
-      end record;
-
-      procedure Collect_Locus
-        (Collector : in out Locus_Collector;
-         Locus     : Token_Text)
-      is
-      begin
-         for I in 1 .. Collector.Count loop
-            if Equal_Token (Collector.Tokens (I), Locus) then
-               return;
-            end if;
-         end loop;
-         if Collector.Count < Max_Comparison_Rows then
-            Collector.Count := Collector.Count + 1;
-            Collector.Tokens (Collector.Count) := Locus;
-         end if;
-      end Collect_Locus;
-
-      Prev_Y, PP_Y : Year_Type;
-      Prev_M, PP_M : Month_Type;
-      Cur_Stmt     : Statement_Report_Access := null;
-      Prev_Stmt    : Statement_Report_Access := null;
-      PP_Stmt      : Statement_Report_Access := null;
+      function Stock (Current, Prior : Long_Long_Integer;
+                      Current_Known, Prior_Known : Boolean) return Stock_Summary is
+        (Current_Available => Current_Known,
+         Prior_Available => Prior_Known,
+         Current_Amt => (if Current_Known then Current else 0),
+         Prior_Amt => (if Prior_Known then Prior else 0),
+         Difference => (if Current_Known and Prior_Known then Current - Prior else 0));
 
       procedure Cleanup is
       begin
@@ -96,10 +69,58 @@ package body HRA_N.Application.MoM_Query is
          if Prev_Stmt /= null then
             Free (Prev_Stmt);
          end if;
-         if PP_Stmt /= null then
-            Free (PP_Stmt);
-         end if;
       end Cleanup;
+
+      --  Rows are keyed by locus AND role. A locus may change roles between
+      --  the compared months; no month-end classification rewrites past flows.
+      procedure Add_Row
+        (Rows : in out Comparison_Row_Array; Count : in out Natural;
+         Item : Flow_Row; Amount : Long_Long_Integer; Current : Boolean)
+      is
+         Found : Natural := 0;
+      begin
+         if Amount = 0 then
+            return;
+         end if;
+         for J in 1 .. Count loop
+            if Equal_Token (Rows (J).Locus, Item.Locus) then
+               Found := J;
+               exit;
+            end if;
+         end loop;
+         if Found = 0 then
+            if Count = Max_Comparison_Rows then
+               Rows_Exceeded := True;
+               return;
+            end if;
+            Count := Count + 1;
+            Found := Count;
+            Rows (Found).Locus := Item.Locus;
+            Rows (Found).Role := Item.Role;
+         end if;
+         if Current then
+            Rows (Found).Current_Amt := Amount;
+         else
+            Rows (Found).Prior_Amt := Amount;
+         end if;
+      end Add_Row;
+
+      procedure Add_Rows (Flow : Flow_View; Current : Boolean) is
+      begin
+         for I in 1 .. Flow.Row_Count loop
+            declare
+               Item : constant Flow_Row := Flow.Rows (I);
+            begin
+               if Item.Role = Role_Expense then
+                  Add_Row (Result.Expenses, Result.Expense_Count, Item,
+                           Item.Totals.Net_Expense, Current);
+               else
+                  Add_Row (Result.Incomes, Result.Income_Count, Item,
+                           Item.Totals.Net_Income, Current);
+               end if;
+            end;
+         end loop;
+      end Add_Rows;
    begin
       Result.Year := Year;
       Result.Month := Month;
@@ -123,52 +144,35 @@ package body HRA_N.Application.MoM_Query is
       Result.Prior_Year := Prev_Y;
       Result.Prior_Month := Prev_M;
 
-      if not Get_Prior_Month (Prev_Y, Prev_M, PP_Y, PP_M) then
-         Fail ("mom query: prior-prior month is outside supported year bounds");
-         return Result;
-      end if;
-
       declare
-         Cur_End_D : constant Day_Type := Days_In_Month (Year, Month);
-         Cur_Date  : constant Date_Type := (Year => Year, Month => Month, Day => Cur_End_D);
-
-         Prev_End_D : constant Day_Type := Days_In_Month (Prev_Y, Prev_M);
-         Prev_Date  : constant Date_Type := (Year => Prev_Y, Month => Prev_M, Day => Prev_End_D);
-
-         PP_End_D : constant Day_Type := Days_In_Month (PP_Y, PP_M);
-         PP_Date  : constant Date_Type := (Year => PP_Y, Month => PP_M, Day => PP_End_D);
-
+         Cur_Date  : constant Date_Type :=
+           (Year => Year, Month => Month, Day => Days_In_Month (Year, Month));
+         Prev_Date : constant Date_Type :=
+           (Year => Prev_Y, Month => Prev_M, Day => Days_In_Month (Prev_Y, Prev_M));
          Snap_Tok : constant Token_Text :=
            (if Snapshot.Kind = Snapshot_Versioned then Snapshot.Identity else Make_Token (""));
          Is_Ver   : constant Boolean := (Snapshot.Kind = Snapshot_Versioned);
+         Cur_Flow  : constant Flow_View := Daily_Flow_Query.Project
+           (Journal, Policy, Year, Month, Snapshot);
+         Prev_Flow : constant Flow_View := Daily_Flow_Query.Project
+           (Journal, Policy, Prev_Y, Prev_M, Snapshot);
       begin
+         if Cur_Flow.Status = Query_Rejected then
+            Fail ("current flow rejected: " & Cur_Flow.Diagnostic (1 .. Cur_Flow.Diagnostic_Len));
+            return Result;
+         elsif Prev_Flow.Status = Query_Rejected then
+            Fail ("prior flow rejected: " & Prev_Flow.Diagnostic (1 .. Prev_Flow.Diagnostic_Len));
+            return Result;
+         end if;
+
          Cur_Stmt := new Statement_Report'
            (Statement.Project
-              (Journal      => Journal,
-               Policy       => Policy,
-               As_Of        => Cur_Date,
-               Has_As_Of    => True,
-               Snapshot     => Snap_Tok,
-               Is_Versioned => Is_Ver));
-
+              (Journal => Journal, Policy => Policy, As_Of => Cur_Date,
+               Has_As_Of => True, Snapshot => Snap_Tok, Is_Versioned => Is_Ver));
          Prev_Stmt := new Statement_Report'
            (Statement.Project
-              (Journal      => Journal,
-               Policy       => Policy,
-               As_Of        => Prev_Date,
-               Has_As_Of    => True,
-               Snapshot     => Snap_Tok,
-               Is_Versioned => Is_Ver));
-
-         PP_Stmt := new Statement_Report'
-           (Statement.Project
-              (Journal      => Journal,
-               Policy       => Policy,
-               As_Of        => PP_Date,
-               Has_As_Of    => True,
-               Snapshot     => Snap_Tok,
-               Is_Versioned => Is_Ver));
-
+              (Journal => Journal, Policy => Policy, As_Of => Prev_Date,
+               Has_As_Of => True, Snapshot => Snap_Tok, Is_Versioned => Is_Ver));
          if Cur_Stmt.Status = Query_Rejected then
             Fail ("current statement rejected: " & Cur_Stmt.Diagnostic (1 .. Cur_Stmt.Diagnostic_Len));
             Cleanup;
@@ -177,175 +181,66 @@ package body HRA_N.Application.MoM_Query is
             Fail ("prior statement rejected: " & Prev_Stmt.Diagnostic (1 .. Prev_Stmt.Diagnostic_Len));
             Cleanup;
             return Result;
-         elsif PP_Stmt.Status = Query_Rejected then
-            Fail ("prior-prior statement rejected: " & PP_Stmt.Diagnostic (1 .. PP_Stmt.Diagnostic_Len));
+         end if;
+
+         --  Discrete occurrence-day flows, independent of month-end stock roles.
+         Result.Total_Expense :=
+           (Cur_Flow.Totals.Net_Expense, Prev_Flow.Totals.Net_Expense,
+            Cur_Flow.Totals.Net_Expense - Prev_Flow.Totals.Net_Expense);
+         Result.Total_Income :=
+           (Cur_Flow.Totals.Net_Income, Prev_Flow.Totals.Net_Income,
+            Cur_Flow.Totals.Net_Income - Prev_Flow.Totals.Net_Income);
+         Result.Net_Savings :=
+           (Cur_Flow.Totals.Net_Flow, Prev_Flow.Totals.Net_Flow,
+            Cur_Flow.Totals.Net_Flow - Prev_Flow.Totals.Net_Flow);
+
+         Add_Rows (Cur_Flow, True);
+         Add_Rows (Prev_Flow, False);
+         if Rows_Exceeded then
+            Fail ("mom query comparison row limit exceeded");
             Cleanup;
             return Result;
          end if;
+         for I in 1 .. Result.Expense_Count loop
+            Result.Expenses (I).Difference :=
+              Result.Expenses (I).Current_Amt - Result.Expenses (I).Prior_Amt;
+         end loop;
+         for I in 1 .. Result.Income_Count loop
+            Result.Incomes (I).Difference :=
+              Result.Incomes (I).Current_Amt - Result.Incomes (I).Prior_Amt;
+         end loop;
 
-         --  1. Flow Totals (That Month = End of Month cumulative - End of Prior Month cumulative)
-         declare
-            Cur_Exp  : constant Long_Long_Integer :=
-              Cur_Stmt.Summary.Total_Expense - Prev_Stmt.Summary.Total_Expense;
-            Prev_Exp : constant Long_Long_Integer :=
-              Prev_Stmt.Summary.Total_Expense - PP_Stmt.Summary.Total_Expense;
-
-            Cur_Inc  : constant Long_Long_Integer :=
-              Cur_Stmt.Summary.Total_Income - Prev_Stmt.Summary.Total_Income;
-            Prev_Inc : constant Long_Long_Integer :=
-              Prev_Stmt.Summary.Total_Income - PP_Stmt.Summary.Total_Income;
-
-            Cur_Sav  : constant Long_Long_Integer := Cur_Inc - Cur_Exp;
-            Prev_Sav : constant Long_Long_Integer := Prev_Inc - Prev_Exp;
-         begin
-            Result.Total_Expense :=
-              (Current_Amt => Cur_Exp,
-               Prior_Amt   => Prev_Exp,
-               Difference  => Cur_Exp - Prev_Exp);
-
-            Result.Total_Income :=
-              (Current_Amt => Cur_Inc,
-               Prior_Amt   => Prev_Inc,
-               Difference  => Cur_Inc - Prev_Inc);
-
-            Result.Net_Savings :=
-              (Current_Amt => Cur_Sav,
-               Prior_Amt   => Prev_Sav,
-               Difference  => Cur_Sav - Prev_Sav);
-         end;
-
-         --  2. Stock Totals (Month-End balances)
+         --  Stock is still observed at the two month ends.
          declare
             Cur_Assets  : constant Long_Long_Integer := Cur_Stmt.Summary.Total_Assets;
             Prev_Assets : constant Long_Long_Integer := Prev_Stmt.Summary.Total_Assets;
-
             Cur_Liab    : constant Long_Long_Integer := Cur_Stmt.Summary.Total_Liabilities;
             Prev_Liab   : constant Long_Long_Integer := Prev_Stmt.Summary.Total_Liabilities;
-
             Cur_NW      : constant Long_Long_Integer := Net_Worth (Cur_Stmt.Summary);
             Prev_NW     : constant Long_Long_Integer := Net_Worth (Prev_Stmt.Summary);
          begin
-            Result.Total_Assets :=
-              (Current_Amt => Cur_Assets,
-               Prior_Amt   => Prev_Assets,
-               Difference  => Cur_Assets - Prev_Assets);
-
-            Result.Total_Liabilities :=
-              (Current_Amt => Cur_Liab,
-               Prior_Amt   => Prev_Liab,
-               Difference  => Cur_Liab - Prev_Liab);
-
-            Result.Net_Worth :=
-              (Current_Amt => Cur_NW,
-               Prior_Amt   => Prev_NW,
-               Difference  => Cur_NW - Prev_NW);
+            Result.Total_Assets := Stock
+              (Cur_Assets, Prev_Assets, Statement.Is_Complete (Cur_Stmt.all),
+               Statement.Is_Complete (Prev_Stmt.all));
+            Result.Total_Liabilities := Stock
+              (Cur_Liab, Prev_Liab, Statement.Is_Complete (Cur_Stmt.all),
+               Statement.Is_Complete (Prev_Stmt.all));
+            Result.Net_Worth := Stock
+              (Cur_NW, Prev_NW, Statement.Is_Complete (Cur_Stmt.all),
+               Statement.Is_Complete (Prev_Stmt.all));
          end;
 
-         --  3. Expense Line Items (Union of active Expense loci across all 3 statements)
-         declare
-            Exp_Loci : Locus_Collector;
-         begin
-            for I in 1 .. Cur_Stmt.Account_Count loop
-               if Cur_Stmt.Accounts (I).Has_Role and then Cur_Stmt.Accounts (I).Role = Role_Expense then
-                  Collect_Locus (Exp_Loci, Cur_Stmt.Accounts (I).Locus.Token);
-               end if;
-            end loop;
-            for I in 1 .. Prev_Stmt.Account_Count loop
-               if Prev_Stmt.Accounts (I).Has_Role and then Prev_Stmt.Accounts (I).Role = Role_Expense then
-                  Collect_Locus (Exp_Loci, Prev_Stmt.Accounts (I).Locus.Token);
-               end if;
-            end loop;
-            for I in 1 .. PP_Stmt.Account_Count loop
-               if PP_Stmt.Accounts (I).Has_Role and then PP_Stmt.Accounts (I).Role = Role_Expense then
-                  Collect_Locus (Exp_Loci, PP_Stmt.Accounts (I).Locus.Token);
-               end if;
-            end loop;
-
-            for I in 1 .. Exp_Loci.Count loop
-               declare
-                  Tok      : constant Token_Text := Exp_Loci.Tokens (I);
-                  Cur_Cum  : constant Long_Long_Integer := Find_Account_Amt (Cur_Stmt, Tok);
-                  Prev_Cum : constant Long_Long_Integer := Find_Account_Amt (Prev_Stmt, Tok);
-                  PP_Cum   : constant Long_Long_Integer := Find_Account_Amt (PP_Stmt, Tok);
-
-                  Cur_Flow  : constant Long_Long_Integer := Cur_Cum - Prev_Cum;
-                  Prev_Flow : constant Long_Long_Integer := Prev_Cum - PP_Cum;
-               begin
-                  if Cur_Flow /= 0 or else Prev_Flow /= 0 then
-                     if Result.Expense_Count < Max_Comparison_Rows then
-                        Result.Expense_Count := Result.Expense_Count + 1;
-                        Result.Expenses (Result.Expense_Count) :=
-                          (Locus       => Tok,
-                           Role        => Role_Expense,
-                           Current_Amt => Cur_Flow,
-                           Prior_Amt   => Prev_Flow,
-                           Difference  => Cur_Flow - Prev_Flow);
-                     end if;
-                  end if;
-               end;
-            end loop;
-         end;
-
-         --  4. Income Line Items (Union of active Income loci across all 3 statements)
-         declare
-            Inc_Loci : Locus_Collector;
-         begin
-            for I in 1 .. Cur_Stmt.Account_Count loop
-               if Cur_Stmt.Accounts (I).Has_Role and then Cur_Stmt.Accounts (I).Role = Role_Income then
-                  Collect_Locus (Inc_Loci, Cur_Stmt.Accounts (I).Locus.Token);
-               end if;
-            end loop;
-            for I in 1 .. Prev_Stmt.Account_Count loop
-               if Prev_Stmt.Accounts (I).Has_Role and then Prev_Stmt.Accounts (I).Role = Role_Income then
-                  Collect_Locus (Inc_Loci, Prev_Stmt.Accounts (I).Locus.Token);
-               end if;
-            end loop;
-            for I in 1 .. PP_Stmt.Account_Count loop
-               if PP_Stmt.Accounts (I).Has_Role and then PP_Stmt.Accounts (I).Role = Role_Income then
-                  Collect_Locus (Inc_Loci, PP_Stmt.Accounts (I).Locus.Token);
-               end if;
-            end loop;
-
-            for I in 1 .. Inc_Loci.Count loop
-               declare
-                  Tok      : constant Token_Text := Inc_Loci.Tokens (I);
-                  Cur_Cum  : constant Long_Long_Integer := Find_Account_Amt (Cur_Stmt, Tok);
-                  Prev_Cum : constant Long_Long_Integer := Find_Account_Amt (Prev_Stmt, Tok);
-                  PP_Cum   : constant Long_Long_Integer := Find_Account_Amt (PP_Stmt, Tok);
-
-                  Cur_Flow  : constant Long_Long_Integer := Cur_Cum - Prev_Cum;
-                  Prev_Flow : constant Long_Long_Integer := Prev_Cum - PP_Cum;
-               begin
-                  if Cur_Flow /= 0 or else Prev_Flow /= 0 then
-                     if Result.Income_Count < Max_Comparison_Rows then
-                        Result.Income_Count := Result.Income_Count + 1;
-                        Result.Incomes (Result.Income_Count) :=
-                          (Locus       => Tok,
-                           Role        => Role_Income,
-                           Current_Amt => Cur_Flow,
-                           Prior_Amt   => Prev_Flow,
-                           Difference  => Cur_Flow - Prev_Flow);
-                     end if;
-                  end if;
-               end;
-            end loop;
-         end;
-
-         --  Completeness check
-         if not Statement.Is_Complete (Cur_Stmt.all)
+         if Cur_Flow.Status = Query_Partial or else Prev_Flow.Status = Query_Partial
+           or else not Statement.Is_Complete (Cur_Stmt.all)
            or else not Statement.Is_Complete (Prev_Stmt.all)
-           or else not Statement.Is_Complete (PP_Stmt.all)
          then
-            Fail
-              ("Comparison requires classified, known stocks without assertion conflicts",
-               Query_Partial);
+            Fail ("Comparison has unclassified flows or unknown/conflicting stocks",
+                  Query_Partial);
          else
             Result.Status := Query_Complete;
          end if;
-
          Cleanup;
       end;
-
       return Result;
    end Project;
 

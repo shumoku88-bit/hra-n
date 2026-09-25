@@ -1,5 +1,4 @@
 with HRA_N.Application.Statement;
-with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Core.Event; use HRA_N.Core.Event;
 with HRA_N.Core.Transaction_Metadata; use HRA_N.Core.Transaction_Metadata;
@@ -15,6 +14,7 @@ package body HRA_N.Application.Daily_Flow_Query is
    is
       Result : Flow_View;
       Overflow : Boolean := False;
+      Row_Limit : Boolean := False;
 
       procedure Fail (Message : String) is
       begin
@@ -60,6 +60,28 @@ package body HRA_N.Application.Daily_Flow_Query is
          T.Net_Expense := T.Gross_Expense - T.Expense_Refunds;
          T.Net_Flow := T.Net_Income - T.Net_Expense;
       end Derive;
+
+      procedure Include_Row
+        (Locus : Token_Text; Role : Accounting_Role; Amount : Long_Long_Integer)
+      is
+      begin
+         for I in 1 .. Result.Row_Count loop
+            if Equal_Token (Result.Rows (I).Locus, Locus)
+              and then Result.Rows (I).Role = Role
+            then
+               Include (Result.Rows (I).Totals, Role, Amount);
+               return;
+            end if;
+         end loop;
+         if Result.Row_Count = Max_Flow_Rows then
+            Row_Limit := True;
+            return;
+         end if;
+         Result.Row_Count := Result.Row_Count + 1;
+         Result.Rows (Result.Row_Count).Locus := Locus;
+         Result.Rows (Result.Row_Count).Role := Role;
+         Include (Result.Rows (Result.Row_Count).Totals, Role, Amount);
+      end Include_Row;
 
       procedure Rank (Item : Outlay) is
          Pos : Natural := 1;
@@ -131,6 +153,7 @@ package body HRA_N.Application.Daily_Flow_Query is
                               Result.Days (Occurred.Day).Has_Flow := True;
                               Include (Result.Days (Occurred.Day).Totals, Role, Amount);
                               Include (Result.Totals, Role, Amount);
+                              Include_Row (Eff.Locus.Token, Role, Amount);
                               if Role = Role_Expense and then Amount > 0 then
                                  Add (Item.Amount, Amount);
                                  if Item.Locus.Length = 0 then
@@ -140,7 +163,10 @@ package body HRA_N.Application.Daily_Flow_Query is
                            end if;
                         end;
                      end loop;
-                     if Overflow then
+                     if Row_Limit then
+                        Fail ("daily flow locus limit exceeded");
+                        return Result;
+                     elsif Overflow then
                         Fail ("daily flow amount limit exceeded");
                         return Result;
                      end if;
@@ -155,6 +181,9 @@ package body HRA_N.Application.Daily_Flow_Query is
       end loop;
 
       Derive (Result.Totals);
+      for I in 1 .. Result.Row_Count loop
+         Derive (Result.Rows (I).Totals);
+      end loop;
       declare
          Running : Long_Long_Integer := 0;
       begin

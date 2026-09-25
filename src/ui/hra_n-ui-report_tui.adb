@@ -789,13 +789,20 @@ package body HRA_N.UI.Report_TUI is
                   end;
 
                   declare
-                     Diff_NW : constant Long_Long_Integer := View.Net_Worth.Difference;
-                     Prefix  : constant String := (if Diff_NW > 0 then "+" else "");
+                     Stock : HRA_N.Application.MoM_Query.Stock_Summary renames View.Net_Worth;
+                     Prefix : constant String := (if Stock.Difference > 0 then "+" else "");
                   begin
+                     if not Stock.Current_Available or else not Stock.Prior_Available then
+                        Emit ("  Net worth unavailable: incomplete month-end evidence (origin, role, or assertion)");
+                     end if;
                      Emit ("  " & Pad_Right ("NET WORTH (Month-End Stock)", 26) & " " &
-                           Pad_Left (Format_Quanta (View.Net_Worth.Current_Amt), 14) & " " &
-                           Pad_Left (Format_Quanta (View.Net_Worth.Prior_Amt), 14) & " " &
-                           Pad_Left (Prefix & Format_Quanta (Diff_NW), 14));
+                           Pad_Left ((if Stock.Current_Available
+                                      then Format_Quanta (Stock.Current_Amt) else "Unavailable"), 14) & " " &
+                           Pad_Left ((if Stock.Prior_Available
+                                      then Format_Quanta (Stock.Prior_Amt) else "Unavailable"), 14) & " " &
+                           Pad_Left ((if Stock.Current_Available and Stock.Prior_Available
+                                      then Prefix & Format_Quanta (Stock.Difference)
+                                      else "Unavailable"), 14));
                   end;
                   Emit ("  " & Repeat ('=', 72));
                end if;
