@@ -403,7 +403,7 @@ class TestHraNCli(unittest.TestCase):
 
     def test_canonical_month_end_budget(self) -> None:
         for args in [
-            ('init', '--canonical'),
+            ('init',),
             ('capacity', 'transfer', 'unallocated', 'Food', '100', '2026-09-01'),
             ('capacity', 'transfer', 'unallocated', 'Food', '20', '2026-09-30'),
             ('route', 'set', 'food', 'Food', 'initial'),
@@ -1326,7 +1326,7 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("balance to zero", res.stdout)
 
     def test_canonical_init_default(self):
-        # Default 'init' (without --canonical) now initializes canonical Loam authority
+        # 'init' initializes canonical Loam authority
         res = self.run_cmd("init")
         self.assertEqual(res.returncode, 0, f"default init failed: {res.stdout}")
         self.assertIn("[OK] Initialized new canonical Loam authority", res.stdout)
@@ -1334,10 +1334,19 @@ class TestHraNCli(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(self.test_dir, "locus-admission.loam")))
         self.assertTrue(os.path.isfile(os.path.join(self.test_dir, "capacity.loam")))
 
+    def test_init_refuses_legacy_and_unknown_options(self):
+        for option in ("--legacy", "--canonical", "-c", "--unknown"):
+            with self.subTest(option=option):
+                res = self.run_cmd("init", option)
+                self.assertNotEqual(res.returncode, 0)
+                self.assertIn("Usage: hra-n init", res.stdout)
+                self.assertFalse(os.path.exists(os.path.join(self.test_dir, ".hra")))
+                self.assertFalse(os.path.exists(os.path.join(self.test_dir, "actual.loam")))
+
     def test_canonical_init_lifecycle(self):
         # 1. Initialize canonical Loam authority
-        res = self.run_cmd("init", "--canonical")
-        self.assertEqual(res.returncode, 0, f"init --canonical failed: {res.stdout}")
+        res = self.run_cmd("init")
+        self.assertEqual(res.returncode, 0, f"init failed: {res.stdout}")
         self.assertIn("[OK] Initialized new canonical Loam authority", res.stdout)
         self.assertIn("actual.loam", res.stdout)
 
@@ -1352,7 +1361,7 @@ class TestHraNCli(unittest.TestCase):
         ]:
             self.assertTrue(
                 os.path.isfile(os.path.join(self.test_dir, filename)),
-                f"{filename} should be created by init --canonical",
+                f"{filename} should be created by init",
             )
 
         # 2. Doctor audit on fresh canonical authority
@@ -1378,13 +1387,13 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("-10,000", bal_after.stdout)
 
         # 6. Idempotency & safety: refusing to overwrite
-        reinit = self.run_cmd("init", "--canonical")
+        reinit = self.run_cmd("init")
         self.assertNotEqual(reinit.returncode, 0)
         self.assertIn("already exists", reinit.stdout)
 
     def test_canonical_locus_and_role_publication(self):
         # 1. Initialize canonical authority
-        self.assertEqual(self.run_cmd("init", "--canonical").returncode, 0)
+        self.assertEqual(self.run_cmd("init").returncode, 0)
 
         # 2. Admit new locus
         res = self.run_cmd("locus", "add", "crypto")
@@ -1424,7 +1433,7 @@ class TestHraNCli(unittest.TestCase):
 
     def test_canonical_actual_routing(self):
         # 1. Initialize canonical authority
-        self.assertEqual(self.run_cmd("init", "--canonical").returncode, 0)
+        self.assertEqual(self.run_cmd("init").returncode, 0)
 
         # 2. Admit new locus
         self.assertEqual(self.run_cmd("locus", "add", "bookstore").returncode, 0)
@@ -1469,7 +1478,7 @@ class TestHraNCli(unittest.TestCase):
 
     def test_canonical_capacity_transfer_and_rebalance(self):
         # 1. Initialize canonical authority
-        self.assertEqual(self.run_cmd("init", "--canonical").returncode, 0)
+        self.assertEqual(self.run_cmd("init").returncode, 0)
 
         # 2. Transfer from unallocated to groceries
         res = self.run_cmd("capacity", "transfer", "unallocated", "groceries", "5000", "2026-09-25")

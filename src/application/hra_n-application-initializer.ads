@@ -2,8 +2,8 @@
 --  HRA-N: Verified Household Engine
 --  Package: HRA_N.Application.Initializer
 --
---  Creates the first immutable three-stream generation and atomically selects
---  it without overwriting an existing household authority.
+--  Creates a canonical Loam household foundation without overwriting an
+--  existing authority. The old generation constructor serves test fixtures.
 -------------------------------------------------------------------------------
 
 package HRA_N.Application.Initializer is
@@ -22,8 +22,8 @@ package HRA_N.Application.Initializer is
    --  Refuses to overwrite existing canonical or legacy authorities.
    function Initialize_Household (Base_Dir : String) return Init_Result;
 
-   --  Initialize a legacy three-stream versioned household directory (.hra/generations/g00000001).
-   --  Retained for legacy backward compatibility and regression test fixtures.
+   --  Transitional regression-fixture constructor for the remaining three-stream
+   --  tests. Not exposed by the CLI; retire with the dependent legacy paths.
    function Initialize_Legacy_Household (Base_Dir : String) return Init_Result;
 
 end HRA_N.Application.Initializer;
