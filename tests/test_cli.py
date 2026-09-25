@@ -307,6 +307,21 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("status")
         self.assertIn("Net worth : -10", res.stdout)
 
+    def test_report_projection_rejection_exits_nonzero(self) -> None:
+        # F05: a renderer must not turn a rejected shared query into exit 0.
+        # Synthetic unversioned evidence exceeds Statement/Balance row capacity.
+        journal = ''.join(
+            f'TX e{i} 2026-09-10 cash:-1 locus{i}:1\n'
+            for i in range(1, 130)
+        )
+        self.write_report_fixture(journal)
+        for tab in ('--statement', '--balances', '--audit'):
+            with self.subTest(tab=tab):
+                res = self.run_cmd('report', tab, '-m', '9', '-y', '2026')
+                self.assertNotEqual(res.returncode, 0, res.stdout + res.stderr)
+                self.assertIn('[ERROR]', res.stdout + res.stderr)
+                self.assertNotIn('[PASS]', res.stdout + res.stderr)
+
     def test_mom_only_current_stock_unavailable(self) -> None:
         # Research inheritance: unknown stock and unresolved classification
         # must not turn into a confident month-end number. A conflicting

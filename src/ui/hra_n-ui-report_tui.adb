@@ -318,6 +318,7 @@ package body HRA_N.UI.Report_TUI is
                S        : Financial_Summary renames Report.Summary;
                Complete : constant Boolean := Is_Complete (Report);
             begin
+               Result_Status := Report.Status;
                if Report.Status = Query_Rejected then
                   Emit (" [ERROR] Statement query rejected: " & Report.Diagnostic (1 .. Report.Diagnostic_Len));
                else
@@ -569,6 +570,7 @@ package body HRA_N.UI.Report_TUI is
                View  : constant HRA_N.Application.Balance_Query.Balance_View :=
                  HRA_N.Application.Balance_Query.Project (Journal, Policy, Bal_Q, Snap);
             begin
+               Result_Status := View.Status;
                if View.Status = Query_Rejected then
                   Emit (" [ERROR] Balance query rejected: " & View.Diagnostic (1 .. View.Diagnostic_Len));
                else
@@ -919,11 +921,13 @@ package body HRA_N.UI.Report_TUI is
                Emit ("");
 
                if Stmt_Rep.Status = Query_Rejected or else Bal_View.Status = Query_Rejected then
+                  Result_Status := Query_Rejected;
                   Emit (" [ERROR] Audit projection rejected");
                   Total_Lines := Line_Num;
                   return;
                end if;
                if not Is_Complete (Stmt_Rep) then
+                  Result_Status := Query_Partial;
                   Emit (" [PARTIAL] " & Stmt_Rep.Diagnostic (1 .. Stmt_Rep.Diagnostic_Len));
                   Emit (" Numeric totals below are retained changes, not qualified balances.");
                end if;
