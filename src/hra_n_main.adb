@@ -86,8 +86,7 @@ procedure HRA_N_Main is
       Put_Line ("  role                   Assign or list accounting roles");
       Put_Line ("  route                  Configure or list routing rules");
       Put_Line ("  doctor, verify         Verify authority health and cryptographic soundness");
-      Put_Line ("  init [OPTIONS] [DIR]   Initialize new household authority repository");
-      Put_Line ("                         (default: Loam canonical data; --legacy: 3-stream)");
+      Put_Line ("  init [DIR]             Initialize a Loam canonical household directory");
    end Print_Help;
 begin
    Resolve_From_Cli (Paths, Command_Str, Cmd_Len, Command_Idx);
@@ -108,7 +107,6 @@ begin
       --  Branch: Initializer for a new household authority
       if Command = "init" then
          declare
-            Canonical_Mode : Boolean := True;
             Target_Found   : Boolean := False;
             Target_Buf     : String (1 .. 256) := [others => ' '];
             Target_Len     : Natural := 0;
@@ -117,11 +115,11 @@ begin
                declare
                   Arg : constant String := Ada.Command_Line.Argument (I);
                begin
-                  if Arg = "--canonical" or else Arg = "-c" then
-                     Canonical_Mode := True;
-                  elsif Arg = "--legacy" then
-                     Canonical_Mode := False;
-                  elsif not Target_Found then
+                  if Arg'Length = 0 or else Arg (Arg'First) = '-' or else Target_Found then
+                     Put_Line ("[ERROR] Usage: hra-n init [DIR]");
+                     Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+                     return;
+                  else
                      Target_Len := Natural'Min (Arg'Length, Target_Buf'Length);
                      Target_Buf (1 .. Target_Len) := Arg (Arg'First .. Arg'First + Target_Len - 1);
                      Target_Found := True;
@@ -134,22 +132,14 @@ begin
                  (if Target_Found
                   then Target_Buf (1 .. Target_Len)
                   else Data_Dir);
-               Init_Res : constant Init_Result :=
-                 (if Canonical_Mode
-                  then Initialize_Household (Target)
-                  else Initialize_Legacy_Household (Target));
+               Init_Res : constant Init_Result := Initialize_Household (Target);
             begin
                if Init_Res.Success then
                   Put_Line ("============================================================");
-                  if Canonical_Mode then
-                     Put_Line (" [OK] Initialized new canonical Loam authority at: " & Target);
-                     Put_Line ("      Created actual.loam, locus-admission.loam,");
-                     Put_Line ("      accounting-role.loam, zero-origin-coverage.loam,");
-                     Put_Line ("      scheduled.loam, capacity.loam, actual-routing.loam");
-                  else
-                     Put_Line (" [OK] Initialized new household authority at: " & Target);
-                     Put_Line ("      Created journal.hra, policy.hra, scheduled.hra");
-                  end if;
+                  Put_Line (" [OK] Initialized new canonical Loam authority at: " & Target);
+                  Put_Line ("      Created actual.loam, locus-admission.loam,");
+                  Put_Line ("      accounting-role.loam, zero-origin-coverage.loam,");
+                  Put_Line ("      scheduled.loam, capacity.loam, actual-routing.loam");
                   Put_Line ("============================================================");
                   Put_Line ("Run 'hra-n movement' to record your first transaction!");
                else
