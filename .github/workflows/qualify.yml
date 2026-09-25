@@ -217,9 +217,6 @@ jobs:
       - name: Test Canonical Activity Query
         run: ./tests/bin/test_runner Test_Canonical_Activity_Query
 
-      - name: Test Assertion
-        run: ./tests/bin/test_runner Test_Assertion
-
       - name: Test Capacity Command
         run: ./tests/bin/test_runner Test_Capacity_Command
 

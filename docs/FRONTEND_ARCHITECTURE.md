@@ -155,9 +155,9 @@ known-through semantics.
   currently has no qualified assertion source, so its balance answer is PARTIAL
   with unavailable assertion evidence, not a zero-conflict claim;
 - current canonical Role never establishes historical as-of classification;
-- balance assertion entry as evidence, not an invented adjustment transaction:
-  legacy-only remains writable, canonical Balance is read-only until the
-  canonical assertion protocol is qualified.
+- no balance assertion editor: legacy-only assertion/reconciliation commands
+  were removed. Canonical Balance remains read-only until a separate canonical
+  assertion protocol is designed and qualified.
 
 ### Budget/capacity
 

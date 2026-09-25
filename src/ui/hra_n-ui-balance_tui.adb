@@ -11,10 +11,7 @@ with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Application.Balance_Query; use HRA_N.Application.Balance_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
-with HRA_N.Application.Assertion_Command; use HRA_N.Application.Assertion_Command;
-with HRA_N.Application.Review; use HRA_N.Application.Review;
 
-with HRA_N.UI.Line_Edit; use HRA_N.UI.Line_Edit;
 with HRA_N.UI.Output; use HRA_N.UI.Output;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
 with HRA_N.UI.Terminal_Style;
@@ -121,7 +118,7 @@ package body HRA_N.UI.Balance_TUI is
            (Rows - 2,
             (if View.Source = Canonical_Balance
              then "canonical balances: read-only   f: scope   t: as-of   b/Esc/q: home"
-             else "j/k/wheel: select   a: assert balance   f: scope   t: toggle as-of   b/Esc/q: home"));
+             else "j/k/wheel: select   f: scope   t: toggle as-of   b/Esc/q: home"));
       end if;
       Curses.Refresh;
    end Draw;
@@ -218,64 +215,6 @@ package body HRA_N.UI.Balance_TUI is
                         end if;
                      elsif Key = Character'Pos ('g') then
                         Cursor := 1;
-                     elsif (Key = Character'Pos ('a') or else Key = Character'Pos ('A'))
-                       and then Count > 0
-                       and then Current_View.Source = Legacy_Balance then
-                        if Current_View.Status /= Query_Rejected and then Cursor <= Natural (Current_View.Row_Count) then
-                           declare
-                              Row        : constant Balance_Row := Current_View.Rows (Cursor);
-                              Loc_Str    : constant String := Row.Locus.Value (1 .. Row.Locus.Length);
-                              Mea_Str    : constant String := Row.Measure.Value (1 .. Row.Measure.Length);
-                              Prompt_Row : constant Natural := (if Rows > 2 then Rows - 1 else 0);
-                              Amt_Text   : constant String :=
-                                Prompt_For
-                                  (Prompt_Row,
-                                   "Assert balance for " & Loc_Str & " (" & Mea_Str & "): ");
-                           begin
-                              if Amt_Text'Length > 0 then
-                                 declare
-                                    Amount_Val : Long_Long_Integer;
-                                 begin
-                                    Amount_Val := Long_Long_Integer'Value (Amt_Text);
-                                    declare
-                                       Intent : constant Assertion_Intent :=
-                                         (Id          => (Length => 0, Value => [others => ' ']),
-                                          Valid_On    =>
-                                            (if Filter_As_Of then Selected_Day else Get_System_Date),
-                                          Locus       => (Token => Make_Token (Loc_Str)),
-                                          Measure     => (Token => Make_Token (Mea_Str)),
-                                          Amount      => Quanta_Type (Amount_Val),
-                                          Description => Make_Token ("TUI balance assertion"));
-                                       Prop_Res : constant Proposal_Result := Propose (Current_Paths, Intent);
-                                    begin
-                                       if not Prop_Res.Success then
-                                          Wait_Key
-                                            (Prompt_Row,
-                                             "Assertion rejected: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
-                                       else
-                                          declare
-                                             Rec : constant Assertion_Receipt := Commit (Prop_Res.Proposal);
-                                          begin
-                                             if Rec.Success then
-                                                Current_Paths :=
-                                                  HRA_N.Application.Path_Resolver.Resolve_Paths
-                                                    (HRA_N.Application.Path_Resolver.Data_Dir_Str (Current_Paths));
-                                                Reload;
-                                             else
-                                                Wait_Key
-                                                  (Prompt_Row,
-                                                   "Commit rejected: " & Rec.Error (1 .. Rec.Error_Len));
-                                             end if;
-                                          end;
-                                       end if;
-                                    end;
-                                 exception
-                                    when others =>
-                                       Wait_Key (Prompt_Row, "Invalid integer amount.");
-                                 end;
-                              end if;
-                           end;
-                        end if;
                      elsif Key = Character'Pos ('f') or else Key = Character'Pos ('F') then
                         Scope :=
                           (case Scope is

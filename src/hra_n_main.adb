@@ -24,7 +24,6 @@ with HRA_N.UI.Scheduled_Cli;
 with HRA_N.UI.Attention_CLI;
 with HRA_N.UI.Balance_CLI;
 with HRA_N.UI.Capacity_CLI;
-with HRA_N.UI.Reconciliation_CLI;
 with HRA_N.UI.Relation_CLI;
 with HRA_N.UI.Split_CLI;
 with HRA_N.UI.Policy_CLI;
@@ -79,8 +78,6 @@ procedure HRA_N_Main is
       Put_Line ("  budget                 Project budget window: [START] [END]");
       Put_Line ("  balances               List coordinate balances");
       Put_Line ("  statement, report      Print Balance Sheet and Profit & Loss statement");
-      Put_Line ("  assert                 Assert physical balance for reconciliation: <LOCUS> <AMT> [DATE]");
-      Put_Line ("  reconcile              Print balance reconciliation report");
       Put_Line ("  relation               Inspect and settle payables/receivables");
       Put_Line ("  locus                  Admit or list accounting loci");
       Put_Line ("  role                   Assign or list accounting roles");
@@ -678,16 +675,6 @@ begin
          return;
       end if;
 
-      --  Branch: Balance assertion
-      if Command = "assert" then
-         HRA_N.UI.Reconciliation_CLI.Dispatch_Assert
-           (Paths, Command_Idx, Rem_Args, Success);
-         if not Success then
-            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-         end if;
-         return;
-      end if;
-
       --  Branch: Relations
       if Command = "relation" or else Command = "relations" then
          HRA_N.UI.Relation_CLI.Dispatch (Paths, Command_Idx, Rem_Args, Success);
@@ -700,15 +687,6 @@ begin
       --  Branch: Split movement (multi-effect, signed changes)
       if Command = "split" then
          HRA_N.UI.Split_CLI.Dispatch (Paths, Command_Idx, Rem_Args, Success);
-         if not Success then
-            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
-         end if;
-         return;
-      end if;
-
-      --  Branch: Balance reconciliation
-      if Command = "reconcile" or else Command = "reconciliation" then
-         HRA_N.UI.Reconciliation_CLI.Display_Reconciliation (Paths, Success);
          if not Success then
             Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
          end if;
@@ -810,6 +788,14 @@ begin
             end if;
             return;
          end;
+      end if;
+
+      if Command = "assert" or else Command = "reconcile"
+        or else Command = "reconciliation"
+      then
+         Put_Line ("[ERROR] Legacy assertion and reconciliation commands removed; canonical assertion editing is unavailable.");
+         Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+         return;
       end if;
 
       if Command = "review" then
