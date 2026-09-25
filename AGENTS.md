@@ -7,9 +7,10 @@ This file is the mandatory starting point for any pit working in this repository
 1. [`README.md`](README.md)
 2. [`docs/DEVELOPMENT_METHOD.md`](docs/DEVELOPMENT_METHOD.md)
 3. [`docs/LOAM_ALIGNMENT.md`](docs/LOAM_ALIGNMENT.md)
-4. [`docs/FORMAL_METHODS_STRATEGY.md`](docs/FORMAL_METHODS_STRATEGY.md)
-5. [`docs/FRONTEND_ARCHITECTURE.md`](docs/FRONTEND_ARCHITECTURE.md)
-6. [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md)
+4. [`docs/RESEARCH_INHERITANCE.md`](docs/RESEARCH_INHERITANCE.md)
+5. [`docs/FORMAL_METHODS_STRATEGY.md`](docs/FORMAL_METHODS_STRATEGY.md)
+6. [`docs/FRONTEND_ARCHITECTURE.md`](docs/FRONTEND_ARCHITECTURE.md)
+7. [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md)
 
 For TUI quality, canonical-data usability, or audit remediation, also read
 [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md), especially sections 0A/0B:
