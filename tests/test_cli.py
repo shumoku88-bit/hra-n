@@ -307,6 +307,45 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("status")
         self.assertIn("Net worth : -10", res.stdout)
 
+    def test_report_refuses_incomplete_legacy_scheduled_evidence(self) -> None:
+        # F08: the report must not claim a healthy whole legacy generation
+        # when the Scheduled stream is malformed or names an absent Actual.
+        self.write_report_fixture('TX e1 2026-09-10 cash:-10 food:10\n')
+        for scheduled in ('INVALID\n',
+                          'SCHED s1 2026-09-20 cash:-2 food:2\nCOMPLETE s1 missing\n'):
+            with self.subTest(scheduled=scheduled):
+                with open(os.path.join(self.test_dir, 'scheduled.hra'), 'w', encoding='utf-8') as stream:
+                    stream.write(scheduled)
+                doctor = self.run_cmd('doctor')
+                self.assertNotEqual(doctor.returncode, 0, doctor.stdout + doctor.stderr)
+                self.assertIn('Scheduled Life : FAIL', doctor.stdout)
+                for tab in ('--audit', '--budget', '--flow'):
+                    with self.subTest(tab=tab):
+                        res = self.run_cmd('report', tab, '-m', '9', '-y', '2026')
+                        self.assertNotEqual(res.returncode, 0, res.stdout + res.stderr)
+                        self.assertIn('[ERROR]', res.stdout + res.stderr)
+                        self.assertNotIn('[PASS]', res.stdout + res.stderr)
+
+    def test_selected_generation_report_refuses_dangling_completion(self) -> None:
+        generation = os.path.join(self.test_dir, '.hra', 'generations', 'g00000001')
+        os.makedirs(generation)
+        for name, text in {
+            'journal.hra': 'TX e1 2026-09-10 cash:-10 food:10\n',
+            'policy.hra': 'ROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n',
+            'scheduled.hra': 'SCHED s1 2026-09-20 cash:-2 food:2\nCOMPLETE s1 missing\n',
+        }.items():
+            with open(os.path.join(generation, name), 'w', encoding='utf-8') as stream:
+                stream.write(text)
+        with open(os.path.join(self.test_dir, '.hra', 'CURRENT'), 'w', encoding='utf-8') as stream:
+            stream.write('g00000001\n')
+        report = self.run_cmd('report', '--audit', '-m', '9', '-y', '2026')
+        self.assertNotEqual(report.returncode, 0, report.stdout + report.stderr)
+        self.assertIn('scheduled completion references unknown actual', report.stdout)
+        self.assertNotIn('[PASS]', report.stdout)
+        doctor = self.run_cmd('doctor')
+        self.assertNotEqual(doctor.returncode, 0, doctor.stdout + doctor.stderr)
+        self.assertIn('Scheduled Life : FAIL', doctor.stdout)
+
     def test_all_report_tabs_reject_unreadable_evidence(self) -> None:
         # F05/F08: a failed input read cannot become a successful report, even
         # on a tab that would otherwise show independent capacity evidence.

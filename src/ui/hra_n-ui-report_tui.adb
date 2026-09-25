@@ -12,6 +12,7 @@ with HRA_N.Application.Budget_Window;
 with HRA_N.Application.Budget_Query;
 with HRA_N.Application.Canonical_Authority;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
+with HRA_N.Application.Legacy_Report_Evidence;
 with HRA_N.Application.Path_Resolver;  use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Review;
 with HRA_N.Application.Statement;      use HRA_N.Application.Statement;
@@ -214,8 +215,8 @@ package body HRA_N.UI.Report_TUI is
             end;
 
          when Legacy_Only =>
-            Journal := Read_Journal_File (Journal_Path_Str (Paths));
-            Policy  := Read_Policy_File (Policy_Path_Str (Paths));
+            HRA_N.Application.Legacy_Report_Evidence.Read_Admitted
+              (Paths, Journal, Policy);
 
          when Probe_Failed =>
             Journal.Success := False;
