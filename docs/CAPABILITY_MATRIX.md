@@ -19,8 +19,9 @@ Statuses:
   directly through an independently qualified HRA-N boundary.
 - **V2**: historical name for the current three-stream implementation inventory.
   It may have strong tests and useful semantics, but its storage path is
-  transitional and carries no backward-compatibility promise. A qualified
-  Loam-canonical replacement should retire the corresponding three-stream path.
+  transitional and carries no backward-compatibility promise. Delete it
+  without waiting for a Loam-canonical replacement; mark missing functionality
+  unavailable until independently built on canonical authority.
 - **Legacy**: executable code exists but is outside the target Loam-canonical
   authority boundary.
 - **Blocked**: frontend or operation exists conceptually but safe authority is

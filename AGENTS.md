@@ -78,9 +78,9 @@ procedure, not an installed background monitor.
 bytes -> parsed records -> closed candidate -> admitted snapshot
       -> Query / Intent -> frontend adapter
 
-Intent -> proposal(snapshot) -> lock -> authoritative re-read
+Intent -> proposal(authority) -> lock -> authoritative re-read
        -> stale rejection -> complete candidate admission
-       -> immutable generation -> atomic CURRENT activation -> durable receipt
+       -> canonical publication protocol -> durable receipt
 ```
 
 Loam canonical household data is the sole production authority target. HRA-N
@@ -89,18 +89,23 @@ independent Ada/SPARK implementation. Do not introduce a second operational
 source of truth.
 
 The existing `journal.hra`, `policy.hra`, `scheduled.hra`,
-`.hra/generations/<id>/`, and `.hra/CURRENT` paths are transitional
-implementation scaffolding only. They remain in the tree because many
-capabilities still depend on them, not because compatibility must be preserved.
-Old HRA-N household data is disposable and requires no migration reader,
-rollback format, or compatibility promise.
+`.hra/generations/<id>/`, and `.hra/CURRENT` paths are unused, disposable
+scaffolding. **Do not preserve their behavior, data, command surface, or test
+fixtures as a condition of removal.** No migration, rollback compatibility,
+legacy reader fallback, or feature-by-feature parity gate is required. Loam
+remains the daily operational authority while HRA-N functionality is absent.
 
-Retire legacy storage vertically: first establish the equivalent Loam-canonical
-reader/writer/admission/query path and its observable tests, then delete the
-superseded three-stream path in the same or immediately following focused slice.
-Do not retain parallel old/new authorities after qualification. Alternative data
-shapes may still be explored on synthetic fixtures as research, but they are not
-candidate production authorities unless Loam itself adopts them.
+Delete old paths and legacy-only capabilities even when no canonical replacement
+exists yet. Mark absent capabilities explicitly unavailable; never silently fall
+back, emit plausible answers, or claim restored parity. Keep independent Core
+laws and counterexamples only if they apply to the canonical design. Do not add
+new three-stream work to unblock canonical work; PR #92's transitional admission
+code is itself deletion material, not a platform to extend. Prefer removal of
+whole dependency clusters (source, CLI/TUI entries, old-only tests, CI steps,
+current docs) over wrappers that keep them alive. Qualify the **remaining**
+features after each deletion. Alternative data shapes may still be explored on
+synthetic fixtures as research, not candidate production authorities unless Loam
+itself adopts them.
 
 ## Development-loop and vertical-slice rule
 
@@ -120,7 +125,7 @@ choosing an implementation shape. For semantic or architectural changes:
 7. model temporal behavior before introducing or changing canonical writes;
 8. qualify parser/OS/frontend boundaries with executable tests;
 9. complete the smallest useful CLI/TUI vertical slice;
-10. retire the superseded authority path.
+10. delete any remaining obsolete authority code; do not gate removal on a replacement.
 
 Not every slice needs Alloy, TLA+, SPIN, and SPARK. Use the tool that addresses
 the changed claim. A frontend-only change should not manufacture a formal model;
@@ -148,8 +153,10 @@ An assertion copied into a fact is an assumption, not evidence.
 - Do not retain parallel old/new authority paths after cutover.
 - Do not create one reader, publisher, or session framework per fact family.
 - Extract shared code only after at least two concrete uses expose the same law.
-- Never reduce line count by removing admission, proof, crash safety, test
-  isolation, diagnostics, or required TUI behavior.
+- Do not reduce line count by weakening admission, proof, crash safety, test
+  isolation, or diagnostics of **remaining** capabilities. A removed capability
+  must not appear to work; delete its obsolete tests and provide an explicit
+  unavailable result when an old command could otherwise enter another mode.
 - Update current docs in place. Do not add migration diaries or completed-work
   inventories.
 
