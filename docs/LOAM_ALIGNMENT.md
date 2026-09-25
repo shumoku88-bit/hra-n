@@ -16,7 +16,13 @@ Lean 4の将来のtoolchain/API保守負担への不安が、実装基盤を分�
 
 
 Loam側のproofや最適化は、そのままHRA-Nへ移植する対象ではない。
-HRA-Nでrepresentation、index、streaming、cache、replay戦略を変更するときは、
+また、Loamが家計簿・個人会計OSS、PTA、会計モデル、UI、難しい実例の調査から得た
+設計知識は、機能一覧として写すのではなく、言語中立の法則・反例・設計圧力として
+[`RESEARCH_INHERITANCE.md`](RESEARCH_INHERITANCE.md) に継承する。HRA-Nは
+Loamの現行source topologyが変わっても、その蒸留済み知識を単独で説明できる状態を
+保つ。
+
+Loam側のproofや最適化を参照してHRA-Nでrepresentation、index、streaming、cache、replay戦略を変更するときは、
 小さいreference semanticsとproduction implementationの対応をHRA-N自身の
 Alloy/SPARK/testsで確かめる。LoamのLean proofは「何を固定すべきか」の重要な
 証拠だが、HRA-NのAda/SPARK実装の正しさを自動的に証明するものではない。
