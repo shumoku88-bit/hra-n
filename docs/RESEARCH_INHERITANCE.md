@@ -21,7 +21,7 @@ It is deliberately not:
 
 The source survey for this version was refreshed against LOAM
 `8c067f8aa0226d47652cba797c5f502f4ef64328` and HRA-N
-`ce3ee986c7563dae83e6e3e384e3faaad729ea69`. A later source review may change
+`3c5f6119d9df2c0331b86c1f7d3dd26c7731b9ea`. A later source review may change
 the evidence pointers below, but an inherited HRA-N law changes only through an
 explicit semantic decision.
 
@@ -80,6 +80,102 @@ Primary LOAM evidence:
 - `docs/research/external-pressure/EXTERNAL_ACCOUNTING_PRESSURE_SURVEY_2026-09.md`
 - `docs/research/external-pressure/LOAM_TIGERBEETLE_REA_BEANCOUNT_COMPARISON_2026-09.md`
 - `docs/research/ACCOUNTING_CAPABILITY_AUDIT_CHECKPOINT_2026-09.md`
+
+## 2A. Domain coverage register
+
+Broad labels such as "investment" or "debt" are too easy to forget during a
+future rewrite. The register below preserves the **research horizon** without
+turning it into a production roadmap.
+
+| Domain family | Representative distinctions that must not be forgotten | Inheritance state |
+|---|---|---|
+| Payment authorization / capture | requested, authorized, reserved, captured, released, settled quantities and identities may differ | **PRESSURE** |
+| Refund / reversal / dispute | economic refund, correction, provisional dispute credit, failed refund, merchant/store credit and later adjudication are distinct | **PRESSURE** |
+| Bank sync / external observation | pending/posted replacement, source revision, duplicate feeds, source provenance, occurrence time vs posting time | **PRESSURE** |
+| Transfer / settlement | side-local dates/evidence, fees, partial and many-to-one settlement, incomplete counterpart observation, reversal | **PRESSURE** |
+| Wallets / points / vouchers | equal quantity does not imply equal spend/send/withdraw rights; expiry and merchant restrictions are separate policy/evidence | **PRESSURE** |
+| Capacity / budget / backing | entitlement, funding, holdings and purpose routing are related but not mutually derivable | **INHERITED** |
+| Scheduled / recurrence / uncertainty | existence, exact amount, ranges, date uncertainty, recurrence policy, partial realization and matching are distinct | **PRESSURE** |
+| Recognition / obligation / service time | payment, invoice, service period, recognition, refundable deposit and escrow/control need not share a date or meaning | **PRESSURE** |
+| Debt / credit / interest | principal, interest, fees, accrual, rate policy, refinancing/installments, forgiveness and credit availability are distinct | **PRESSURE** |
+| Shared expense / claim / reimbursement | payer, burden, claim, settlement, refund redistribution and netting are separate evidence planes | **INHERITED / PRESSURE** |
+| Reconciliation / assertions / finality | cleared, reconciled, as-published, restated, physical count and broker holding assertion are not synonyms | **PRESSURE** |
+| FX / multi-Measure valuation | occurrence/settlement/query rates, authority provenance, realised/unrealised difference, rounding residual and reporting currency | **PRESSURE** |
+| Investments / securities | acquisition provenance, lots, basis, disposal attribution, valuation, income, corporate actions and settlement | **PRESSURE** |
+| Inventory / physical assets | commitment, physical stock movement, invoice/recognition, COGS, depreciation, impairment and valuation | **PRESSURE** |
+| Identity / correction / provenance | one-to-many and many-to-one correction, retraction, conflicting sources, local annotation, bitemporal knowledge | **PRESSURE** |
+| Tax / policy / jurisdiction | timed applicability, jurisdiction, line-vs-document rounding, historical policy provenance | **PRESSURE** |
+| Concurrency / sync / extension | writer ownership, stale/offline merge, concurrent deduplication, conservative future fact extension | **PRESSURE** |
+| Insurance / escrow / deposits | adjudication, deductible/subrogation, provisional claim settlement, ownership/control and release | **RESEARCH_ONLY** |
+| BNPL / subscriptions | schedule generation, lender/merchant divergence, late fees, proration, cancellation horizon, metered true-up | **RESEARCH_ONLY** |
+| Marketplace / payroll / tax filing | multi-party payouts/fees, earning vs payment, withholding/benefits, amended returns, credits/carryforwards | **RESEARCH_ONLY** |
+| Data lifecycle / migration | lossy import identity, institution/account migration, deletion/redaction and retained audit evidence | **RESEARCH_ONLY** |
+
+`PRESSURE` does not mean "implement this now". It means that a future change in
+that domain must not start from an empty notebook and accidentally erase a
+distinction LOAM already paid to discover. A production capability still needs a
+household need, a selected observable and independent HRA-N qualification.
+
+The source corpus is deliberately broader than current HRA-N functionality.
+LOAM's falsification work reviewed 200 specimens across these domains; HRA-N does
+not copy those 200 rows, but this register keeps their major seams discoverable.
+
+Primary LOAM evidence:
+
+- `docs/research/falsification/LOAM_FALSIFICATION_ATLAS.md`
+- `docs/research/falsification/LOAM_FALSIFICATION_PROGRESS.md`
+- `docs/research/external-pressure/EXTERNAL_ACCOUNTING_PRESSURE_SURVEY_2026-09.md`
+
+## 2B. Investment and securities inheritance
+
+Investment research must not collapse into a single "stock balance" feature.
+At minimum, keep the following distinctions visible even while production
+support is deferred:
+
+1. **Security quantity vs money value.** Shares/units and JPY/USD valuation are
+   different Measures/questions. A current quote does not rewrite historical
+   quantity evidence.
+2. **Acquisition provenance and basis.** Equal current holdings can arise from
+   different acquisitions with different basis and later tax/reporting answers.
+3. **Lot selection vs lot existence.** FIFO, average cost or another selection
+   policy is a projection/authority choice over retained acquisition evidence;
+   do not bake one policy into physical history merely for convenience.
+4. **Many-source disposal.** One sale may consume parts of several acquisitions.
+   Aggregate holding plus sale quantity is insufficient when a later question
+   needs per-acquisition consumption provenance.
+5. **Historical valuation vs cost basis.** Market valuation, acquisition basis,
+   disposal proceeds and realised/unrealised gain are related calculations, not
+   one canonical scalar.
+6. **Execution vs settlement.** Trade execution, later cash/security settlement,
+   settlement failure, and the rights/exposure between them may differ.
+7. **Income and reinvestment.** Dividend entitlement, cash dividend, withholding
+   or fees, and automatic reinvestment must not be flattened into one movement
+   when the selected query needs their distinction.
+8. **Corporate actions.** Stock splits, return of capital, spin-offs, mergers,
+   fractional cash-in-lieu and similar actions can change units, basis, ownership
+   provenance or settlement without an ordinary purchase/sale cash flow.
+9. **Independent assertions.** A broker holding statement may conflict with
+   transaction reconstruction. The assertion is evidence of a conflict, not
+   permission to silently pad or rewrite history.
+10. **Cross-currency composition.** Foreign securities compose investment
+    provenance with temporal FX authority; neither layer should silently choose
+    the other's rate, basis or gain policy.
+
+LOAM already found concrete information pressure here: acquisition-specific
+basis/provenance survived aggregation, and aggregate holding/disposal data was
+too small to recover per-acquisition consumed quantity in the selected lot
+question. HRA-N should therefore not introduce a convenient first-class `Lot`
+object merely because broker/accounting software uses that noun, but it also
+must not discard the provenance needed to reconstruct a selected lot view.
+Stable lot identity should be earned by a query that cannot be represented by
+acquisition origin plus reconstructable provenance.
+
+Primary LOAM evidence:
+
+- `docs/research/falsification/LOAM_FALSIFICATION_ATLAS.md` F087 and F089-F104
+- `docs/research/falsification/LOAM_FALSIFICATION_PROGRESS.md`
+- `docs/research/external-pressure/EXTERNAL_ACCOUNTING_PRESSURE_SURVEY_2026-09.md`
+- `docs/research/external-pressure/LOT_CONTINUITY_OBJECT_VS_PROVENANCE_GRAPH_2026-09.md`
 
 ## 3. Difficult household operations are qualification assets
 
