@@ -171,6 +171,14 @@ proof that adjacent counterexamples are covered:
   funding/pace answer still needs explicit source, date, coverage, Scheduled
   pressure, shared Application projection and independent tests. Compare Loam
   `CycleBudgetReview` and old HRA's `Household_Report_Observation` first.
+- F05 focused rejection slice: report Balance and Audit now propagate rejected
+  Application query status to `Export_Cli` instead of emitting `[ERROR]` with
+  exit 0; Statement propagates its status as well. Audit carries partial
+  Statement status without upgrading it to complete. Synthetic CLI evidence
+  exceeds the balance coordinate bound across Statement, Balance, and Audit;
+  the one-shot Statement uses its own CLI error path. This is not yet the
+  full seven-tab × complete/partial/rejected/overflow contract matrix; TUI
+  status presentation and canonical cross-source failures remain open.
 - Daily Flow separates gross/returned income and gross/refund expense.
   MoM separates discrete monthly flows (Income/Expense/Net Savings) from
   month-end balances (Net Worth) with cross-query consistency tests against
@@ -340,15 +348,15 @@ an adopted or qualified equivalence baseline.
 | Field | Current evidence |
 |---|---|
 | Review time | 2026-09-25 JST; local Loam delta inventory and canonical-only init CLI cleanup |
-| HRA-N source | remote main `1c8bd350ae9acf3d339d98113d53ec27ce944130` (PR #87 canonical-only init merged); F03/F04 working change is not yet on main |
+| HRA-N source | main `46149e43d8e423d1eb28aa7587499449df67b6c1` (PR #88 F03/F04 merged) plus focused F05 working changes |
 | Prior audit comparison | Loam `6869de2`; numerical audit evidence remains pinned there |
 | Pinned Loam review tip | local/remote `8c067f8aa0226d47652cba797c5f502f4ef64328`; only `.gitignore` changed since `50a9d4be`. HRA-N PR #85 inherited LOAM research laws, not code parity. Prior 26-commit Record/UI/path delta remains only partially classified; focused authority diff showed path-reference centralization, not a canonical filename change |
-| Repository scope | HRA-N remote main `1c8bd35` after PRs #86 (domain/investment research) and #87 (init); Loam local/remote main `8c067f8a`. F03/F04 changes remain separate. No household data touched |
-| Remote/CI | HRA-N main `3c5f611` push run `36128532854` passed; PR #87 run `36129951737` passed and merged as `1c8bd35`. Neither run includes F03/F04; main push for #87 and F03/F04 CI not yet confirmed. Loam checks not rerun here |
+| Repository scope | HRA-N local/remote main `46149e4` after PRs #86 (research), #87 (init), #88 (F03/F04); Loam local/remote main `8c067f8a` at last fetch. No household data touched |
+| Remote/CI | PR #87 run `36129951737`, PR #88 run `36130906771`, and main push for #87 `36130798433` passed. Main push for #88 `36131633925` was still running at review. F05 changes tested locally, not yet on remote; Loam checks not rerun here |
 | Review scope | Loam local delta inventory: shared `HouseholdSnapshot` and renderer-neutral Reports add Home, Stock-Flow, Daily Pace, Income & Expense, Balances, Transactions Flow presentation; Fava launch enforces read-only observation; product/research Lean build split. RoleFlow source inspected for F03: current role map overlay differs from HRA-N effective-dated roles. Loam tests not run. HRA-N CLI init exposes only canonical creation (mode flags refuse); old initializer remains for transitional test fixtures |
 | Executed qualification | HRA-N `rtk test ./tools/test` passed after init cleanup and F03 cross-month Ada + CLI specimens (build, Ada tests, CLI, observation, qualifier, existing PTY suite); Loam tests, formal/proof gate, and CI not run |
 | Adopted parity baseline | None from this delta. Canonical-only init CLI is HRA-N legacy retirement, not evidence of Loam report parity |
-| Next review | Qualify F03/F04 in their own PR/remote CI before any parity claim. Investigate legacy future-role account prepopulation vs historical as-of stock and LOAM RoleBalance answerability, then F05 exit contract. Domain/investment additions in PR #86 are research pressures, not P0 implementation work |
+| Next review | Qualify focused F05 status/exit fix via remote CI, then extend its seven-tab × availability/refusal/overflow matrix. Investigate legacy future-role account prepopulation vs historical as-of stock and LOAM RoleBalance answerability before parity claims. Domain/investment additions in PR #86 remain research pressures, not P0 implementation work |
 
 ### Open adoption decisions
 
