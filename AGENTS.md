@@ -108,16 +108,19 @@ Follow [`docs/DEVELOPMENT_METHOD.md`](docs/DEVELOPMENT_METHOD.md) before
 choosing an implementation shape. For semantic or architectural changes:
 
 1. state the household question / observable and the minimum authority;
-2. search for representation counterexamples when information may be lost;
-3. keep a small reference semantics before introducing indexing, streaming,
+2. check [`docs/RESEARCH_INHERITANCE.md`](docs/RESEARCH_INHERITANCE.md) for
+   already-earned external-product, difficult-operation, accounting,
+   interaction, and falsification pressure;
+3. search for representation counterexamples when information may be lost;
+4. keep a small reference semantics before introducing indexing, streaming,
    caching, or another optimized representation;
-4. implement the law in native Ada/SPARK form;
-5. establish correspondence between reference semantics and the production
+5. implement the law in native Ada/SPARK form;
+6. establish correspondence between reference semantics and the production
    representation on the stated domain;
-6. model temporal behavior before introducing or changing canonical writes;
-7. qualify parser/OS/frontend boundaries with executable tests;
-8. complete the smallest useful CLI/TUI vertical slice;
-9. retire the superseded authority path.
+7. model temporal behavior before introducing or changing canonical writes;
+8. qualify parser/OS/frontend boundaries with executable tests;
+9. complete the smallest useful CLI/TUI vertical slice;
+10. retire the superseded authority path.
 
 Not every slice needs Alloy, TLA+, SPIN, and SPARK. Use the tool that addresses
 the changed claim. A frontend-only change should not manufacture a formal model;
