@@ -176,14 +176,16 @@ proof that adjacent counterexamples are covered:
   exit 0; Statement propagates its status as well. Audit carries partial
   Statement status without upgrading it to complete. Synthetic CLI evidence
   exceeds the balance coordinate bound across Statement, Balance, and Audit;
-  the one-shot Statement uses its own CLI error path. A second all-seven-tab
+  the one-shot Statement uses its own CLI error path. A focused PTY specimen
+  checks that Balance/Audit query refusal remains visible on tab switch and
+  cached return without a PASS or net-worth claim. A second all-seven-tab
   CLI specimen checks unreadable journal rejection, and a known/unknown origin
   matrix checks that stock availability does not erase independent capacity or
   flow answers. Under 129 distinct coordinates, Statement/Balance/MoM/Audit
   reject, but Budget/Pace/Flow still answer from narrower projections. Do not
   describe those answers as an admitted complete household snapshot: F08
-  remains open. The full seven-tab × refusal/overflow matrix, TUI status
-  presentation, and canonical cross-source failures remain unqualified.
+  remains open. The full seven-tab × refusal/overflow matrix, complete TUI
+  status presentation, and canonical cross-source failures remain unqualified.
 - Daily Flow separates gross/returned income and gross/refund expense.
   MoM separates discrete monthly flows (Income/Expense/Net Savings) from
   month-end balances (Net Worth) with cross-query consistency tests against
@@ -353,15 +355,15 @@ an adopted or qualified equivalence baseline.
 | Field | Current evidence |
 |---|---|
 | Review time | 2026-09-25 JST; local Loam delta inventory and canonical-only init CLI cleanup |
-| HRA-N source | main `a0099461159c1d59108730a7764bb9921a764bc1` (PR #89 F05 focused fix merged) plus all-tab CLI matrix working changes |
+| HRA-N source | main `8dc4def0773c22172d13e777db9532f93953df53` (PR #90 all-tab CLI matrix merged) plus focused report-refusal PTY working change |
 | Prior audit comparison | Loam `6869de2`; numerical audit evidence remains pinned there |
-| Pinned Loam review tip | local/remote `8c067f8aa0226d47652cba797c5f502f4ef64328`; only `.gitignore` changed since `50a9d4be`. HRA-N PR #85 inherited LOAM research laws, not code parity. Prior 26-commit Record/UI/path delta remains only partially classified; focused authority diff showed path-reference centralization, not a canonical filename change |
-| Repository scope | HRA-N local/remote main `a009946` after PRs #87 (init), #88 (F03/F04), #89 (focused F05); Loam local/remote main `8c067f8a` at last fetch. No household data touched |
-| Remote/CI | PR #88 run `36130906771`, its main push `36131633925`, and PR #89 run `36131897814` passed. Main push for #89 `36132744173` was running at review. All-tab matrix changes tested locally, not yet on remote; Loam checks not rerun here |
+| Pinned Loam review tip | local/remote `8b26bfe8cb953d2543879cbe93570d020d2c7f92`; one documentation-only delta since `8c067f8a` records `loam review` production-path million-Event synthetic measurements (plain 11.938s, description 15.073s, correction 16.951s at 1M on one ubuntu-24.04 runner). This is empirical pressure for HRA-N F09/derived-index qualification, not a format or report-law change or performance parity. Prior Record/UI/path delta remains partially classified |
+| Repository scope | HRA-N local/remote main `8dc4def` after PR #90 all-tab CLI matrix; Loam local/remote main `8b26bfe8` after documentation-only scaling checkpoint. No household data touched |
+| Remote/CI | PR #90 CI `36133224673` and #89 main push `36132744173` passed; #90 main push `36133925774` in progress at review. PTY refusal specimen tested locally, not yet on remote. Loam benchmark evidence reviewed as scoped measurement; Loam tests/CI not rerun here |
 | Review scope | Loam local delta inventory: shared `HouseholdSnapshot` and renderer-neutral Reports add Home, Stock-Flow, Daily Pace, Income & Expense, Balances, Transactions Flow presentation; Fava launch enforces read-only observation; product/research Lean build split. RoleFlow source inspected for F03: current role map overlay differs from HRA-N effective-dated roles. Loam tests not run. HRA-N CLI init exposes only canonical creation (mode flags refuse); old initializer remains for transitional test fixtures |
 | Executed qualification | HRA-N `rtk test ./tools/test` passed after init cleanup and F03 cross-month Ada + CLI specimens (build, Ada tests, CLI, observation, qualifier, existing PTY suite); Loam tests, formal/proof gate, and CI not run |
 | Adopted parity baseline | None from this delta. Canonical-only init CLI is HRA-N legacy retirement, not evidence of Loam report parity |
-| Next review | Qualify seven-tab CLI evidence on remote; address F08's narrower-query vs full-snapshot admission gap before calling Budget/Pace/Flow qualified under coordinate overflow. Then complete F05 TUI/overflow matrix. Investigate legacy future-role account prepopulation vs historical stock before parity claims |
+| Next review | Qualify focused report-refusal PTY specimen remotely, then address F08's narrower-query vs full-snapshot admission gap before calling Budget/Pace/Flow qualified under coordinate overflow. Compare HRA-N bounded long-history design against Loam's measured transient-index pressure only when F09 is selected; no benchmark parity inferred. Investigate legacy future-role prepopulation before report parity claims |
 
 ### Open adoption decisions
 
