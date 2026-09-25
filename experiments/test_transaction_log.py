@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
-"""Offline framing probe, NOT a production log reader/writer or migration tool.
+"""Offline byte-framing probe, NOT a canonical reader or admission gate.
 
-Only invokes HRA-N against newly created temporary synthetic households.
-See TRANSACTION_LOG.md for the deliberately unqualified durability boundary.
+Synthetic three-stream images exercise framing only; retired CLI writers are
+not invoked. See TRANSACTION_LOG.md for the deliberately limited claim.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
 import json
-from pathlib import Path
-import subprocess
-import tempfile
 import unittest
 
 STREAMS = ('journal.hra', 'policy.hra', 'scheduled.hra')
 EMPTY_HEAD = '0' * 64
-ROOT = Path(__file__).resolve().parents[1]
-BINARY = ROOT / 'bin' / 'hra-n'
 
 
 def digest(payload: bytes) -> str:
@@ -77,77 +72,40 @@ def replay(data: bytes) -> Replay:
 class TransactionLogProbe(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        if not BINARY.is_file():
-            raise RuntimeError('Build HRA-N first: ./tools/build')
-        cls.tmp = tempfile.TemporaryDirectory(prefix='hra_n_log_probe_')
-        cls.addClassCleanup(cls.tmp.cleanup)
-        cls.household = Path(cls.tmp.name) / 'source'
-        cls.household.mkdir()
-        cls.images, cls.frames, cls.generations = [], [], []
-        previous, head = dict.fromkeys(STREAMS, ''), EMPTY_HEAD
-        commands = [
-            ('init',),
-            ('capacity', 'transfer', 'unallocated', 'Food', '100', '2026-09-01'),
-            ('route', 'set', 'food', 'Food', 'initial'),
-            ('movement', 'cash', 'food', '10', '2026-09-30', '合成の買い物'),
-            ('correct', 'e0001', 'cash', 'food', '12', '2026-09-30', '合成の訂正'),
-            ('scheduled', 'add', 'cash', 'food', '20', '2026-09-30'),
-            ('complete', 's0001', '2026-09-30', '合成の予定完了'),
+        # Byte specimens, not admitted household facts. Keep the two-stream
+        # final append to test publication atomicity at every byte boundary.
+        changes = [
+            {'journal.hra': 'JOURNAL\n', 'policy.hra': 'POLICY\n',
+             'scheduled.hra': 'SCHEDULED\n'},
+            {'policy.hra': 'CAPACITY synthetic 100\n'},
+            {'policy.hra': 'ROUTE synthetic\n'},
+            {'journal.hra': 'EVENT e1 合成の買い物\n'},
+            {'journal.hra': 'CORRECT e2 replaces:e1 合成の訂正\n'},
+            {'scheduled.hra': 'DECLARE s1\n'},
+            {'journal.hra': 'EVENT e3 completion\n',
+             'scheduled.hra': 'COMPLETE s1 e3\n'},
         ]
-        for command in commands:
-            cls.run_cli(cls.household, *command)
-            selected = (cls.household / '.hra' / 'CURRENT').read_text().strip()
-            generation = cls.household / '.hra' / 'generations' / selected
-            image = {name: (generation / name).read_bytes().decode('utf-8') for name in STREAMS}
-            if any(not image[name].startswith(previous[name]) for name in STREAMS):
-                raise AssertionError('fixture is not append-only: candidate representation insufficient')
-            delta = {name: image[name][len(previous[name]):] for name in STREAMS}
+        cls.images, cls.frames = [], []
+        previous, head = dict.fromkeys(STREAMS, ''), EMPTY_HEAD
+        for change in changes:
+            delta = {name: change.get(name, '') for name in STREAMS}
+            image = {name: previous[name] + delta[name] for name in STREAMS}
             encoded = frame(head, delta)
             cls.images.append(image)
             cls.frames.append(encoded)
-            cls.generations.append(selected)
-            head, previous = replay(b''.join(cls.frames)).head, image
+            head, previous = encoded.split(b' ', 1)[0].decode('ascii'), image
         cls.log = b''.join(cls.frames)
 
-    @staticmethod
-    def run_cli(root: Path, *args: str) -> bytes:
-        result = subprocess.run([str(BINARY), '-d', str(root), *args], capture_output=True)
-        if result.returncode:
-            raise AssertionError((args, result.returncode, result.stdout, result.stderr))
-        return result.stdout
-
-    def test_exact_history_and_observables(self) -> None:
+    def test_exact_byte_history(self) -> None:
         for i, original in enumerate(self.images):
             answer = replay(b''.join(self.frames[:i + 1]))
             self.assertEqual(answer.image, original)
             self.assertEqual(answer.pending, b'')
-        target = Path(self.tmp.name) / 'replayed-read-only'
-        target.mkdir()
-        image = replay(self.log).image
-        for name in STREAMS:
-            (target / name).write_bytes(image[name].encode('utf-8'))
-        for args in [('budget', '2026-09-01', '2026-10-01'),
-                     ('report', '--flow', '-m', '9', '-y', '2026')]:
-            expected = self.run_cli(self.household, *args)
-            # Explicit identity mapping only: replayed bytes are unversioned
-            # compatibility input, not a newly published production generation.
-            expected = expected.replace(
-                b'Snapshot: ' + self.generations[-1].encode('ascii'),
-                b'Snapshot: unversioned')
-            actual = self.run_cli(target, *args)
-            self.assertEqual(actual, expected)
-            # Independent arithmetic: corrected 12 + completed 20 = 32;
-            # capacity 100 - consumption 32 = remaining 68.
-            if args[0] == 'budget':
-                self.assertRegex(actual.decode('utf-8'), r'Food\s+100 JPY\s+32 JPY\s+68 JPY')
-            else:
-                self.assertRegex(actual.decode('utf-8'), r'Total Monthly Flow\s+0\s+32\s+-32')
-        self.assertIn('合成の訂正', image['journal.hra'])
-        self.assertIn('replaces:e0001', image['journal.hra'])
+        self.assertIn('合成の訂正', replay(self.log).image['journal.hra'])
         # Measurement is this specimen's retained stream bytes, not total disk
         # allocation, an equal-capability LOC result, or a long-history benchmark.
-        generation_bytes = sum(len(text.encode('utf-8')) for image in self.images for text in image.values())
-        print(f'probe: generations={len(self.images)}, retained_stream_bytes={generation_bytes}, '
+        image_bytes = sum(len(text.encode('utf-8')) for image in self.images for text in image.values())
+        print(f'probe: synthetic_images={len(self.images)}, retained_stream_bytes={image_bytes}, '
               f'framed_log_bytes={len(self.log)}')
 
     def test_every_byte_prefix_of_every_publication(self) -> None:
@@ -161,7 +119,7 @@ class TransactionLogProbe(unittest.TestCase):
             prefix += encoded
             self.assertEqual(replay(prefix).image, new_image)
             previous = new_image
-        # Completion actually modifies both streams, not just a single-file case.
+        # The final synthetic frame modifies both streams, not just one file.
         before, after = self.images[-2:]
         self.assertNotEqual(before['journal.hra'], after['journal.hra'])
         self.assertNotEqual(before['scheduled.hra'], after['scheduled.hra'])
@@ -189,7 +147,7 @@ class TransactionLogProbe(unittest.TestCase):
                     frame(EMPTY_HEAD, {'invented.hra': 'X\n'})]:
             with self.assertRaises(ValueError):
                 replay(bad)
-        # A checksum is not semantic admission: a well-framed dangling fact
+        # A checksum is not semantic admission: an unsupported string
         # survives this byte container. Production admission must not be removed.
         unknown = dict.fromkeys(STREAMS, '')
         unknown['journal.hra'] = 'NOT-A-CANONICAL-FACT\n'

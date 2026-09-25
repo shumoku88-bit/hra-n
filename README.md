@@ -174,13 +174,12 @@ it does not imply that unfinished canonical-ledger-v2 capabilities exist.
 
 ## Canonical representation research
 
-Isolated [transaction-log probes](experiments/TRANSACTION_LOG.md) compare framed
-append-only deltas with existing synthetic generations, including a POSIX-only
-experimental writer, process interruption, competing writers and receipt retry.
-They preserve current facts and queries without adding a production writer or
-migration path. Process-exit tests are not power-loss qualification, and the two
-writers' fault harnesses are not yet equivalent. The existing immutable-generation
-authority remains unchanged.
+Isolated [transaction-log probes](experiments/TRANSACTION_LOG.md) test framed
+append-only synthetic byte images, including POSIX process interruption,
+competing byte candidates, and receipt retry. They no longer compare admitted
+generations or household answers after the legacy CLI writers were retired.
+They add no production writer, semantic admission, or migration path; process
+exit is not power-loss qualification.
 
 ## License
 
