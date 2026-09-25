@@ -237,10 +237,13 @@ class TestHraNCli(unittest.TestCase):
         historical = self.run_cmd('balance', '--as-of', '2026-09-01')
         self.assertIn('current roles have no historical as-of authority', historical.stdout)
         before = open(os.path.join(self.test_dir, 'journal.hra'), 'rb').read()
-        rejected = self.run_cmd('assert', 'cash', '0', '2026-09-20', 'jpy')
-        self.assertNotEqual(rejected.returncode, 0)
-        self.assertIn('proposal rejected', rejected.stdout + rejected.stderr)
-        self.assertEqual(open(os.path.join(self.test_dir, 'journal.hra'), 'rb').read(), before)
+        for command in (('assert', 'cash', '0', '2026-09-20', 'jpy'),
+                        ('reconcile',), ('reconciliation',)):
+            with self.subTest(command=command):
+                rejected = self.run_cmd(*command)
+                self.assertNotEqual(rejected.returncode, 0)
+                self.assertIn('canonical assertion editing is unavailable', rejected.stdout + rejected.stderr)
+                self.assertEqual(open(os.path.join(self.test_dir, 'journal.hra'), 'rb').read(), before)
         os.unlink(locus)
         missing = self.run_cmd('balance')
         self.assertNotEqual(missing.returncode, 0)
