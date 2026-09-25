@@ -240,6 +240,61 @@ def test_mom_partial_stock_tui() -> None:
     print('MoM PTY: unknown/unclassified stock and one-month conflict remain unavailable')
 
 
+def test_report_legacy_admission_tui() -> None:
+    """Malformed Scheduled evidence refuses the legacy report tabs in TUI."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    harness = os.path.join(root, 'tests', 'bin', 'tui_harness')
+    with tempfile.TemporaryDirectory(prefix='hra_n_report_admission_pty_') as household:
+        for name, text in {
+            'journal.hra': 'TX e1 2026-09-10 cash:-10 food:10\n',
+            'policy.hra': 'ROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n',
+            'scheduled.hra': 'INVALID\n',
+        }.items():
+            with open(os.path.join(household, name), 'w', encoding='utf-8') as stream:
+                stream.write(text)
+        pid, fd = pty.fork()
+        if pid == 0:
+            env = os.environ.copy()
+            env['TERM'] = 'xterm-256color'
+            os.execve(harness, [harness, household], env)
+        reaped = False
+        try:
+            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 80, 160, 0, 0))
+            output = bytearray()
+            read_until(fd, output, b'AUTHORITY REJECTED')
+            os.write(fd, b'p')
+            read_until(fd, output, b'scheduled journal rejected')
+            for key, selected in ((b'7', b'Audit*'), (b'2', b'* [3] Balances')):
+                start = len(output)
+                os.write(fd, key)
+                # Curses does not re-emit an unchanged diagnostic line; the
+                # changed tab label proves redraw while no PASS replaces it.
+                read_until(fd, output, selected)
+                assert b'[PASS]' not in output[start:], bytes(output[start:])
+            os.write(fd, b'q')
+            read_until(fd, output, b'AUTHORITY REJECTED')
+            os.write(fd, b'q')
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                exited, status = os.waitpid(pid, os.WNOHANG)
+                if exited:
+                    reaped = True
+                    assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 1, status
+                    break
+                if select.select([fd], [], [], 0.05)[0]:
+                    try:
+                        os.read(fd, 4096)
+                    except OSError:
+                        pass
+            assert reaped, 'Legacy admission PTY did not quit'
+        finally:
+            if not reaped:
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+            os.close(fd)
+    print('Report PTY: malformed Scheduled evidence rejects across report tabs')
+
+
 def test_report_rejected_query_tui() -> None:
     """An overfull query stays rejected across Balance/Audit tab navigation."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1742,5 +1797,6 @@ if __name__ == "__main__":
     test_mom_role_change_tui()
     test_mom_partial_stock_tui()
     test_report_rejected_query_tui()
+    test_report_legacy_admission_tui()
     test_month_end_budget()
     test_month_end_budget(foreign_capacity=True)

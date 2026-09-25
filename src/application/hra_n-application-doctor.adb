@@ -14,6 +14,7 @@ with HRA_N.Core.Coverage;          use HRA_N.Core.Coverage;
 with HRA_N.Application.Path_Resolver; use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Canonical_Authority; use HRA_N.Application.Canonical_Authority;
 with HRA_N.Storage.Journal_Reader; use HRA_N.Storage.Journal_Reader;
+with HRA_N.Storage.Legacy_Admission;
 with HRA_N.Storage.Policy_Reader;  use HRA_N.Storage.Policy_Reader;
 with HRA_N.Storage.Scheduled_Journal_Reader; use HRA_N.Storage.Scheduled_Journal_Reader;
 with HRA_N.Storage.Loam_Actual_Reader; use HRA_N.Storage.Loam_Actual_Reader;
@@ -223,11 +224,24 @@ package body HRA_N.Application.Doctor is
                if Ada.Directories.Exists (S_Path) then
                   SR := Read_Scheduled_Journal_File (S_Path);
                   if SR.Success then
-                     Set_Item (Report.Relation_Check, True, "PASS", "Scheduled lifecycle sound");
+                     declare
+                        Admission_Error : constant String :=
+                          HRA_N.Storage.Legacy_Admission.Failure (JR, PR, SR);
+                     begin
+                        if Admission_Error'Length = 0 then
+                           Set_Item (Report.Relation_Check, True, "PASS", "Three-stream candidate admitted");
+                        else
+                           Set_Item (Report.Relation_Check, False, "FAIL", Admission_Error);
+                           All_Healthy := False;
+                        end if;
+                     end;
                   else
                      Set_Item (Report.Relation_Check, False, "FAIL", SR.Error_Reason (1 .. SR.Error_Len));
                      All_Healthy := False;
                   end if;
+               else
+                  Set_Item (Report.Relation_Check, False, "FAIL", "scheduled.hra missing from three-stream candidate");
+                  All_Healthy := False;
                end if;
             end;
 
