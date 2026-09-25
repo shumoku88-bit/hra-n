@@ -307,6 +307,45 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd("status")
         self.assertIn("Net worth : -10", res.stdout)
 
+    def test_all_report_tabs_reject_unreadable_evidence(self) -> None:
+        # F05/F08: a failed input read cannot become a successful report, even
+        # on a tab that would otherwise show independent capacity evidence.
+        self.write_report_fixture('NOT-A-JOURNAL-FACT\n')
+        for tab in ('--statement', '--budget', '--balances', '--pace',
+                    '--mom', '--flow', '--audit'):
+            with self.subTest(tab=tab):
+                res = self.run_cmd('report', tab, '-m', '9', '-y', '2026')
+                self.assertNotEqual(res.returncode, 0, res.stdout + res.stderr)
+                self.assertIn('[ERROR]', res.stdout + res.stderr)
+                self.assertNotIn('[PASS]', res.stdout + res.stderr)
+                self.assertNotIn('COMPLETE FINANCIAL STATEMENT', res.stdout + res.stderr)
+
+    def test_report_tabs_keep_partial_answerability_local(self) -> None:
+        # Missing stock origin cannot erase an independently valid monthly
+        # flow or capacity answer, nor authorize a scalar net-worth claim.
+        journal = 'TX e1 2026-09-10 cash:-10 food:10\n'
+        for known in (True, False):
+            self.write_report_fixture(journal, known_stock=known)
+            for tab in ('--statement', '--budget', '--balances', '--pace',
+                        '--mom', '--flow', '--audit'):
+                with self.subTest(known=known, tab=tab):
+                    res = self.run_cmd('report', tab, '-m', '9', '-y', '2026')
+                    self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+                    self.assertNotIn('[ERROR]', res.stdout + res.stderr)
+                    if tab in ('--statement', '--mom', '--audit'):
+                        self.assertEqual('[PARTIAL]' in res.stdout or
+                                         'PARTIAL PROJECTION' in res.stdout, not known)
+                    if tab == '--mom':
+                        self.assertRegex(res.stdout,
+                                         r'NET WORTH \(Month-End Stock\)\s+'
+                                         + ('-10' if known else 'Unavailable'))
+                    if not known and tab == '--statement':
+                        self.assertNotIn('NET WORTH (Assets - Liabilities)', res.stdout)
+                    if tab == '--balances':
+                        self.assertIn('[KNOWN_ZERO]' if known else '[UNKNOWN]', res.stdout)
+                    if tab in ('--budget', '--pace'):
+                        self.assertIn('Unavailable:', res.stdout)
+
     def test_report_projection_rejection_exits_nonzero(self) -> None:
         # F05: a renderer must not turn a rejected shared query into exit 0.
         # Synthetic unversioned evidence exceeds Statement/Balance row capacity.
