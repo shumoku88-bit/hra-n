@@ -1,6 +1,7 @@
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Path_Resolver;
 with HRA_N.Core.Description;
+with HRA_N.Core.Accounting_Role; use HRA_N.Core.Accounting_Role;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
 with HRA_N.Storage.Journal_Reader;
@@ -39,6 +40,16 @@ package HRA_N.Application.Daily_Flow_Query is
    Max_Outlays : constant := 5;
    type Outlay_Array is array (1 .. Max_Outlays) of Outlay;
 
+   --  Same occurrence-day classification used by monthly comparisons.
+   --  Key includes Role because one locus can change role inside a month.
+   Max_Flow_Rows : constant := 128;
+   type Flow_Row is record
+      Locus  : Token_Text;
+      Role   : Accounting_Role := Role_Expense;
+      Totals : Flow_Totals;
+   end record;
+   type Flow_Row_Array is array (1 .. Max_Flow_Rows) of Flow_Row;
+
    type Flow_View is record
       Status : Query_Status := Query_Rejected;
       Snapshot : Snapshot_Reference := (Kind => Snapshot_Unversioned);
@@ -47,6 +58,8 @@ package HRA_N.Application.Daily_Flow_Query is
       Day_Count : Day_Type := 31;
       Days : Day_Array;
       Totals : Flow_Totals;
+      Row_Count : Natural range 0 .. Max_Flow_Rows := 0;
+      Rows : Flow_Row_Array;
       Flow_Days : Natural := 0;
       Unclassified_Effects : Natural := 0;
       Top_Count : Natural range 0 .. Max_Outlays := 0;

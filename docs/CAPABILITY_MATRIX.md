@@ -37,7 +37,7 @@ required.
 | Capability | Domain/admission | Storage | Shared Application API | CLI | TUI | Evidence | Status |
 |---|---|---|---|---|---|---|---|
 | Loam normalized Actual read | normalized Actual v1; unsupported retained semantics reject | direct read of Loam `actual.loam`; stable-byte snapshot check | semantic Event / Validity / Description / Metadata image | `hra-n-loam-qualify` structural gate | n/a | synthetic reader + qualifier E2E, SPARK/core gate | **Canonical read slice** |
-| Household initialization | creates complete 7-file canonical foundation (actual, locus, role, coverage, scheduled, capacity, routing); fail-closed duplicate rejection | atomic file write of canonical Loam schemas; legacy `.hra/` via `--legacy` | `Initializer.Initialize_Household` / `Initialize_Legacy_Household` | `hra-n init [--canonical\|--legacy] [DIR]` | n/a | unit, idempotency, doctor audit, E2E CLI tests | **Canonical write slice** |
+| Household initialization | creates complete 7-file canonical foundation (actual, locus, role, coverage, scheduled, capacity, routing); fail-closed duplicate rejection | atomic file write of canonical Loam schemas; old `.hra/` initializer retained only for transitional regression fixtures | `Initializer.Initialize_Household` (legacy test fixture helper remains until its dependent tests are replaced) | `hra-n init [DIR]`; old mode flags reject | n/a | unit, idempotency, doctor audit, E2E CLI tests including legacy-option refusal | **Canonical write slice** |
 | Versioned three-stream read | selected complete generation; invalid selection rejects | immutable generation + atomic `CURRENT`; transitional only | snapshot reference propagated | Home/doctor consume resolver | snapshot shown | path, initializer, Home tests | **V2 transitional** |
 | Generation transaction write | journal and Scheduled facts are byte-prefix append-only; Policy bytes are immutable until effective-dated policy facts exist | transitional three-stream publisher; retain only until Loam-canonical writers replace each vertical slice | typed Movement Intent/opaque Proposal/durable Receipt connected | not connected | writes not yet connected | stale, all-stream rewrite, invalid-candidate, concurrent-writer, activation-boundary fault, idempotent retry, and Movement contract tests + TLA+/SPIN model | **V2 transitional foundation** |
 | Actual list by day/all | occurrence date and stable source order | canonical `actual.loam` for direct CLI and shared TUI Query | `Actual_Query` (canonical direct read and TUI selection) | `hra-n actual [FILE] [DATE]`; auto-resolves `actual.loam` from `-d` (legacy review removed) | Home, Selected Day, Actual (canonical where selected) | canonical reader/unit/CLI + PTY; tests passing | **Canonical read slice** |
@@ -103,6 +103,34 @@ revision remains `fb2725d`; reading a newer Loam revision does not resolve them.
 The following inventory describes implemented safeguards and remaining work, not
 proof that adjacent counterexamples are covered:
 
+- F03 role-change MoM now uses the same occurrence-day classified monthly flow
+  answer as `Daily_Flow_Query` for both months and per-locus rows, while Statement
+  remains the month-end stock source. The third (prior-prior) Statement load and
+  cumulative-flow subtraction were removed. A September reclassification with
+  no September events now reports zero September expense; a midmonth change
+  counts only pre-change expense. Ada fixtures also cover cross-month
+  replacement/date correction and inverses: September expense -4, August +7,
+  MoM difference -11, with both detail rows and Daily Flow agreeing. The report
+  CLI checks these values and a no-September-event Role change; a synthetic
+  report PTY specimen also checks the no-current-event role change and Daily
+  Flow tab. Daily Flow refuses more than 128
+  distinct `(locus, role)` flow rows instead of silently dropping them, and MoM
+  rejects an overfull two-month union. Loam local `6aa69c8` RoleFlow overlays
+  one window's TransactionsFlow with a current AccountingRole map; HRA-N's
+  effective-dated role-by-occurrence rule is **not** claimed equivalent.
+  These fixtures use transitional synthetic journal/policy evidence; canonical
+  Role temporal equivalence remains open. F04 now carries per-endpoint stock
+  availability in the MoM Application result: unknown origin, assertion conflict,
+  and unclassified evidence cannot be rendered as net worth or a stock difference.
+  Ada tests cover a one-month conflict; CLI/PTY cover unknown origin, unclassified
+  evidence, and a one-month assertion conflict with the prior known stock retained.
+  This uses the inherited LOAM unknown-is-not-zero and unresolved-frontier laws
+  (`RESEARCH_INHERITANCE.md` §§2,4; LOAM `8c067f8a` blueprint B5 and accounting
+  audit observations 216/217), not a new retained report fact. A future Role/Locus
+  with no origin can conservatively make even the prior legacy Statement partial
+  because the legacy role map pre-populates all accounts; do not claim historical
+  per-month stock equivalence to LOAM. F04 canonical Role and full cross-surface
+  metric availability remain open.
 - F01 month-end exclusion is fixed in the working implementation:
   `Budget_Query.Project_Month` normalizes `[month start, next month start)`;
   Budget/Pace/Audit use this one answer, while Statement stock remains month-end.
@@ -311,16 +339,16 @@ an adopted or qualified equivalence baseline.
 
 | Field | Current evidence |
 |---|---|
-| Review time | 2026-09-24 UTC; legacy journal review retirement / UI boundary cleanup |
-| HRA-N source | main `570ae167ed56de14698e120e4f4750e946bd47a3` plus legacy journal review removal working change |
+| Review time | 2026-09-25 JST; local Loam delta inventory and canonical-only init CLI cleanup |
+| HRA-N source | remote main `1c8bd350ae9acf3d339d98113d53ec27ce944130` (PR #87 canonical-only init merged); F03/F04 working change is not yet on main |
 | Prior audit comparison | Loam `6869de2`; numerical audit evidence remains pinned there |
-| Pinned Loam review tip | remote `698d39e38bb1510c28dcbbfef593abadd9c35614`; local `d74ab24` clean, behind. New commits since `3b80f8a` touch cleanup/presentation probes, not Actual semantics; no parity adoption |
-| Repository scope | Local `../loam` main was clean; remote was fetched without changing the checkout |
-| Remote/CI | GitHub HRA-N main `570ae16` CI green and open PR list empty at session start; remote Loam `698d39e` checked. PR CI for this slice pending; no whole-system cutover claim |
-| Review scope | Remove journal-only `review` query/renderer that printed from Application directly, rather than claim it is a multi-UI typed query. Canonical `actual FILE [DATE]` still works, but search/week are not qualified replacements |
-| Executed qualification | HRA-N build, Ada/CLI/PTY tests; PR CI pending. Loam tests not rerun (no relevant Loam source change) |
-| Adopted parity baseline | No new Loam parity claim. Remove legacy review Application-to-UI output dependency and journal-only renderer; `Application.Review` retains only the shared clock until the canonical-only Application cutover. Do not infer full CLI/TUI/GUIs parity |
-| Next review | Qualify canonical-only Actual/Home/Record and initialization together before deleting the main old journal writer: an isolated Actual.Query fallback removal rejected 33 old Home/Actual Ada tests, which still encode legacy-only behavior; port essential behavior tests, do not count that breakage as safe cutover |
+| Pinned Loam review tip | local/remote `8c067f8aa0226d47652cba797c5f502f4ef64328`; only `.gitignore` changed since `50a9d4be`. HRA-N PR #85 inherited LOAM research laws, not code parity. Prior 26-commit Record/UI/path delta remains only partially classified; focused authority diff showed path-reference centralization, not a canonical filename change |
+| Repository scope | HRA-N remote main `1c8bd35` after PRs #86 (domain/investment research) and #87 (init); Loam local/remote main `8c067f8a`. F03/F04 changes remain separate. No household data touched |
+| Remote/CI | HRA-N main `3c5f611` push run `36128532854` passed; PR #87 run `36129951737` passed and merged as `1c8bd35`. Neither run includes F03/F04; main push for #87 and F03/F04 CI not yet confirmed. Loam checks not rerun here |
+| Review scope | Loam local delta inventory: shared `HouseholdSnapshot` and renderer-neutral Reports add Home, Stock-Flow, Daily Pace, Income & Expense, Balances, Transactions Flow presentation; Fava launch enforces read-only observation; product/research Lean build split. RoleFlow source inspected for F03: current role map overlay differs from HRA-N effective-dated roles. Loam tests not run. HRA-N CLI init exposes only canonical creation (mode flags refuse); old initializer remains for transitional test fixtures |
+| Executed qualification | HRA-N `rtk test ./tools/test` passed after init cleanup and F03 cross-month Ada + CLI specimens (build, Ada tests, CLI, observation, qualifier, existing PTY suite); Loam tests, formal/proof gate, and CI not run |
+| Adopted parity baseline | None from this delta. Canonical-only init CLI is HRA-N legacy retirement, not evidence of Loam report parity |
+| Next review | Qualify F03/F04 in their own PR/remote CI before any parity claim. Investigate legacy future-role account prepopulation vs historical as-of stock and LOAM RoleBalance answerability, then F05 exit contract. Domain/investment additions in PR #86 are research pressures, not P0 implementation work |
 
 ### Open adoption decisions
 
@@ -351,7 +379,7 @@ in `LOAM_ALIGNMENT.md` §3 before classifying a candidate as an upstream finding
 
 | Question / local basis | State and current evidence | Next discriminating check / return condition |
 |---|---|---|
-| Can canonical data be easier to inspect with fewer retained pieces and no weaker publication? Audit §0A, F09–F11 | [Transaction-log probes](../experiments/TRANSACTION_LOG.md): framed deltas reconstruct 7 synthetic generations; isolated POSIX writer passes process-exit/retry/race tests using an exact synthetic-image admission whitelist. Ownership, admission, sync and recovery remain necessary. Not production, power-loss, migration or readability qualification | Align generation/log process-fault harnesses and investigate shared complete admission (F08) before replacing the whitelist; do not introduce a second accounting engine. Return packet remains local, no Loam proposal/adoption. Retain current writer until equal-scope evidence exists |
+| Can canonical data be easier to inspect with fewer retained pieces and no weaker publication? Audit §0A, F09–F11 | [Transaction-log probes](../experiments/TRANSACTION_LOG.md): framing / POSIX retry/race now use 7 synthetic byte images only, without admitted generations or accounting answers. Whitelist is not semantic admission; no production, power-loss, migration or readability qualification | Establish canonical admission and equal-scope writer fault comparison before any storage proposal; do not infer semantic preservation from byte framing. Return packet remains local, no Loam proposal/adoption |
 | Can trusted admission remove duplicate state/checks without obscuring failure? F08/F14, Loam correction delta in §4 | Adoption candidate and potential reciprocal question; HRA-N's complete read boundary is still incomplete | Establish the Ada boundary, then distinguish reusable closure laws from language/protocol-specific constraints; never copy check deletion blindly |
 | Can interval/measure/availability laws expose shared report assumptions? F01–F07 | F01 month-end and F02 JPY-only refusal regressions qualified locally (P0); Loam BudgetWindowReview already requires explicit half-open dates. No Loam defect or upstream proposal established | Reuse endpoint/exclusive-end range law, without introducing a retained month/Period. Finite end-date refusal is an Ada range constraint, not a Loam defect. Next compare measure and coverage laws with RoleFlow/RoleBalance; differential execution remains pending |
 | Can calendar-to-detail workflows improve both TUIs? Audit §0A, F17–F23 | HRA-N user reports and static findings; no comparative usability result or upstream proposal yet | Compare synthetic workflows and narrow terminal layouts; return concrete rendering/interaction evidence, not private screenshots |

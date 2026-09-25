@@ -79,6 +79,12 @@ def test_statement_evidence() -> None:
                 assert b"Net worth unavailable" in output, bytes(output)
                 assert b"NET WORTH (Assets" not in output, bytes(output)
                 assert b"COMPLETE FINANCIAL STATEMENT" not in output, bytes(output)
+                mark = len(output)
+                os.write(fd, b"5")
+                read_until(fd, output, b"NET WORTH (Month-End Stock)")
+                mom = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b" ", bytes(output[mark:]))
+                assert b"Net worth unavailable" in mom, mom
+                assert re.search(rb"NET WORTH \(Month-End Stock\)\s+Unavailable", mom), mom
                 os.write(fd, b"q")
                 read_until(fd, output, b"Evidence")
                 os.write(fd, b"q")
@@ -102,6 +108,136 @@ def test_statement_evidence() -> None:
                     os.waitpid(pid, 0)
                 os.close(fd)
     print("Statement PTY: unknown origin and assertion conflict remain partial")
+
+
+def test_mom_role_change_tui() -> None:
+    """A role change without current-month events must not invent MoM expense."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    harness = os.path.join(root, "tests", "bin", "tui_harness")
+    first = datetime.date.today().replace(day=1)
+    prior = first - datetime.timedelta(days=1)
+    if prior.year < 2025:
+        raise AssertionError("MoM PTY specimen needs a supported prior year")
+    with tempfile.TemporaryDirectory(prefix="hra_n_mom_role_pty_") as household:
+        fixtures = {
+            "journal.hra": f"TX e1 {prior} cash:-10 food:10\n",
+            "policy.hra": "ROLE cash: ASSET\n"
+                f"ROLE r1 {prior.replace(day=1)} food EXPENSE\n"
+                f"ROLE r2 {first} food ASSET REPLACES r1\n"
+                "ZERO-ORIGIN cash:jpy food:jpy\n",
+            "scheduled.hra": "",
+        }
+        for name, text in fixtures.items():
+            with open(os.path.join(household, name), "w", encoding="utf-8") as stream:
+                stream.write(text)
+        pid, fd = pty.fork()
+        if pid == 0:
+            env = os.environ.copy()
+            env["TERM"] = "xterm-256color"
+            os.execve(harness, [harness, household], env)
+        reaped = False
+        try:
+            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 80, 160, 0, 0))
+            output = bytearray()
+            read_until(fd, output, b"Markers:")
+            os.write(fd, b"p")
+            read_until(fd, output, b"Esc/q: back")
+            start = len(output)
+            os.write(fd, b"5")
+            read_until(fd, output, b"NET WORTH (Month-End Stock)")
+            text = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b" ", bytes(output[start:]))
+            assert re.search(rb"food\s+0\s+10\s+-10", text), text
+            assert re.search(rb"Total Expense\s+0\s+10\s+-10", text), text
+            assert b"[PARTIAL]" not in text, text
+            os.write(fd, b"6")
+            read_until(fd, output, b"Total Monthly Flow")
+            os.write(fd, b"q")
+            read_until(fd, output, b"Evidence")
+            os.write(fd, b"q")
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                exited, status = os.waitpid(pid, os.WNOHANG)
+                if exited:
+                    reaped = True
+                    assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+                    break
+                if select.select([fd], [], [], 0.05)[0]:
+                    try:
+                        os.read(fd, 4096)
+                    except OSError:
+                        pass
+            assert reaped, "MoM PTY did not quit"
+        finally:
+            if not reaped:
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+            os.close(fd)
+    print("MoM PTY: role change preserves prior expense without current flow")
+
+
+def test_mom_partial_stock_tui() -> None:
+    """Unknown and unclassified evidence never becomes a MoM stock number."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    harness = os.path.join(root, "tests", "bin", "tui_harness")
+    first = datetime.date.today().replace(day=1)
+    prior_day = first - datetime.timedelta(days=1)
+    for current, extra_role, assertion, prior in [
+        ('cash:-10 bank:10', 'ROLE bank: ASSET\n', '', b'Unavailable'),
+        ('cash:-10 unknown:10', '', '', b'Unavailable'),
+        ('cash:-10 food:10', '', f'ASSERT a1 {first} cash:jpy 0\n', b'-5'),
+    ]:
+        with tempfile.TemporaryDirectory(prefix='hra_n_mom_partial_pty_') as household:
+            fixtures = {
+                'journal.hra': f'TX e1 {prior_day} cash:-5 food:5\n'
+                    f'TX e2 {first} {current}\n' + assertion,
+                'policy.hra': 'ROLE cash: ASSET\nROLE food: EXPENSE\n'
+                    + extra_role + 'ZERO-ORIGIN cash:jpy\n',
+                'scheduled.hra': '',
+            }
+            for name, text in fixtures.items():
+                with open(os.path.join(household, name), 'w', encoding='utf-8') as stream:
+                    stream.write(text)
+            pid, fd = pty.fork()
+            if pid == 0:
+                env = os.environ.copy()
+                env['TERM'] = 'xterm-256color'
+                os.execve(harness, [harness, household], env)
+            reaped = False
+            try:
+                fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 80, 160, 0, 0))
+                output = bytearray()
+                read_until(fd, output, b'Markers:')
+                os.write(fd, b'p')
+                read_until(fd, output, b'Esc/q: back')
+                start = len(output)
+                os.write(fd, b'5')
+                read_until(fd, output, b'NET WORTH (Month-End Stock)')
+                text = re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]', b' ', bytes(output[start:]))
+                assert b'[PARTIAL]' in text and b'Net worth unavailable' in text, text
+                assert re.search(rb'NET WORTH \(Month-End Stock\)\s+Unavailable\s+'
+                                 + prior + rb'\s+Unavailable', text), text
+                os.write(fd, b'q')
+                read_until(fd, output, b'Evidence')
+                os.write(fd, b'q')
+                deadline = time.monotonic() + 8
+                while time.monotonic() < deadline:
+                    exited, status = os.waitpid(pid, os.WNOHANG)
+                    if exited:
+                        reaped = True
+                        assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+                        break
+                    if select.select([fd], [], [], 0.05)[0]:
+                        try:
+                            os.read(fd, 4096)
+                        except OSError:
+                            pass
+                assert reaped, 'Partial MoM PTY did not quit'
+            finally:
+                if not reaped:
+                    os.kill(pid, signal.SIGKILL)
+                    os.waitpid(pid, 0)
+                os.close(fd)
+    print('MoM PTY: unknown/unclassified stock and one-month conflict remain unavailable')
 
 
 def test_month_end_budget(foreign_capacity: bool = False) -> None:
@@ -1540,5 +1676,7 @@ if __name__ == "__main__":
     test_scheduled_unresolved_completion_tui()
     test_scheduled_detail_probe_failure()
     test_statement_evidence()
+    test_mom_role_change_tui()
+    test_mom_partial_stock_tui()
     test_month_end_budget()
     test_month_end_budget(foreign_capacity=True)

@@ -56,8 +56,7 @@ package body Test_MoM_Query is
       end if;
       Ada.Directories.Create_Path (Root);
 
-      --  July (prior-prior):
-      --    salary: 200,000, food: 30,000
+      --  July (before the compared months): salary: 200,000, food: 30,000
       --  August (prior):
       --    salary: 250,000, food: 40,000, book: 5,000
       --  September (current):
@@ -159,7 +158,7 @@ package body Test_MoM_Query is
       Assert (View.Status = Query_Complete and then View.Total_Expense.Current_Amt = 55000,
               "Execute agrees with Project");
 
-      --  Year boundary transition: January 2026 -> Prior is December 2025, Prior-Prior is November 2025
+      --  Year boundary transition: January 2026 -> prior is December 2025
       View := Project (Journal, Policy, 2026, 1);
       Assert (View.Prior_Year = 2025 and View.Prior_Month = 12, "January wraps to prior year December");
 
@@ -170,6 +169,103 @@ package body Test_MoM_Query is
       --  Unknown role produces Query_Partial
       Load ("TX e1 2026-09-01 cash:-10 unknown:10" & ASCII.LF);
       Assert (View.Status = Query_Partial, "Unknown role results in Query_Partial");
+      Assert (not View.Net_Worth.Current_Available,
+              "F04 unclassified current stock is unavailable");
+
+      --  F04: absent origin must not be turned into net worth; an assertion
+      --  conflict in just one month must not invalidate a known prior stock.
+      Load
+        ("TX e1 2026-08-20 cash:-10 food:10" & ASCII.LF,
+         "ROLE cash: ASSET" & ASCII.LF & "ROLE food: EXPENSE" & ASCII.LF);
+      Assert (View.Status = Query_Partial, "F04 unknown stock is partial");
+      Assert (not View.Net_Worth.Current_Available and then
+              not View.Net_Worth.Prior_Available, "F04 unknown endpoints unavailable");
+      Load
+        ("TX e1 2026-08-20 cash:-10 food:10" & ASCII.LF &
+         "ASSERT a1 2026-09-10 cash:jpy 0" & ASCII.LF,
+         "ROLE cash: ASSET" & ASCII.LF & "ROLE food: EXPENSE" & ASCII.LF &
+         "ZERO-ORIGIN cash:jpy" & ASCII.LF);
+      Assert (View.Status = Query_Partial, "F04 assertion conflict is partial");
+      Assert (not View.Net_Worth.Current_Available and then
+              View.Net_Worth.Prior_Available, "F04 only conflicting endpoint unavailable");
+      Assert_Equal_Int (-10, View.Net_Worth.Prior_Amt, "F04 known prior stock retained");
+      Assert_Equal_Int (0, View.Net_Worth.Difference, "F04 unavailable difference not computed");
+
+      --  F03: September has no events. Reclassifying August's food from
+      --  Expense to Asset must not invent a September expense or income.
+      Load
+        ("TX e1 2026-08-20 cash:-10 food:10" & ASCII.LF,
+         "ROLE cash: ASSET" & ASCII.LF &
+         "ROLE r1 2026-01-01 food EXPENSE" & ASCII.LF &
+         "ROLE r2 2026-09-01 food ASSET REPLACES r1" & ASCII.LF &
+         "ZERO-ORIGIN cash:jpy food:jpy" & ASCII.LF);
+      declare
+         DF : constant Flow_View :=
+           HRA_N.Application.Daily_Flow_Query.Project (Journal, Policy, 2026, 9);
+      begin
+         Assert (DF.Status = Query_Complete, "F03 Daily Flow completes");
+         Assert_Equal_Int (0, DF.Totals.Net_Expense, "F03 no September expense");
+         Assert_Equal_Int (DF.Totals.Net_Expense, View.Total_Expense.Current_Amt,
+                           "F03 MoM and Daily Flow agree on September expense");
+         Assert_Equal_Int (10, View.Total_Expense.Prior_Amt, "F03 August expense retained");
+         Assert (View.Expense_Count = 1, "F03 prior expense row retained");
+         Assert_Equal_Int (0, View.Expenses (1).Current_Amt, "F03 row has no September flow");
+         Assert_Equal_Int (10, View.Expenses (1).Prior_Amt, "F03 row retains August flow");
+      end;
+
+      --  Role changes inside the selected month classify each occurrence,
+      --  not the whole month under its final role. Rows must sum to totals.
+      Load
+        ("TX e1 2026-09-01 cash:-10 food:10" & ASCII.LF &
+         "TX e2 2026-09-20 cash:-20 food:20" & ASCII.LF,
+         "ROLE cash: ASSET" & ASCII.LF &
+         "ROLE r1 2026-01-01 food EXPENSE" & ASCII.LF &
+         "ROLE r2 2026-09-15 food ASSET REPLACES r1" & ASCII.LF &
+         "ZERO-ORIGIN cash:jpy food:jpy" & ASCII.LF);
+      Assert (View.Status = Query_Complete, "F03 intramonth role-change comparison completes");
+      Assert_Equal_Int (10, View.Total_Expense.Current_Amt,
+                        "F03 only pre-change expense counts");
+      Assert (View.Expense_Count = 1, "F03 one classified expense locus");
+      Assert_Equal_Int (View.Total_Expense.Current_Amt, View.Expenses (1).Current_Amt,
+                        "F03 expense detail sums to total");
+      Assert_Equal_Int
+        (HRA_N.Application.Daily_Flow_Query.Project (Journal, Policy, 2026, 9).Totals.Net_Expense,
+         View.Total_Expense.Current_Amt, "F03 intramonth Daily Flow agrees");
+
+      --  Across the month boundary, a September successor replaces an August
+      --  occurrence (including a date correction). Reversals remain dated
+      --  inverse events; they do not erase the original August flow.
+      Load
+        ("TX e1 2026-08-15 cash:-10 food:10" & ASCII.LF &
+         "TX e2 2026-09-02 cash:-20 food:20 replaces:e1" & ASCII.LF &
+         "TX e3 2026-09-03 cash:20 food:-20 reverses:e2" & ASCII.LF &
+         "TX e4 2026-08-16 cash:-7 food:7" & ASCII.LF &
+         "TX e5 2026-09-04 cash:7 food:-7 reverses:e4" & ASCII.LF &
+         "TX e6 2026-08-17 cash:-3 food:3" & ASCII.LF &
+         "TX e7 2026-09-05 cash:-3 food:3 replaces:e6" & ASCII.LF);
+      declare
+         Cur : constant Flow_View :=
+           HRA_N.Application.Daily_Flow_Query.Project (Journal, Policy, 2026, 9);
+         Prev : constant Flow_View :=
+           HRA_N.Application.Daily_Flow_Query.Project (Journal, Policy, 2026, 8);
+      begin
+         Assert (View.Status = Query_Complete, "F03 cross-month lifecycle comparison completes");
+         Assert_Equal_Int (-4, View.Total_Expense.Current_Amt,
+                           "F03 September replacement and inverses counted on occurrence days");
+         Assert_Equal_Int (7, View.Total_Expense.Prior_Amt,
+                           "F03 superseded August events excluded, reversed August event retained");
+         Assert_Equal_Int (-11, View.Total_Expense.Difference,
+                           "F03 signed month-over-month expense difference");
+         Assert_Equal_Int (Cur.Totals.Net_Expense, View.Total_Expense.Current_Amt,
+                           "F03 current flow agrees with Daily Flow");
+         Assert_Equal_Int (Prev.Totals.Net_Expense, View.Total_Expense.Prior_Amt,
+                           "F03 prior flow agrees with Daily Flow");
+         Assert (View.Expense_Count = 1, "F03 corrected and reversed flow has one detail row");
+         Assert_Equal_Int (View.Total_Expense.Current_Amt,
+                           View.Expenses (1).Current_Amt, "F03 current detail sums to total");
+         Assert_Equal_Int (View.Total_Expense.Prior_Amt,
+                           View.Expenses (1).Prior_Amt, "F03 prior detail sums to total");
+      end;
 
       --  Foreign currency rejects
       Load ("TX e1 2026-09-01 cash:-10:usd food:10:usd" & ASCII.LF);
