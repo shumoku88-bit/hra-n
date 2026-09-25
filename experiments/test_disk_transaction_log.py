@@ -14,8 +14,8 @@ from disk_transaction_log import publish
 
 
 class DiskLogProbe(representation.TransactionLogProbe):
-    # Inherit the four byte-container/observable tests. Production CLI-generated
-    # images are the only admitted candidates in this deliberately closed probe.
+    # Inherit the four byte-container tests. Exact synthetic images form only
+    # a whitelist for this POSIX probe, not household semantic admission.
     def admitted(self, image):
         return image in self.images
 
@@ -127,18 +127,11 @@ class DiskLogProbe(representation.TransactionLogProbe):
             self.assertEqual(path.read_bytes(), self.log)
 
     def test_two_processes_same_parent_exactly_one_wins(self):
-        # Build a second admitted completion from the identical synthetic parent,
-        # using the production publisher, not a second semantic implementation.
-        alternative = Path(self.tmp.name) / 'alternative'
-        generation = alternative / '.hra' / 'generations' / self.generations[-2]
-        generation.mkdir(parents=True)
-        for name, text in self.images[-2].items():
-            (generation / name).write_bytes(text.encode('utf-8'))
-        (alternative / '.hra' / 'CURRENT').write_text(self.generations[-2] + '\n')
-        self.run_cli(alternative, 'complete', 's0001', '2026-09-30', '合成の競合完了')
-        selected = (alternative / '.hra' / 'CURRENT').read_text().strip()
-        second = {name: (alternative / '.hra' / 'generations' / selected / name).read_bytes().decode('utf-8')
-                  for name in representation.STREAMS}
+        # A competing byte candidate at the same parent; neither candidate
+        # purports to qualify Scheduled semantics or a production publisher.
+        second = dict(self.images[-2])
+        second['journal.hra'] += 'EVENT e4 competing completion\n'
+        second['scheduled.hra'] += 'COMPLETE s1 e4\n'
         other_delta = {name: second[name][len(self.images[-2][name]):] for name in representation.STREAMS}
         self.assertNotEqual(second, self.images[-1])
         record = self.record(-1)
