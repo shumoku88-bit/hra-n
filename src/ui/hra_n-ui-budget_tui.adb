@@ -10,7 +10,6 @@ with HRA_N.Application.Budget_Query; use HRA_N.Application.Budget_Query;
 with HRA_N.Application.Budget_Window; use HRA_N.Application.Budget_Window;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
 with HRA_N.Application.Review;
-with HRA_N.UI.Capacity_TUI;
 with HRA_N.UI.Output; use HRA_N.UI.Output;
 with HRA_N.UI.Routing_TUI;
 with HRA_N.UI.Snapshot_Label;
@@ -114,7 +113,7 @@ package body HRA_N.UI.Budget_TUI is
       if Rows > 2 then
          Put_Clipped
            (Rows - 2,
-            "j/k/wheel: select   g: grant shortage   u: route   r: rebalance   R: reload   b/Esc/q: home");
+            "Budget: read-only   j/k/wheel: select   u: route   R: reload   b/Esc/q: home");
       end if;
       Curses.Refresh;
    end Draw;
@@ -196,28 +195,6 @@ package body HRA_N.UI.Budget_TUI is
                         begin
                            Cursor := (if Cursor > Step then Cursor - Step else 1);
                         end;
-                     elsif (Key = Character'Pos ('g') or else Key = Character'Pos ('G'))
-                       and then Count > 0
-                     then
-                        if Current_View.Status /= Query_Rejected
-                          and then Cursor <= Natural (Current_View.Report.Row_Count)
-                        then
-                           declare
-                              Name : constant String :=
-                                Current_View.Report.Rows (Cursor).Purpose.Value
-                                  (1 .. Current_View.Report.Rows (Cursor).Purpose.Length);
-                              Done : Boolean := False;
-                           begin
-                              HRA_N.UI.Capacity_TUI.Run_Transfer
-                                (Current_Paths, "unallocated", Name, Done);
-                              if Done then
-                                 Current_Paths :=
-                                   Resolve_Paths (Data_Dir_Str (Current_Paths));
-                                 Cursor := 1;
-                                 Reload;
-                              end if;
-                           end;
-                        end if;
                      elsif Key = Character'Pos ('u') or else Key = Character'Pos ('U') then
                         declare
                            Sys_Date : constant HRA_N.Core.Validity.Date_Type :=
@@ -229,23 +206,10 @@ package body HRA_N.UI.Budget_TUI is
                            Cursor := 1;
                            Reload;
                         end;
-                     elsif Key = Character'Pos ('r') or else Key = Character'Pos ('R')
+                     elsif Key = Character'Pos ('R')
                        or else HRA_N.UI.TUI_Input.Is_Redraw (Key)
                      then
-                        if Key = Character'Pos ('r') or else Key = Character'Pos ('R') then
-                           declare
-                              Done : Boolean := False;
-                           begin
-                              HRA_N.UI.Capacity_TUI.Run_Rebalance (Current_Paths, Done);
-                              if Done then
-                                 Current_Paths :=
-                                   Resolve_Paths (Data_Dir_Str (Current_Paths));
-                                 Cursor := 1;
-                              end if;
-                           end;
-                        end if;
-                        Current_Paths :=
-                          Resolve_Paths (Data_Dir_Str (Current_Paths));
+                        Current_Paths := Resolve_Paths (Data_Dir_Str (Current_Paths));
                         Reload;
                      end if;
                   end;

@@ -718,79 +718,37 @@ def main() -> None:
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
 
-            # Open Capacity workspace from Home
+            # The old generation's capacity remains readable, but it cannot
+            # open the removed transfer/rebalance editors.
+            current_path = os.path.join(household, ".hra", "CURRENT")
+            with open(current_path, "rb") as stream:
+                before_capacity_keys = stream.read()
             os.write(fd, b"e")
-            read_until(fd, output, b"t: transfer   r: rebalance")
-            assert b"unallocated" in output
-            assert b"food" in output
-
-            # Transfer unallocated -> misc seeded from the cursor row
+            read_until(fd, output, b"Capacity: read-only")
+            assert b"unallocated" in output and b"food" in output
+            mark = len(output)
             os.write(fd, b"t")
-            read_until(fd, output, b"From (unallocated or purpose)")
-            os.write(fd, b"\n")
-            read_until(fd, output, b"To (unallocated or purpose)")
             time.sleep(0.05)
-            os.write(fd, b"misc\n")
-            read_until(fd, output, b"Amount (jpy, positive)")
-            time.sleep(0.05)
-            os.write(fd, b"500\n")
-            read_until(fd, output, b"Effective (YYYY-MM-DD")
-            time.sleep(0.05)
-            os.write(fd, b"\n")
-            read_until(fd, output, b"CAPACITY TRANSFER PREVIEW")
-            os.write(fd, b"y")
-            read_until(fd, output, b"misc")
-
-            # Rebalance food/misc through the pairs loop
             os.write(fd, b"r")
-            read_until(fd, output, b"Effective (YYYY-MM-DD")
-            os.write(fd, b"\n")
-            read_until(fd, output, b"Coordinate (blank finishes")
             time.sleep(0.05)
-            os.write(fd, b"food\n")
-            read_until(fd, output, b"Amount for food")
-            time.sleep(0.05)
-            os.write(fd, b"-100\n")
-            read_until(fd, output, b"Coordinate (blank finishes")
-            time.sleep(0.05)
-            os.write(fd, b"misc\n")
-            read_until(fd, output, b"Amount for misc")
-            time.sleep(0.05)
-            os.write(fd, b"100\n")
-            read_until(fd, output, b"Coordinate (blank finishes")
-            time.sleep(0.05)
-            os.write(fd, b"\n")
-            read_until(fd, output, b"CAPACITY REBALANCE PREVIEW")
-            os.write(fd, b"y")
-            read_until(fd, output, b"t: transfer   r: rebalance")
+            while select.select([fd], [], [], 0)[0]:
+                output.extend(os.read(fd, 4096))
+            assert b"PREVIEW" not in output[mark:]
+            with open(current_path, "rb") as stream:
+                assert stream.read() == before_capacity_keys
 
-            # Return to Home
+            # Budget remains observable; the legacy grant/rebalance actions are gone.
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
-
-            # Open Budget decision surface from Home
             os.write(fd, b"c")
-            read_until(fd, output, b"g: grant shortage")
+            read_until(fd, output, b"Budget: read-only")
             assert b"PTYWindow" in output
             assert b"food" in output
             assert b"OVERSPENT" in output
-
-            # Grant the food shortage through a seeded transfer
             os.write(fd, b"g")
-            read_until(fd, output, b"From (unallocated or purpose)")
-            os.write(fd, b"\n")
-            read_until(fd, output, b"To (unallocated or purpose)")
             time.sleep(0.05)
-            os.write(fd, b"\n")
-            read_until(fd, output, b"Amount (jpy, positive)")
-            time.sleep(0.05)
-            os.write(fd, b"200\n")
-            read_until(fd, output, b"Effective (YYYY-MM-DD")
-            time.sleep(0.05)
-            os.write(fd, b"\n")
-            read_until(fd, output, b"CAPACITY TRANSFER PREVIEW")
-            os.write(fd, b"y")
-            read_until(fd, output, b"1100")
+            with open(current_path, "rb") as stream:
+                assert stream.read() == before_capacity_keys
 
             # Return to Home
             os.write(fd, b"b")
@@ -919,6 +877,7 @@ def main() -> None:
 
             # Preview admission and commit
             read_until(fd, output, b"ADMISSION PREVIEW")
+            read_until(fd, output, b"misc")
             assert b"cash" in output
             assert b"food" in output
             assert b"misc" in output
