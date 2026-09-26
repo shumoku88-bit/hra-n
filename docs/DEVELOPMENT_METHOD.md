@@ -91,6 +91,25 @@ purely presentational:
 A change is not improved merely because it is faster, more abstract, or shorter.
 Its semantic correspondence and failure behavior must remain explicit.
 
+## 3A. Research-pressure preflight
+
+Before adding retained meaning or choosing a formal tool, apply the inherited
+research discipline from
+[`RESEARCH_INHERITANCE.md`](RESEARCH_INHERITANCE.md):
+
+1. try presentation, projection, explicit relation, and query/policy before a
+   new retained semantic part;
+2. remove deterministic (**D**) and previously earned (**P**) obligations before
+   spending proof or AI effort on the residual (**R**);
+3. when the claim concerns minimality, representation, composition, verification
+   strength, or multi-authority recovery, use a structural falsification attack
+   rather than only a new household-domain example;
+4. when the claim is performance or usability, measure the real path rather than
+   proving a surrogate property.
+
+This preflight does not add ceremony to local changes. It prevents a broad
+semantic task from forgetting evidence the project has already earned.
+
 ## 4. Reference semantics and optimized implementations
 
 HRA-N deliberately permits two roles during a transition:
