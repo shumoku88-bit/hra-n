@@ -58,7 +58,7 @@ required.
 | Actual routing | retained `(locus, effective)` assertions; effective is `initial` or a real date; target is managed Purpose or explicit unmanaged | `actual-routing.loam` canonical authority with atomic lock/stage/rename | `Policy_Query.Execute_Routing_Query` & `Loam_Actual_Routing_Writer` | `hra-n route [list/set/clear] [--as-of/--history]` | Routing inspection, selected-day effective default, history toggle | coordinate-law, as-of/history, duplicate rejection, E2E CLI and PTY tests; SPARK core | **Canonical write slice** |
 | Relations/discharges | directional claim anchored to a source event with household-side guard; one discharge row per (settlement, claim) | co-published in `actual.loam` under canonical authority; legacy `journal.hra` fallback | `Relation_Query.Execute` (canonical `actual.loam` verification + legacy fallback) | `hra-n relation` | Actual detail renders linked claims/discharges; fail-closed on malformed actual | E2E CLI tests, unit tests, SPARK core proved | **Canonical read slice; writer blocked** |
 | Attention | retained matters with three due meanings, one closure each; provenance never closes | read-only `attention.loam` admission; no legacy Policy fallback | `Attention_Query` reads canonical or returns unavailable; legacy command deleted | list only; all mutation subcommands explicitly reject | read-only workspace; legacy editors deleted; Home shares open observation | CLI and PTY source/refusal tests; SPARK Core | **Canonical-only read slice; writer absent** |
-| Reports | explicit snapshot and effective interval; no implicit conversion; supersession and reversal exclusion, fail-closed unclassified frontier | canonical report entrance reads selected Loam authorities; no legacy three-stream report fallback; one-shot `statement` remains a separate legacy-capable command | `Statement.Execute_Statement_Query`, `Daily_Flow_Query`, `MoM_Query`, & `Budget_Query.Project_Month` via canonical evidence adaptation; canonical cross-file admission is not atomic | `hra-n report [--flow/--pace/--audit/--mom/--budget/--balances/--statement] [-m MM] [-y YYYY]` rejects legacy-only roots | Financial report workspace rejects legacy-only roots across seven tabs; canonical Budget PTY specimen | canonical E2E CLI/PTY and legacy-refusal tests; full seven-tab canonical semantics not yet qualified | **Canonical-only report entrance; internal projection and completeness open** |
+| Reports | explicit snapshot and effective interval; no implicit conversion; supersession and reversal exclusion, fail-closed unclassified frontier | report and one-shot Statement now reject legacy-only roots; canonical accounting evidence remains independently UNVERSIONED, not an atomic household snapshot | `Statement.Execute_Statement_Query` reads canonical sources directly; internal `Project` still accepts transitional in-memory evidence types for reports and MoM | `hra-n statement` and `hra-n report [--flow/--pace/--audit/--mom/--budget/--balances/--statement] [-m MM] [-y YYYY]` reject legacy-only roots | Financial report workspace rejects legacy-only roots across seven tabs; canonical Budget PTY specimen | canonical Statement Ada/CLI and Budget CLI/PTY, legacy-refusal tests; full seven-tab canonical semantics not yet qualified | **Canonical-only public Statement/report entrances; internal projection and completeness open** |
 | Policy administration | versioned role/routing facts with effective coordinates, and explicit add-only Locus admission vocabulary | `locus-admission.loam` and `accounting-role.loam` canonical authorities with atomic lock/replace/readback | `Policy_Query.Execute_Locus_Query`, `Loam_Locus_Admission_Writer`, `Loam_Accounting_Role_Writer` | `hra-n locus [list/add]`, `hra-n role` | Locus workspace (`v`), routing workspace (`r`) | unit, E2E CLI, PTY, and formal tests | **Canonical write slice** |
 | Machine-readable adapter | same Query/Intent semantics | no direct storage access | schema not defined | optional JSON absent | n/a | none | **Missing** |
 | AI/chat tools | least authority, proposal-first, redaction | no direct storage access | adapter absent | n/a | n/a | none | **Missing** |
@@ -200,25 +200,25 @@ proof that adjacent counterexamples are covered:
   `Scheduled_Query` observation per reload. Canonical `scheduled.loam` wins over
   retained legacy `scheduled.hra`; unresolved completion targets remain open
   until the named Actual endpoint is retained.
-- Statement transaction evidence follows canonical `actual.loam` when any
-  canonical marker exists; the legacy-only `journal.hra` path retains its
-  prior assertion/role/as-of semantics. Canonical Statement composes only
+- Public Statement now requires canonical accounting evidence; a legacy-only
+  `journal.hra`/`policy.hra` root rejects even when its old role and assertion
+  records are syntactically valid. Canonical Statement composes only
   `actual.loam`, `zero-origin-coverage.loam`, `accounting-role.loam`, and the
   required current `locus-admission.loam`; missing or malformed canonical Locus
   authority rejects without `policy.hra` fallback, while a header-only vocabulary
   is valid empty policy. Current queries may expose admitted Loci as a current
   unresolved frontier. Historical as-of queries do not pre-populate accounts
-  from this current new-write policy. One Statement/Balance projection is shared
-  across legacy and canonical evidence by adapting the admitted canonical
-  semantic image, not legacy journal bytes. Canonical Actual has no qualified
+  from this current new-write policy. Internally, Statement's projection still
+  accepts legacy-shaped in-memory evidence adapted from canonical readers;
+  this does not preserve a legacy public Statement entrance. Canonical Actual has no qualified
   balance assertion authority, so its Statement remains partial (or rejects on
   unreadable canonical data), even when zero conflicts are counted. Canonical
   Actual/Coverage/Role/Locus sources are independently `UNVERSIONED`; this does
   not prove cross-source atomicity. Home acquires canonical Statement separately
   from its independent Attention observation: malformed legacy Policy does not
   reject canonical Statement. Home no longer reads `journal.hra` or `policy.hra`
-  directly; Statement reads the former only on its legacy-only path. Canonical
-  Attention alone does not select canonical Statement. Missing canonical Attention
+  directly; Statement does not read either legacy file. Canonical Attention
+  alone does not select canonical Statement. Missing canonical Attention
   under canonical accounting authority is unavailable, not empty and never falls
   back to legacy; header-only is available empty, malformed rejects. Canonical
   Attention is read-only in CLI/TUI until a separate writer slice. Report tabs
@@ -228,14 +228,14 @@ proof that adjacent counterexamples are covered:
   `Legacy_Report_Evidence` reader and its old-only positive CLI/PTY fixtures
   were deleted; canonical Budget still has a positive CLI/PTY specimen. Doctor
   and the legacy generation publisher continue to share `Storage.Legacy_Admission`
-  for their *remaining* old-generation operations. One-shot `statement` is a
-  separate, still legacy-capable query. Internally, report projections still
+  for their *remaining* old-generation operations. One-shot `statement` is
+  now also canonical-only; internally, report projections still
   adapt canonical bytes into legacy-shaped in-memory Journal/Policy types;
   removing the old report *entrance* does not retire those semantic projectors
   or prove canonical cross-file atomicity, seven-tab parity, overflow handling,
   or whole-household snapshot completeness. No old household data was migrated.
 
-Current safeguards: scalar financial reports reject journals containing any
+Current safeguards: scalar financial projections reject admitted evidence containing any
 non-`jpy` effect (including retained history); coordinate Balance remains
 available without conversion. Statement rejects account-capacity overflow and
 invalid as-of dates. Balance coordinate-capacity overflow also rejects rather
@@ -364,16 +364,16 @@ an adopted or qualified equivalence baseline.
 
 | Field | Current evidence |
 |---|---|
-| Review time | 2026-09-25 JST; local Loam delta inventory and canonical-only init CLI cleanup |
-| HRA-N source | main `c0af3460437ba43c465f7f554efeec8bb8a3d7bb` (PR #91 report-refusal PTY merged) plus focused F08 legacy report read working change |
+| Review time | 2026-09-26 JST; canonical-only public Statement entrance deletion slice |
+| HRA-N source | main `91832d55716709fedb83a2d288192a3a100c7d82` (PR #101 merged) plus focused Statement read-entrance working change |
 | Prior audit comparison | Loam `6869de2`; numerical audit evidence remains pinned there |
-| Pinned Loam review tip | local/remote `8b26bfe8cb953d2543879cbe93570d020d2c7f92`; one documentation-only delta since `8c067f8a` records `loam review` production-path million-Event synthetic measurements (plain 11.938s, description 15.073s, correction 16.951s at 1M on one ubuntu-24.04 runner). This is empirical pressure for HRA-N F09/derived-index qualification, not a format or report-law change or performance parity. Prior Record/UI/path delta remains partially classified |
-| Repository scope | HRA-N local/remote main `c0af346` after PR #91; Loam local/remote main `8b26bfe8`. Working F08 legacy-only read slice has no operational data changes |
-| Remote/CI | PR #91 run `36134935888` and main push `36135796985` passed. Focused F08 working changes passed `./tools/test` locally; no remote CI yet. Loam benchmark evidence reviewed as scoped measurement; Loam tests/CI not rerun here |
-| Review scope | Loam local delta inventory: shared `HouseholdSnapshot` and renderer-neutral Reports add Home, Stock-Flow, Daily Pace, Income & Expense, Balances, Transactions Flow presentation; Fava launch enforces read-only observation; product/research Lean build split. RoleFlow source inspected for F03: current role map overlay differs from HRA-N effective-dated roles. Loam tests not run. HRA-N CLI init exposes only canonical creation (mode flags refuse); old initializer remains for transitional test fixtures |
-| Executed qualification | HRA-N `rtk test ./tools/test` passed after init cleanup and F03 cross-month Ada + CLI specimens (build, Ada tests, CLI, observation, qualifier, existing PTY suite); Loam tests, formal/proof gate, and CI not run |
-| Adopted parity baseline | None from this delta. Canonical-only init CLI is HRA-N legacy retirement, not evidence of Loam report parity |
-| Next review | Qualify F08 legacy Report/Doctor read slice remotely; then choose a separately scoped canonical admission/read boundary. Direct one-shot Statement/Budget and all public queries do not yet share this admission, and unversioned roots lack atomic snapshots. Compare HRA-N bounded long-history design against Loam's measured transient-index pressure only when F09 is selected; no benchmark parity inferred |
+| Pinned Loam review tip | local/remote `6a3380a4ed3118436cd83384d736a8ffd6b96030`; #1320 adds draft structural research and #1321 introduces seedless bulk row activity projections in TransactionsFlow/RoleFlow/Reports. Neither changes the canonical storage schema or qualifies HRA-N report parity; F09 may revisit measured-path pressure. Prior Record/UI/path delta remains partially classified |
+| Repository scope | HRA-N local/remote main `91832d5` after PR #101; Loam local/remote main `6a3380a4`. Statement working slice uses synthetic fixtures only; no operational household data touched |
+| Remote/CI | PR #101 run `36212498476` and main push `36212974578` passed. Statement working changes passed `./tools/test` locally; no remote CI yet. Loam tests/CI not rerun here |
+| Review scope | Loam #1320 draft mathematical structure/additive fold/report factorization maps are research, not production law. #1321 replaces repeated per-row TransactionsFlow/RoleFlow activity lookup with one bulk projection; Reports presentation consumes the projection. Diff inspected locally; Loam tests not rerun. HRA-N Statement entrance reuses existing canonical Actual/Coverage/Role/Locus readers and deletes old authority selection; internal projection types still need later simplification |
+| Executed qualification | HRA-N `rtk test ./tools/test` passed locally after Statement entrance deletion (build, Ada tests, CLI, observation, qualifier, surviving canonical PTY); remote CI for this slice pending. Loam tests not rerun |
+| Adopted parity baseline | None from this delta. Removing an unused legacy entrance is not proof of canonical Statement/report equivalence |
+| Next review | Qualify canonical-only Statement entrance remotely, then remove generation-aware path/authority selection from remaining canonical entrances rather than rebuilding a parallel binary. Public Balance, Scheduled, Actual, Policy and legacy mutation paths still depend on old storage. Unversioned canonical roots have no cross-file atomic snapshot. F09 performance comparisons need measured-path evidence |
 
 ### Open adoption decisions
 

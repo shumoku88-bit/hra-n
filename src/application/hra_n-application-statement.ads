@@ -124,16 +124,8 @@ package HRA_N.Application.Statement is
       Has_As_Of    : Boolean := False)
       return Statement_Report;
 
-   --  Select canonical evidence without consulting legacy Policy. The Policy
-   --  argument remains only for compatibility with legacy-only callers.
-   function Execute_With_Policy
-     (Paths     : Path_Config;
-      Policy    : Policy_Result;
-      As_Of     : Date_Type := (Year => 2026, Month => 1, Day => 1);
-      Has_As_Of : Boolean := False) return Statement_Report;
-
-   --  Statement query: canonical evidence if any marker is present, otherwise
-   --  the legacy Journal/Policy projection.
+   --  Public Statement entrance reads canonical accounting evidence only.
+   --  Internal Project routines still accept transitional in-memory shapes.
    function Execute_Statement_Query
      (Paths     : Path_Config;
       As_Of     : Date_Type := (Year => 2026, Month => 1, Day => 1);
