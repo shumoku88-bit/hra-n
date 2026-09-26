@@ -12,7 +12,6 @@ with HRA_N.Application.Budget_Window;
 with HRA_N.Application.Budget_Query;
 with HRA_N.Application.Canonical_Authority;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
-with HRA_N.Application.Legacy_Report_Evidence;
 with HRA_N.Application.Path_Resolver;  use HRA_N.Application.Path_Resolver;
 with HRA_N.Application.Review;
 with HRA_N.Application.Statement;      use HRA_N.Application.Statement;
@@ -215,8 +214,10 @@ package body HRA_N.UI.Report_TUI is
             end;
 
          when Legacy_Only =>
-            HRA_N.Application.Legacy_Report_Evidence.Read_Admitted
-              (Paths, Journal, Policy);
+            Journal.Success := False;
+            Journal.Error_Len := 34;
+            Journal.Error_Reason (1 .. Journal.Error_Len) :=
+              "canonical report evidence required";
 
          when Probe_Failed =>
             Journal.Success := False;
@@ -271,7 +272,7 @@ package body HRA_N.UI.Report_TUI is
       Result_Status := Query_Complete;
       if not Journal.Success then
          Result_Status := Query_Rejected;
-         Emit (" [ERROR] Journal read failure: " & Journal.Error_Reason (1 .. Journal.Error_Len));
+         Emit (" [ERROR] Report evidence rejected: " & Journal.Error_Reason (1 .. Journal.Error_Len));
          Total_Lines := Line_Num;
          return;
       elsif not Policy.Success then

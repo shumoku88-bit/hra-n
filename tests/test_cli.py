@@ -151,7 +151,7 @@ class TestHraNCli(unittest.TestCase):
             'TX e0002 2026-09-01 cash:-20 food:20 "corrected" replaces:e0001\n'
             'TX e0003 2026-10-01 cash:-50 food:50 "future"\n'
         )
-        res = self.run_cmd("report", "--statement", "-m", "9", "-y", "2026")
+        res = self.run_cmd("statement", "-m", "9", "-y", "2026")
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         self.assertIn("2026-09-30", res.stdout)
         self.assertRegex(res.stdout, r"Total EXPENSE\s*:\s*20 JPY")
@@ -290,35 +290,18 @@ class TestHraNCli(unittest.TestCase):
             (True, "ASSERT a0001 2026-09-20 cash:jpy 0\n", "assertion conflicts= 1"),
         ]:
             self.write_report_fixture(journal + assertion, known_stock=known)
-            for args in [
-                ("statement",), ("status",),
-                ("report", "--audit", "-m", "9", "-y", "2026"),
-                ("report", "--budget", "-m", "9", "-y", "2026"),
-            ]:
+            for args in [("statement",), ("status",)]:
                 with self.subTest(known=known, args=args):
                     res = self.run_cmd(*args)
                     self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-                    if args[0] == 'report' and '--budget' in args:
-                        # Capacity is an independent successful observation;
-                        # it does not claim to observe Statement evidence.
-                        self.assertIn('FUNDING & BACKING', res.stdout)
-                        self.assertIn('Unavailable:', res.stdout)
-                    else:
-                        self.assertIn(diagnostic, res.stdout)
-                        self.assertIn("PARTIAL", res.stdout)
+                    self.assertIn(diagnostic, res.stdout)
+                    self.assertIn("PARTIAL", res.stdout)
                     self.assertNotIn("NET WORTH", res.stdout)
                     self.assertNotIn("Net worth :", res.stdout)
                     self.assertNotIn("[SOLVENT", res.stdout)
                     self.assertNotIn("COMPLETE FINANCIAL STATEMENT", res.stdout)
             res = self.run_cmd("home")
             self.assertIn("PARTIAL", res.stdout)
-            res = self.run_cmd("report", "--mom", "-m", "9", "-y", "2026")
-            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-            self.assertIn("[PARTIAL]", res.stdout)
-            self.assertIn("Net worth unavailable", res.stdout)
-            self.assertRegex(res.stdout, r"NET WORTH \(Month-End Stock\)\s+Unavailable\s+(?:0|Unavailable)\s+Unavailable")
-            self.assertNotRegex(res.stdout, r"NET WORTH \(Month-End Stock\)\s+-?\d")
-
         # A future conflicting assertion must not contaminate an earlier day.
         res = self.run_cmd("statement", "--as-of", "2026-09-15")
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
@@ -348,13 +331,13 @@ class TestHraNCli(unittest.TestCase):
                         self.assertIn('[ERROR]', res.stdout + res.stderr)
                         self.assertNotIn('[PASS]', res.stdout + res.stderr)
 
-    def test_selected_generation_report_refuses_dangling_completion(self) -> None:
+    def test_selected_generation_report_rejects_valid_legacy_evidence(self) -> None:
         generation = os.path.join(self.test_dir, '.hra', 'generations', 'g00000001')
         os.makedirs(generation)
         for name, text in {
             'journal.hra': 'TX e1 2026-09-10 cash:-10 food:10\n',
             'policy.hra': 'ROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n',
-            'scheduled.hra': 'SCHED s1 2026-09-20 cash:-2 food:2\nCOMPLETE s1 missing\n',
+            'scheduled.hra': '',
         }.items():
             with open(os.path.join(generation, name), 'w', encoding='utf-8') as stream:
                 stream.write(text)
@@ -362,126 +345,32 @@ class TestHraNCli(unittest.TestCase):
             stream.write('g00000001\n')
         report = self.run_cmd('report', '--audit', '-m', '9', '-y', '2026')
         self.assertNotEqual(report.returncode, 0, report.stdout + report.stderr)
-        self.assertIn('scheduled completion references unknown actual', report.stdout)
+        self.assertIn('canonical report evidence required', report.stdout)
         self.assertNotIn('[PASS]', report.stdout)
-        doctor = self.run_cmd('doctor')
-        self.assertNotEqual(doctor.returncode, 0, doctor.stdout + doctor.stderr)
-        self.assertIn('Scheduled Life : FAIL', doctor.stdout)
 
-    def test_all_report_tabs_reject_unreadable_evidence(self) -> None:
-        # F05/F08: a failed input read cannot become a successful report, even
-        # on a tab that would otherwise show independent capacity evidence.
-        self.write_report_fixture('NOT-A-JOURNAL-FACT\n')
+    def test_all_report_tabs_require_canonical_evidence(self) -> None:
+        self.write_report_fixture('TX e1 2026-09-10 cash:-10 food:10\n')
         for tab in ('--statement', '--budget', '--balances', '--pace',
                     '--mom', '--flow', '--audit'):
             with self.subTest(tab=tab):
                 res = self.run_cmd('report', tab, '-m', '9', '-y', '2026')
                 self.assertNotEqual(res.returncode, 0, res.stdout + res.stderr)
                 self.assertIn('[ERROR]', res.stdout + res.stderr)
+                self.assertIn('canonical report evidence required', res.stdout + res.stderr)
                 self.assertNotIn('[PASS]', res.stdout + res.stderr)
                 self.assertNotIn('COMPLETE FINANCIAL STATEMENT', res.stdout + res.stderr)
-
-    def test_report_tabs_keep_partial_answerability_local(self) -> None:
-        # Missing stock origin cannot erase an independently valid monthly
-        # flow or capacity answer, nor authorize a scalar net-worth claim.
-        journal = 'TX e1 2026-09-10 cash:-10 food:10\n'
-        for known in (True, False):
-            self.write_report_fixture(journal, known_stock=known)
-            for tab in ('--statement', '--budget', '--balances', '--pace',
-                        '--mom', '--flow', '--audit'):
-                with self.subTest(known=known, tab=tab):
-                    res = self.run_cmd('report', tab, '-m', '9', '-y', '2026')
-                    self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-                    self.assertNotIn('[ERROR]', res.stdout + res.stderr)
-                    if tab in ('--statement', '--mom', '--audit'):
-                        self.assertEqual('[PARTIAL]' in res.stdout or
-                                         'PARTIAL PROJECTION' in res.stdout, not known)
-                    if tab == '--mom':
-                        self.assertRegex(res.stdout,
-                                         r'NET WORTH \(Month-End Stock\)\s+'
-                                         + ('-10' if known else 'Unavailable'))
-                    if not known and tab == '--statement':
-                        self.assertNotIn('NET WORTH (Assets - Liabilities)', res.stdout)
-                    if tab == '--balances':
-                        self.assertIn('[KNOWN_ZERO]' if known else '[UNKNOWN]', res.stdout)
-                    if tab in ('--budget', '--pace'):
-                        self.assertIn('Unavailable:', res.stdout)
-
-    def test_report_projection_rejection_exits_nonzero(self) -> None:
-        # F05: a renderer must not turn a rejected shared query into exit 0.
-        # Synthetic unversioned evidence exceeds Statement/Balance row capacity.
-        journal = ''.join(
-            f'TX e{i} 2026-09-10 cash:-1 locus{i}:1\n'
-            for i in range(1, 130)
-        )
-        self.write_report_fixture(journal)
-        for tab in ('--statement', '--balances', '--audit'):
-            with self.subTest(tab=tab):
-                res = self.run_cmd('report', tab, '-m', '9', '-y', '2026')
-                self.assertNotEqual(res.returncode, 0, res.stdout + res.stderr)
-                self.assertIn('[ERROR]', res.stdout + res.stderr)
-                self.assertNotIn('[PASS]', res.stdout + res.stderr)
-
-    def test_mom_only_current_stock_unavailable(self) -> None:
-        # Research inheritance: unknown stock and unresolved classification
-        # must not turn into a confident month-end number. A conflicting
-        # current assertion leaves the prior endpoint available independently.
-        for current_effect, extra_role, assertion, prior in [
-            ('cash:-10 bank:10', 'ROLE bank: ASSET\n', '', 'Unavailable'),
-            ('cash:-10 unknown:10', '', '', 'Unavailable'),
-            ('cash:-10 food:10', '', 'ASSERT a1 2026-09-20 cash:jpy 0\n', '-5'),
-        ]:
-            with self.subTest(current_effect=current_effect, assertion=assertion):
-                self.write_report_fixture(
-                    'TX e1 2026-08-10 cash:-5 food:5\n'
-                    f'TX e2 2026-09-10 {current_effect}\n' + assertion)
-                with open(os.path.join(self.test_dir, 'policy.hra'), 'w', encoding='utf-8') as stream:
-                    stream.write('ROLE cash: ASSET\nROLE food: EXPENSE\n'
-                                 + extra_role + 'ZERO-ORIGIN cash:jpy\n')
-                res = self.run_cmd('report', '--mom', '-m', '9', '-y', '2026')
-                self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-                self.assertIn('[PARTIAL]', res.stdout)
-                self.assertRegex(res.stdout,
-                                 rf'NET WORTH \(Month-End Stock\)\s+Unavailable\s+{prior}\s+Unavailable')
-                self.assertNotRegex(res.stdout, r'NET WORTH \(Month-End Stock\)\s+-?\d')
-
-    def test_mom_role_change_and_cross_month_lifecycle(self) -> None:
-        # External CLI observation only; semantic expectations live in Test_MoM_Query.
-        self.write_report_fixture('TX e1 2026-08-20 cash:-10 food:10\n')
-        with open(os.path.join(self.test_dir, 'policy.hra'), 'w', encoding='utf-8') as stream:
-            stream.write('ROLE cash: ASSET\n'
-                         'ROLE r1 2026-01-01 food EXPENSE\n'
-                         'ROLE r2 2026-09-01 food ASSET REPLACES r1\n'
-                         'ZERO-ORIGIN cash:jpy food:jpy\n')
-        mom = self.run_cmd('report', '--mom', '-m', '9', '-y', '2026')
-        flow = self.run_cmd('report', '--flow', '-m', '9', '-y', '2026')
-        self.assertEqual(mom.returncode, 0, mom.stdout + mom.stderr)
-        self.assertEqual(flow.returncode, 0, flow.stdout + flow.stderr)
-        self.assertRegex(mom.stdout, r'food\s+0\s+10\s+-10')
-        self.assertRegex(mom.stdout, r'Total Expense\s+0\s+10\s+-10')
-        self.assertRegex(flow.stdout, r'Total Monthly Flow\s+0\s+0\s+0')
-
-        self.write_report_fixture(
-            'TX e1 2026-08-15 cash:-10 food:10\n'
-            'TX e2 2026-09-02 cash:-20 food:20 replaces:e1\n'
-            'TX e3 2026-09-03 cash:20 food:-20 reverses:e2\n'
-            'TX e4 2026-08-16 cash:-7 food:7\n'
-            'TX e5 2026-09-04 cash:7 food:-7 reverses:e4\n'
-            'TX e6 2026-08-17 cash:-3 food:3\n'
-            'TX e7 2026-09-05 cash:-3 food:3 replaces:e6\n')
-        mom = self.run_cmd('report', '--mom', '-m', '9', '-y', '2026')
-        flow = self.run_cmd('report', '--flow', '-m', '9', '-y', '2026')
-        self.assertEqual(mom.returncode, 0, mom.stdout + mom.stderr)
-        self.assertEqual(flow.returncode, 0, flow.stdout + flow.stderr)
-        self.assertRegex(mom.stdout, r'food\s+-4\s+7\s+-11')
-        self.assertRegex(mom.stdout, r'Total Expense\s+-4\s+7\s+-11')
-        self.assertRegex(flow.stdout, r'Total Monthly Flow\s+0\s+-4\s+4')
 
     def test_monthly_reports_reject_exact_day_requests(self) -> None:
         self.write_report_fixture(
             'TX e0001 2026-09-10 cash:-10 food:10 "before cutoff"\n'
             'TX e0002 2026-09-20 cash:-20 food:20 "after cutoff"\n'
         )
+        # One-shot Statement remains a separate exact-day entrance.
+        res = self.run_cmd("statement", "--as-of", "2026-09-15")
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertRegex(res.stdout, r"Total EXPENSE\s*:\s*10 JPY")
+        with open(os.path.join(self.test_dir, 'actual.loam'), 'w', encoding='utf-8') as stream:
+            stream.write('LOAM-NORMALIZED-ACTUAL\t1\n')
         for tab in ["--budget", "--pace", "--mom", "--flow", "--audit", "--balances", "--tui"]:
             for date_flag in ["--as-of", "-a"]:
                 with self.subTest(tab=tab, date_flag=date_flag):
@@ -490,90 +379,6 @@ class TestHraNCli(unittest.TestCase):
                     self.assertIn("supported only for one-shot statement", res.stdout + res.stderr)
                     self.assertNotIn("[PASS]", res.stdout)
 
-        # Exact-day statements still exclude transactions after the cutoff.
-        res = self.run_cmd("report", "--statement", "--as-of", "2026-09-15")
-        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-        self.assertRegex(res.stdout, r"Total EXPENSE\s*:\s*10 JPY")
-        # Month-coordinate queries remain available and include the full month.
-        res = self.run_cmd("report", "--flow", "-m", "9", "-y", "2026")
-        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-
-    def test_month_end_budget_reports(self) -> None:
-        # Same current frontier and [month start, next month start) everywhere.
-        for year, month in [(2026, 2), (2024, 2), (2026, 9), (2026, 12),
-                            (1900, 1), (2100, 2), (2100, 11)]:
-            first = datetime.date(year, month, 1)
-            last = first.replace(day=calendar.monthrange(year, month)[1])
-            following = last + datetime.timedelta(days=1)
-            journal = (
-                f'TX e1 {first} cash:-3 food:3 "first"\n'
-                f'TX e2 {last} cash:-100 food:100 "original"\n'
-                f'TX e3 {last} cash:-10 food:10 "corrected" replaces:e2\n'
-                f'TX e4 {last} cash:-4 food:4 "reversed next month"\n'
-                f'TX e5 {following} cash:4 food:-4 "inverse" reverses:e4\n'
-                f'TX e6 {following} cash:-50 food:50 "excluded"\n'
-                f'TX e7 {following} cash:-2 food:2 "wrong date"\n'
-                f'TX e8 {last} cash:-2 food:2 "date corrected" replaces:e7\n'
-            )
-            policy = (
-                'ROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n'
-                f'TRANSFER unallocated Food 100 jpy {first}\n'
-                f'TRANSFER unallocated Food 20 jpy {last}\n'
-                f'TRANSFER unallocated Food 500 jpy {following}\n'
-                'ROUTE food INITIAL MANAGED Food\n'
-            )
-            for name, text in [('journal', journal), ('policy', policy), ('scheduled', '')]:
-                with open(os.path.join(self.test_dir, name + '.hra'), 'w', encoding='utf-8') as f:
-                    f.write(text)
-            for tab, expected in [
-                ('--budget', r'Total Budget Envelopes\s+120\s+19\s+101'),
-                ('--pace', r'Spent So Far\s*:\s*19 JPY'),
-                ('--audit', r'\[5\. FUNDING & BACKING\]'),
-                ('--flow', r'Total Monthly Flow\s+0\s+19\s+-19'),
-            ]:
-                with self.subTest(year=year, month=month, tab=tab):
-                    res = self.run_cmd('report', tab, '-m', str(month), '-y', str(year))
-                    self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-                    self.assertRegex(res.stdout, expected)
-
-    def test_f07_capacity_is_not_liquid_funding_or_safe_pace(self) -> None:
-        # A known, classified asset can be illiquid; neither it nor a budget
-        # entitlement is evidence of spendable funds or Scheduled coverage.
-        self.write_report_fixture('TX e1 2026-09-10 property:100 equity:-100 "house"\n')
-        with open(os.path.join(self.test_dir, 'policy.hra'), 'w', encoding='utf-8') as f:
-            f.write('ROLE property: ASSET\nROLE equity: EQUITY\n'
-                    'ZERO-ORIGIN property:jpy\nZERO-ORIGIN equity:jpy\n'
-                    'TRANSFER unallocated Food 80 jpy 2026-09-01\n')
-        for tab in ('--budget', '--pace', '--audit'):
-            with self.subTest(tab=tab):
-                res = self.run_cmd('report', tab, '-m', '9', '-y', '2026')
-                self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-                self.assertIn('Unavailable:', res.stdout)
-                self.assertNotIn('SOLVENT', res.stdout)
-                self.assertNotIn('Liquid Assets (Funding)', res.stdout)
-                self.assertNotIn('SAFE DAILY TARGET', res.stdout)
-                self.assertNotIn('Liquidity Deficit', res.stdout)
-                self.assertNotIn('headroom buffer', res.stdout)
-                self.assertNotIn('[TIGHT]', res.stdout)
-                self.assertNotIn('[OK]', res.stdout)
-                if tab == '--budget':
-                    self.assertRegex(res.stdout, r'Total Budget Envelopes\s+80\s+0\s+80')
-                elif tab == '--pace':
-                    self.assertIn('Remaining Budget', res.stdout)
-                    self.assertNotIn('JPY / day', res.stdout)
-        # A negative capacity balance is still not a liquidity finding.
-        with open(os.path.join(self.test_dir, 'policy.hra'), 'a', encoding='utf-8') as f:
-            f.write('ROLE cash: ASSET\nROUTE food INITIAL MANAGED Food\n')
-        with open(os.path.join(self.test_dir, 'journal.hra'), 'a', encoding='utf-8') as f:
-            f.write('TX e2 2026-09-20 cash:-90 food:90 "outlay"\n')
-        budget = self.run_cmd('report', '--budget', '-m', '9', '-y', '2026')
-        self.assertEqual(budget.returncode, 0, budget.stdout + budget.stderr)
-        self.assertRegex(budget.stdout, r'Total Budget Envelopes\s+80\s+90\s+-10')
-        self.assertIn('[NEGATIVE]', budget.stdout)
-        self.assertNotIn('Liquidity Deficit', budget.stdout)
-        # This is a refusal to infer funding, not a missing budget or zero cash.
-        self.assertIn('Scheduled pressure evidence', self.run_cmd(
-            'report', '--audit', '-m', '9', '-y', '2026').stdout)
 
     def test_canonical_month_end_budget(self) -> None:
         for args in [
@@ -589,23 +394,17 @@ class TestHraNCli(unittest.TestCase):
         res = self.run_cmd('report', '--budget', '-m', '9', '-y', '2026')
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         self.assertRegex(res.stdout, r'Total Budget Envelopes\s+120\s+10\s+110')
+        self.assertNotIn('SOLVENT', res.stdout)
+        self.assertNotIn('SAFE DAILY TARGET', res.stdout)
+        for tab in ('--budget', '--pace', '--audit'):
+            with self.subTest(tab=tab):
+                boundary = self.run_cmd('report', tab, '-m', '12', '-y', '2100')
+                self.assertNotEqual(boundary.returncode, 0)
+                self.assertIn('exclusive end is outside supported date range', boundary.stdout)
         # The explicit-window CLI consumes the same projector, with no writes.
         res = self.run_cmd('budget', '2026-09-01', '2026-10-01')
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         self.assertRegex(res.stdout, r'Food\s+120 JPY\s+10 JPY\s+110 JPY')
-
-    def test_month_end_unrepresentable_boundary(self) -> None:
-        self.write_report_fixture('')
-        for tab in ['--budget', '--pace', '--audit']:
-            with self.subTest(tab=tab):
-                res = self.run_cmd('report', tab, '-m', '12', '-y', '2100')
-                self.assertNotEqual(res.returncode, 0)
-                self.assertIn('exclusive end is outside supported date range', res.stdout)
-                self.assertNotIn('[PASS]', res.stdout)
-        # A month-end stock query does not require the next day.
-        res = self.run_cmd('report', '--statement', '-m', '12', '-y', '2100')
-        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-        self.assertIn('2100-12-31', res.stdout)
 
     def test_budget_query_admission(self) -> None:
         self.write_report_fixture('')
@@ -640,17 +439,15 @@ class TestHraNCli(unittest.TestCase):
                     self.assertNotEqual(res.returncode, 0, res.stdout + res.stderr)
                     self.assertIn('canonical budget authority required', res.stdout + res.stderr)
                     self.assertNotIn('Food', res.stdout)
-            # Legacy report tabs still use a separate old projection entrance;
-            # they are not qualified as canonical Budget by this deletion.
+            # Canonical report entrance cannot use the legacy Policy, even to
+            # diagnose its foreign capacity; Statement remains independent.
             for tab in ['--budget', '--pace', '--audit']:
                 with self.subTest(foreign=foreign, tab=tab):
                     res = self.run_cmd('report', tab, '-m', '9', '-y', '2026')
                     self.assertNotEqual(res.returncode, 0, res.stdout + res.stderr)
-                    self.assertIn('budget queries support jpy capacity only', res.stdout + res.stderr)
+                    self.assertIn('canonical report evidence required', res.stdout)
                     self.assertNotIn('[PASS]', res.stdout)
-                    self.assertNotIn('Unallocated Funds', res.stdout)
-            # Capacity does not contaminate an unrelated stock query.
-            res = self.run_cmd('report', '--statement', '-m', '9', '-y', '2026')
+            res = self.run_cmd('statement', '--as-of', '2026-09-30')
             self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
 
     def test_financial_reports_reject_foreign_measures(self) -> None:
@@ -665,7 +462,8 @@ class TestHraNCli(unittest.TestCase):
                 res = self.run_cmd(*args)
                 self.assertNotEqual(res.returncode, 0)
                 self.assertIn(
-                    "canonical budget authority required" if args[0] == "budget"
+                    "canonical report evidence required" if args[0] == "report"
+                    else "canonical budget authority required" if args[0] == "budget"
                     else "support jpy only", res.stdout + res.stderr)
                 self.assertNotIn("[PASS]", res.stdout)
         res = self.run_cmd("balance")

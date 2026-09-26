@@ -748,6 +748,13 @@ begin
 
       --  Branch: Statement (Balance Sheet and Profit & Loss)
       if Command = "statement" or else Command = "report" then
+         --  `report --statement` otherwise enters the independent one-shot
+         --  Statement dispatcher instead of the seven-tab report entrance.
+         if Command = "report" and then Probe (Data_Dir).State = Legacy_Only then
+            Put_Line ("[ERROR] canonical report evidence required");
+            Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);
+            return;
+         end if;
          HRA_N.UI.Statement_Cli.Dispatch (Paths, Command_Idx + 1);
          return;
       end if;
