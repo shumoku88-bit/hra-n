@@ -163,7 +163,9 @@ known-through semantics.
 
 - physical holdings and capacity authority displayed as separate planes;
 - current-cycle coordinates only when justified by explicit policy;
-- transfer/rebalance actions delegated to shared Application operations;
+- transfer/rebalance currently available in the canonical CLI, not the
+  Capacity/Budget TUI: the legacy Policy editor was removed. TUI is read-only
+  until a canonical Application write boundary is qualified;
 - no TUI-local Safe-to-Spend arithmetic.
 
 ### Reports
