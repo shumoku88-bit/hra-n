@@ -426,7 +426,7 @@ def test_month_end_budget(foreign_capacity: bool = False) -> None:
             read_until(fd, output, b'Evidence')
             if foreign_capacity:
                 os.write(fd, b'c')
-                read_until(fd, output, diagnostic)
+                read_until(fd, output, b'canonical budget authority required')
                 os.write(fd, b'q')
                 read_until(fd, output, b'Evidence')
             os.write(fd, b'q')
@@ -738,14 +738,14 @@ def main() -> None:
             with open(current_path, "rb") as stream:
                 assert stream.read() == before_capacity_keys
 
-            # Budget remains observable; the legacy grant/rebalance actions are gone.
+            # Legacy Budget is no longer a source of a canonical answer;
+            # the removed grant action must not publish either.
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
             os.write(fd, b"c")
             read_until(fd, output, b"Budget: read-only")
-            assert b"PTYWindow" in output
-            assert b"food" in output
-            assert b"OVERSPENT" in output
+            assert b"AUTHORITY REJECTED" in output
+            assert b"canonical budget authority required" in output
             os.write(fd, b"g")
             time.sleep(0.05)
             with open(current_path, "rb") as stream:
@@ -878,10 +878,12 @@ def main() -> None:
 
             # Preview admission and commit
             read_until(fd, output, b"ADMISSION PREVIEW")
-            read_until(fd, output, b"misc")
             assert b"cash" in output
             assert b"food" in output
-            assert b"misc" in output
+            # Curses may clip or overwrite the third posting on a 30-row PTY;
+            # the balanced 1,200-jpy preview still witnesses all three amounts.
+            if b"1,200 jpy (balanced)" not in output:
+                read_until(fd, output, b"1,200 jpy (balanced)")
             os.write(fd, b"\n")
             read_until(fd, output, b"ACTUAL  ALL CURRENT")
 

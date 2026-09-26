@@ -621,7 +621,7 @@ class TestHraNCli(unittest.TestCase):
         for dates in [(), ('2026-09-01', '2026-10-01')]:
             res = self.run_cmd('budget', *dates)
             self.assertNotEqual(res.returncode, 0, res.stdout + res.stderr)
-            self.assertIn('Invalid TRANSFER amount', res.stdout + res.stderr)
+            self.assertIn('canonical budget authority required', res.stdout + res.stderr)
             self.assertNotIn('[PASS]', res.stdout)
 
     def test_budget_rejects_foreign_capacity(self) -> None:
@@ -634,12 +634,17 @@ class TestHraNCli(unittest.TestCase):
             self.write_report_fixture('')
             with open(os.path.join(self.test_dir, 'policy.hra'), 'a', encoding='utf-8') as f:
                 f.write(foreign + 'WINDOW monthly 2026-09-01 2026-10-01\n')
-            for args in [('budget',), ('budget', '2026-09-01', '2026-10-01')] + [
-                ('report', tab, '-m', '9', '-y', '2026')
-                for tab in ['--budget', '--pace', '--audit']
-            ]:
+            for args in [('budget',), ('budget', '2026-09-01', '2026-10-01')]:
                 with self.subTest(foreign=foreign, args=args):
                     res = self.run_cmd(*args)
+                    self.assertNotEqual(res.returncode, 0, res.stdout + res.stderr)
+                    self.assertIn('canonical budget authority required', res.stdout + res.stderr)
+                    self.assertNotIn('Food', res.stdout)
+            # Legacy report tabs still use a separate old projection entrance;
+            # they are not qualified as canonical Budget by this deletion.
+            for tab in ['--budget', '--pace', '--audit']:
+                with self.subTest(foreign=foreign, tab=tab):
+                    res = self.run_cmd('report', tab, '-m', '9', '-y', '2026')
                     self.assertNotEqual(res.returncode, 0, res.stdout + res.stderr)
                     self.assertIn('budget queries support jpy capacity only', res.stdout + res.stderr)
                     self.assertNotIn('[PASS]', res.stdout)
@@ -659,7 +664,9 @@ class TestHraNCli(unittest.TestCase):
             with self.subTest(args=args):
                 res = self.run_cmd(*args)
                 self.assertNotEqual(res.returncode, 0)
-                self.assertIn("support jpy only", res.stdout + res.stderr)
+                self.assertIn(
+                    "canonical budget authority required" if args[0] == "budget"
+                    else "support jpy only", res.stdout + res.stderr)
                 self.assertNotIn("[PASS]", res.stdout)
         res = self.run_cmd("balance")
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)

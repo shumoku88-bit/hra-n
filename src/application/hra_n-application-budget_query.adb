@@ -106,11 +106,6 @@ package body HRA_N.Application.Budget_Query is
          Reject (Result, Paths.Error_Reason (1 .. Paths.Error_Len));
          return Result;
       end if;
-      if Paths.Is_Versioned then
-         Result.Snapshot :=
-           (Kind => Snapshot_Versioned, Identity => Make_Token (Snapshot_Id_Str (Paths)));
-      end if;
-
       declare
          use HRA_N.Application.Canonical_Authority;
          Root      : constant String := Data_Dir_Str (Paths);
@@ -174,28 +169,7 @@ package body HRA_N.Application.Budget_Query is
                end;
 
             when Legacy_Only =>
-               declare
-                  Journal : constant Journal_Result := Read_Journal_File (Journal_Path_Str (Paths));
-                  Policy  : constant Policy_Result := Read_Policy_File (Policy_Path_Str (Paths));
-                  Window  : Date_Interval := (Start_Date, End_Date);
-               begin
-                  if Use_Policy_Window and then Journal.Success and then Policy.Success then
-                     if not Policy.Has_Window then
-                        Reject
-                          (Result, "no WINDOW preset in policy.hra;"
-                           & " use an explicit budget window for one-shot queries");
-                        return Result;
-                     end if;
-                     Window := (Policy.Window_Start, Policy.Window_End);
-                  end if;
-                  Result := Project (Journal, Policy, Window, Result.Snapshot);
-                  if Use_Policy_Window and then Result.Status /= Query_Rejected then
-                     Result.Window_Len :=
-                       Natural'Min (Policy.Window_Name.Length, Result.Window_Name'Length);
-                     Result.Window_Name (1 .. Result.Window_Len) :=
-                       Policy.Window_Name.Value (1 .. Result.Window_Len);
-                  end if;
-               end;
+               Reject (Result, "canonical budget authority required");
 
             when Probe_Failed =>
                Reject (Result, Authority.Diagnostic (1 .. Authority.Diagnostic_Len));
