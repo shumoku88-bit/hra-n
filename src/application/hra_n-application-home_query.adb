@@ -106,8 +106,8 @@ package body HRA_N.Application.Home_Query is
 
       Result.Unresolved_Loci := Statement.Unresolved_Count;
       if Statement.Status = Query_Rejected then
-         --  Preserve legacy Home partial treatment of unsupported Statement
-         --  projections, but refuse unreadable canonical transaction authority.
+         --  A rejected public Statement has no canonical assertion authority;
+         --  the injected in-memory projection can still carry a partial result.
          Result.Status :=
            (if Statement.Assertion_Evidence_Available
             then Query_Partial else Query_Rejected);

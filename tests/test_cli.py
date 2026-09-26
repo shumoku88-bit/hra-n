@@ -110,15 +110,15 @@ class TestHraNCli(unittest.TestCase):
         with open(attention, "w", encoding="utf-8") as stream:
             stream.write("LOAM-ATTENTION-MEMORY\t1\nITEM\tcanonical-attention\tNO_DUE_DATE\t-\tCanonical matter\n")
         statement = self.run_cmd("statement", "--as-of", "2026-09-15")
-        self.assertEqual(statement.returncode, 0, statement.stdout + statement.stderr)
-        self.assertIn("Events Aggregated   :  1", statement.stdout)
-        self.assertIn("COMPLETE FINANCIAL STATEMENT", statement.stdout)
+        self.assertNotEqual(statement.returncode, 0)
+        self.assertIn("canonical statement evidence required", statement.stdout + statement.stderr)
         view = self.run_cmd("attention")
         self.assertEqual(view.returncode, 0, view.stdout + view.stderr)
         self.assertIn("canonical-attention", view.stdout)
         self.assertNotIn("legacy-attention", view.stdout)
         home = self.run_cmd("home")
-        self.assertIn("Attention   1 open", home.stdout)
+        self.assertNotEqual(home.returncode, 0)
+        self.assertNotIn('COMPLETE FINANCIAL STATEMENT', home.stdout)
         before = open(policy, "rb").read()
         for args in [("raise", "new"), ("resolve", "canonical-attention"), ("drop", "canonical-attention")]:
             rejected = self.run_cmd("attention", *args)
@@ -145,19 +145,9 @@ class TestHraNCli(unittest.TestCase):
             stream.write("BROKEN\n")
         self.assertNotEqual(self.run_cmd("attention").returncode, 0)
 
-    def test_statement_period_and_status_correction(self) -> None:
-        self.write_report_fixture(
-            'TX e0001 2026-09-01 cash:-10 food:10 "old"\n'
-            'TX e0002 2026-09-01 cash:-20 food:20 "corrected" replaces:e0001\n'
-            'TX e0003 2026-10-01 cash:-50 food:50 "future"\n'
-        )
-        res = self.run_cmd("statement", "-m", "9", "-y", "2026")
-        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-        self.assertIn("2026-09-30", res.stdout)
-        self.assertRegex(res.stdout, r"Total EXPENSE\s*:\s*20 JPY")
-        status = self.run_cmd("status")
-        self.assertEqual(status.returncode, 0, status.stdout + status.stderr)
-        self.assertIn("Savings   : -70", status.stdout)
+    def test_statement_rejects_combined_period_flags(self) -> None:
+        with open(os.path.join(self.test_dir, 'actual.loam'), 'w', encoding='utf-8') as stream:
+            stream.write('LOAM-NORMALIZED-ACTUAL\t1\n')
         for args in [
             ("--as-of", "2026-09-15", "-m", "10"),
             ("-m", "10", "--as-of", "2026-09-15"),
@@ -283,34 +273,16 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn('cash', canonical_only.stdout)
         self.assertIn('PARTIAL', canonical_only.stdout)
 
-    def test_statement_origin_and_conflict_across_surfaces(self) -> None:
-        journal = 'TX e0001 2026-09-10 cash:-10 food:10 "purchase"\n'
-        for known, assertion, diagnostic in [
-            (False, "", "unknown stock origin= 1"),
-            (True, "ASSERT a0001 2026-09-20 cash:jpy 0\n", "assertion conflicts= 1"),
-        ]:
-            self.write_report_fixture(journal + assertion, known_stock=known)
-            for args in [("statement",), ("status",)]:
-                with self.subTest(known=known, args=args):
-                    res = self.run_cmd(*args)
-                    self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-                    self.assertIn(diagnostic, res.stdout)
-                    self.assertIn("PARTIAL", res.stdout)
-                    self.assertNotIn("NET WORTH", res.stdout)
-                    self.assertNotIn("Net worth :", res.stdout)
-                    self.assertNotIn("[SOLVENT", res.stdout)
-                    self.assertNotIn("COMPLETE FINANCIAL STATEMENT", res.stdout)
-            res = self.run_cmd("home")
-            self.assertIn("PARTIAL", res.stdout)
-        # A future conflicting assertion must not contaminate an earlier day.
-        res = self.run_cmd("statement", "--as-of", "2026-09-15")
-        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-        self.assertIn("COMPLETE FINANCIAL STATEMENT", res.stdout)
-        self.write_report_fixture(journal)
-        res = self.run_cmd("statement")
-        self.assertIn("COMPLETE FINANCIAL STATEMENT", res.stdout)
-        res = self.run_cmd("status")
-        self.assertIn("Net worth : -10", res.stdout)
+    def test_legacy_statement_and_status_do_not_invent_wealth(self) -> None:
+        self.write_report_fixture('TX e1 2026-09-10 cash:-10 food:10\n')
+        for command in ('statement', 'status'):
+            with self.subTest(command=command):
+                rejected = self.run_cmd(command)
+                self.assertNotEqual(rejected.returncode, 0)
+                self.assertIn('canonical statement evidence required',
+                              rejected.stdout + rejected.stderr)
+                self.assertNotIn('COMPLETE FINANCIAL STATEMENT', rejected.stdout)
+                self.assertNotIn('Net worth : -10', rejected.stdout)
 
     def test_report_refuses_incomplete_legacy_scheduled_evidence(self) -> None:
         # F08: the report must not claim a healthy whole legacy generation
@@ -361,14 +333,6 @@ class TestHraNCli(unittest.TestCase):
                 self.assertNotIn('COMPLETE FINANCIAL STATEMENT', res.stdout + res.stderr)
 
     def test_monthly_reports_reject_exact_day_requests(self) -> None:
-        self.write_report_fixture(
-            'TX e0001 2026-09-10 cash:-10 food:10 "before cutoff"\n'
-            'TX e0002 2026-09-20 cash:-20 food:20 "after cutoff"\n'
-        )
-        # One-shot Statement remains a separate exact-day entrance.
-        res = self.run_cmd("statement", "--as-of", "2026-09-15")
-        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
-        self.assertRegex(res.stdout, r"Total EXPENSE\s*:\s*10 JPY")
         with open(os.path.join(self.test_dir, 'actual.loam'), 'w', encoding='utf-8') as stream:
             stream.write('LOAM-NORMALIZED-ACTUAL\t1\n')
         for tab in ["--budget", "--pace", "--mom", "--flow", "--audit", "--balances", "--tui"]:
@@ -378,7 +342,6 @@ class TestHraNCli(unittest.TestCase):
                     self.assertNotEqual(res.returncode, 0)
                     self.assertIn("supported only for one-shot statement", res.stdout + res.stderr)
                     self.assertNotIn("[PASS]", res.stdout)
-
 
     def test_canonical_month_end_budget(self) -> None:
         for args in [
@@ -448,9 +411,10 @@ class TestHraNCli(unittest.TestCase):
                     self.assertIn('canonical report evidence required', res.stdout)
                     self.assertNotIn('[PASS]', res.stdout)
             res = self.run_cmd('statement', '--as-of', '2026-09-30')
-            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertNotEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertIn('canonical statement evidence required', res.stdout + res.stderr)
 
-    def test_financial_reports_reject_foreign_measures(self) -> None:
+    def test_legacy_foreign_measures_cannot_enter_reports(self) -> None:
         self.write_report_fixture(
             'TX e0001 2026-09-01 cash:-10:usd food:10:usd "USD"\n'
         )
@@ -464,7 +428,7 @@ class TestHraNCli(unittest.TestCase):
                 self.assertIn(
                     "canonical report evidence required" if args[0] == "report"
                     else "canonical budget authority required" if args[0] == "budget"
-                    else "support jpy only", res.stdout + res.stderr)
+                    else "canonical statement evidence required", res.stdout + res.stderr)
                 self.assertNotIn("[PASS]", res.stdout)
         res = self.run_cmd("balance")
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)

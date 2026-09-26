@@ -484,19 +484,13 @@ package body HRA_N.Application.Statement is
       return Result;
    end Project_Canonical;
 
-   function Execute_With_Policy
+   function Execute_Statement_Query
      (Paths     : Path_Config;
-      Policy    : Policy_Result;
       As_Of     : Date_Type := (Year => 2026, Month => 1, Day => 1);
       Has_As_Of : Boolean := False) return Statement_Report
    is
       use HRA_N.Application.Canonical_Authority;
       Result : Statement_Report;
-      Snap : constant Snapshot_Reference :=
-        (if Paths.Is_Versioned
-         then (Kind => Snapshot_Versioned,
-               Identity => Make_Token (Snapshot_Id_Str (Paths)))
-         else (Kind => Snapshot_Unversioned));
    begin
       if not Paths.Resolution_Ok then
          Result.Status := Query_Rejected;
@@ -595,12 +589,15 @@ package body HRA_N.Application.Statement is
                      As_Of, Has_As_Of);
                end;
             when Legacy_Only =>
-               return Project
-                 (Read_Journal_File (Journal_Path_Str (Paths)), Policy,
-                  As_Of, Has_As_Of,
-                  (if Paths.Is_Versioned then Snap.Identity
-                   else (Length => 0, Value => [others => ' '])),
-                  Paths.Is_Versioned);
+               Result.Status := Query_Rejected;
+               Result.Assertion_Evidence_Available := False;
+               declare
+                  Message : constant String := "canonical statement evidence required";
+               begin
+                  Result.Diagnostic_Len := Message'Length;
+                  Result.Diagnostic (1 .. Message'Length) := Message;
+               end;
+               return Result;
             when Probe_Failed =>
                Result.Status := Query_Rejected;
                Result.Assertion_Evidence_Available := False;
@@ -613,35 +610,6 @@ package body HRA_N.Application.Statement is
                     Message (1 .. Result.Diagnostic_Len);
                end;
                return Result;
-         end case;
-      end;
-   end Execute_With_Policy;
-
-   function Execute_Statement_Query
-     (Paths     : Path_Config;
-      As_Of     : Date_Type := (Year => 2026, Month => 1, Day => 1);
-      Has_As_Of : Boolean := False) return Statement_Report
-   is
-      use HRA_N.Application.Canonical_Authority;
-   begin
-      if not Paths.Resolution_Ok then
-         return Execute_With_Policy (Paths, (others => <>), As_Of, Has_As_Of);
-      end if;
-
-      --  Select authority before touching transitional policy.hra. Canonical
-      --  Statement has no legacy Policy prerequisite; Execute_With_Policy
-      --  retains its argument only for the Legacy_Only branch.
-      declare
-         Authority : constant Authority_Probe := Probe (Data_Dir_Str (Paths));
-      begin
-         case Authority.State is
-            when Canonical_Present | Probe_Failed =>
-               return Execute_With_Policy
-                 (Paths, (others => <>), As_Of, Has_As_Of);
-            when Legacy_Only =>
-               return Execute_With_Policy
-                 (Paths, Read_Policy_File (Policy_Path_Str (Paths)),
-                  As_Of, Has_As_Of);
          end case;
       end;
    end Execute_Statement_Query;

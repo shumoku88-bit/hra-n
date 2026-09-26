@@ -60,8 +60,8 @@ package body Test_Home_Query is
              (Paths,
               (Selected_Day => Day));
       begin
-         Assert (View.Status = Query_Partial and then not View.Attention_Available,
-                 "Home remains partial without canonical Attention despite classified journal");
+         Assert (View.Status = Query_Rejected and then not View.Attention_Available,
+                 "Home rejects without canonical Statement and Attention");
          Assert (View.Snapshot.Kind = Snapshot_Versioned,
                  "Home query carries selected snapshot identity");
          Assert (Equal_Token (View.Snapshot.Identity, Make_Token ("g00000001")),
@@ -80,8 +80,10 @@ package body Test_Home_Query is
          Assert_Equal_Int (2, Long_Long_Integer (View.Total_Scheduled), "Home query counts Scheduled declarations");
          Assert_Equal_Int (1, Long_Long_Integer (View.Open_Scheduled), "Home query counts current-open Scheduled");
          Assert_Equal_Int (1, Long_Long_Integer (View.Selected_Scheduled), "Home query counts selected-day open Scheduled");
-         Assert_Equal_Int (5, Long_Long_Integer (View.Role_Assignments), "Home query counts role assignments");
-         Assert_Equal_Int (2, Long_Long_Integer (View.Zero_Origins), "Home query counts zero origins");
+         Assert_Equal_Int (0, Long_Long_Integer (View.Role_Assignments),
+                           "legacy Policy cannot supply Statement roles");
+         Assert_Equal_Int (0, Long_Long_Integer (View.Zero_Origins),
+                           "legacy Policy cannot supply Statement origins");
          Assert_Equal_Int (0, Long_Long_Integer (View.Unresolved_Loci), "Home query has no unresolved loci");
       end;
 
@@ -100,10 +102,10 @@ package body Test_Home_Query is
              (Paths,
               (Selected_Day => Day));
       begin
-         Assert (View.Status = Query_Partial, "Home query exposes partial classification");
-         Assert_Equal_Int (1, Long_Long_Integer (View.Unresolved_Loci),
-                           "Home query preserves unresolved locus count");
-         Assert (View.Diagnostic_Len > 0, "Partial Home query carries a diagnostic");
+         Assert (View.Status = Query_Rejected, "Home rejects a legacy-only journal");
+         Assert_Equal_Int (0, Long_Long_Integer (View.Unresolved_Loci),
+                           "Home does not invent a canonical classification frontier");
+         Assert (View.Diagnostic_Len > 0, "Rejected Home query carries a diagnostic");
       end;
 
       Assert
@@ -116,10 +118,10 @@ package body Test_Home_Query is
          View : constant HRA_N.Application.Home_Query.Home_View :=
            HRA_N.Application.Home_Query.Execute (Paths, (Selected_Day => Day));
       begin
-         Assert (View.Status = Query_Partial and then not View.Attention_Available,
-                 "Superseded effects do not cure missing canonical Attention");
+         Assert (View.Status = Query_Rejected and then not View.Attention_Available,
+                 "Legacy corrections cannot cure missing canonical Statement");
          Assert_Equal_Int (0, Long_Long_Integer (View.Unresolved_Loci),
-                           "Home classification uses current frontier");
+                           "Home has no canonical classification frontier");
       end;
 
       --  Date correction / replacement fixture: e0001 on 2026-09-11 replaced by
@@ -383,8 +385,8 @@ package body Test_Home_Query is
          View : constant HRA_N.Application.Home_Query.Home_View :=
            HRA_N.Application.Home_Query.Execute (Paths, (Selected_Day => Day));
       begin
-         Assert (View.Status = Query_Partial,
-                 "Home does not strengthen rejected statement into complete");
+         Assert (View.Status = Query_Rejected,
+                 "Home rejects unavailable canonical Statement");
          Assert (View.Diagnostic_Len > 0,
                  "Home preserves unsupported measure diagnostic");
       end;
