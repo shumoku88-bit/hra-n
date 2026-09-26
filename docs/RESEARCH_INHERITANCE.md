@@ -20,8 +20,8 @@ It is deliberately not:
 - a runtime dependency on the LOAM repository.
 
 The source survey for this version was refreshed against LOAM
-`8c067f8aa0226d47652cba797c5f502f4ef64328` and HRA-N
-`3c5f6119d9df2c0331b86c1f7d3dd26c7731b9ea`. A later source review may change
+`8b26bfe8cb953d2543879cbe93570d020d2c7f92` and HRA-N
+`fafdf036eb6f5c730369a4649950b36e4b6df2c6`. A later source review may change
 the evidence pointers below, but an inherited HRA-N law changes only through an
 explicit semantic decision.
 
@@ -331,6 +331,161 @@ Primary LOAM evidence:
 - `docs/OBLIGATION_SCAFFOLD_METHOD.md`
 - `docs/SEMANTIC_BLUEPRINT.md`
 
+## 7A. Structural falsification is a separate inheritance
+
+Domain falsification asks whether current evidence is too small for a legitimate
+household answer. LOAM also learned to attack the **structure of the design
+itself**, even when no new accounting product case is introduced.
+
+HRA-N inherits these structural attacks:
+
+1. **Minimality** — try deleting or reconstructing one retained distinction and
+   ask whether the selected observable set can still distinguish the worlds.
+2. **Identity granularity** — try quotienting identities or coordinates that may
+   be finer than any selected query needs.
+3. **Representation invariance** — split/merge equivalent quantity
+   decompositions, permute non-semantic order, or consistently rename opaque
+   identities; selected answers should change only when the transformed
+   distinction is itself observable.
+4. **Conservative extension** — unrelated or reconstructible additional evidence
+   must not perturb old projections that do not opt into it.
+5. **Composition** — two locally qualified seams, or three pairwise-safe seams,
+   can still fail together. Local proof is not automatically global proof.
+6. **History-length pressure** — increase chain/history length so a law does not
+   survive only because the first bounded witness was tiny.
+7. **Verification-of-verification** — check witness existence, scope, mutation
+   sensitivity, vacuity, and the mapping from model to production claim.
+8. **Recovery composition** — separately safe publishers can still expose an
+   incoherent mixed world when an operation spans several authorities.
+
+These are attack modes, not mandatory tools. Use the cheapest instrument that
+can distinguish the claim. HRA-N's own Ada/SPARK representation remains the
+qualification target.
+
+Primary LOAM evidence:
+
+- `docs/research/falsification/structural/LOAM_STRUCTURAL_FALSIFICATION_ATLAS.md`
+- `docs/research/falsification/structural/LOAM_STRUCTURAL_FALSIFICATION_PROGRESS.md`
+
+## 7B. Grow answers before growing retained meaning
+
+LOAM's household-composition work provides a practical escalation ladder for new
+capabilities. HRA-N inherits it as a default question order:
+
+```text
+0. presentation only?
+1. projection from existing evidence?
+2. explicit relation among existing evidence?
+3. query coordinate or policy?
+4. only then: new retained semantic part?
+```
+
+Failure at one rung is evidence for considering the next rung. Familiar product
+vocabulary, implementation convenience, or an attractive abstraction is not
+enough to jump directly to retained state.
+
+The complementary generative question is:
+
+> Which useful answers are already latent in relations among independently
+> retained meanings?
+
+For a candidate cross-projection law:
+
+```text
+existing meanings
+  -> state the proposed relation
+  -> search for the smallest counterexample
+  -> identify exact surviving conditions
+  -> ask whether the surviving law answers a household question
+  -> only then choose proof, projection, UI surface, or no production change
+```
+
+This preserves LOAM's "counterpoint" result without importing musical vocabulary
+into HRA-N production code.
+
+Primary LOAM evidence:
+
+- `docs/research/household/LOAM_CAPABILITY_COMPOSITION_MATRIX_2026-09.md`
+- `docs/research/household/HOUSEHOLD_EVIDENCE_GRAPH.md`
+- `docs/research/household/HOUSEHOLD_MINIMUM_VOCABULARY.md`
+- `docs/research/LOAM_COUNTERPOINT_EXPLORATION_2026-09.md`
+- `docs/research/LOAM_COUNTERPOINT_FIVE_WORLDS_2026-09.md`
+
+## 7C. Spend proof and AI effort only on the residual
+
+For a broad semantic question, do not ask a proof tool or AI to solve the whole
+subsystem at once. First divide apparent obligations into:
+
+```text
+D  deterministic repository-local evidence
+P  previously earned / already qualified boundary
+R  genuinely residual question
+```
+
+Then classify residual work as:
+
+```text
+R / proof
+R / policy
+R / empirical
+R / unknown
+```
+
+- **D** should close through direct computation, parsing, finite enumeration,
+  source ownership, exact derivation, or another deterministic check.
+- **P** should name the existing boundary being reused rather than re-proving it
+  locally without cause.
+- **R/proof** earns a formal proof/model only for a genuinely new invariant.
+- **R/policy** requires an explicit semantic/design choice, not a fake theorem.
+- **R/empirical** requires measurement or usability evidence.
+- **R/unknown** stays visible until it can be classified.
+
+This is work allocation, not a new document ceremony. Small local changes do not
+need a dedicated DAG merely to satisfy the method.
+
+Primary LOAM evidence:
+
+- `docs/OBLIGATION_SCAFFOLD_METHOD.md`
+- `docs/EVIDENCE_ATLAS.md`
+- representative `*_OBLIGATION_DAG.md` research records.
+
+## 7D. Performance structures are disposable, meaning is not
+
+LOAM's long-history work established an important durability boundary that
+transfers cleanly to HRA-N:
+
+```text
+canonical authority
+        -> full fail-closed admission
+        -> transient/rebuildable acceleration
+        -> projection
+```
+
+A performance problem does not by itself earn a cache, index, materialized view,
+or database as a second household authority.
+
+HRA-N therefore inherits the pressure, not LOAM's Lean implementation:
+
+- measure the real production path and representative history shapes;
+- distinguish empirical scaling from an asymptotic proof;
+- keep optimized indexes rebuildable from canonical evidence;
+- retain a small reference semantics and establish correspondence when the
+  production representation changes;
+- test correction-heavy and other adversarial histories, not only easy
+  correction-free fixtures;
+- do not turn a proof working-set bound into a lifetime-history limit.
+
+LOAM's 2026-09-25 million-Event probe is evidence that this architectural shape
+can scale far beyond ordinary household history without materialized authority.
+It is **not** a performance promise for Ada/HRA-N. HRA-N must measure and qualify
+its own implementation.
+
+Primary LOAM evidence:
+
+- `docs/research/falsification/LONG_HISTORY_ACTUAL_READ_PRESSURE_2026-09.md`
+- HRA-N `ACTUAL_LONG_HISTORY.md` and `ACTUAL_DERIVED_INDEX.md` own the
+  independent Ada/SPARK continuation.
+
 ## 8. Research-inheritance gate for new HRA-N work
 
 For a semantic or architectural change, after stating the household question and
@@ -372,3 +527,8 @@ examples establish the same law, preserve the law and representative specimens.
 When HRA-N discovers a stronger or simpler law, return the minimal counterexample
 or proof obligation to LOAM through the reverse-feedback process in
 `LOAM_ALIGNMENT.md`. The inheritance is deliberately two-way.
+
+The repository-level coverage audit is recorded in
+[`RESEARCH_INHERITANCE_CLOSURE.md`](RESEARCH_INHERITANCE_CLOSURE.md). It maps
+LOAM research families to their HRA-N destination without making every historical
+LOAM note a permanent HRA-N dependency.
