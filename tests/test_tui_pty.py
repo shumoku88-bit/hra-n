@@ -796,48 +796,10 @@ def main() -> None:
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
 
-            # Open Attention workspace from Home
+            # Attention observation remains available, but the old editor is gone.
             os.write(fd, b"i")
-            read_until(fd, output, b"n: raise")
+            read_until(fd, output, b"Attention: read-only")
             assert b"No open matters" in output
-
-            # Raise a dated matter through the editor
-            os.write(fd, b"n")
-            read_until(fd, output, b"Matter:")
-            time.sleep(0.05)
-            os.write(fd, b"Fix sink\n")
-            read_until(fd, output, b"Due (YYYY-MM-DD")
-            time.sleep(0.05)
-            os.write(fd, b"2026-10-05\n")
-            read_until(fd, output, b"ATTENTION RAISE PREVIEW")
-            os.write(fd, b"y")
-            read_until(fd, output, b"Fix sink")
-
-            # Raise an undated matter
-            os.write(fd, b"n")
-            read_until(fd, output, b"Matter:")
-            time.sleep(0.05)
-            os.write(fd, b"Second matter\n")
-            read_until(fd, output, b"Due (YYYY-MM-DD")
-            time.sleep(0.05)
-            os.write(fd, b"\n")
-            read_until(fd, output, b"ATTENTION RAISE PREVIEW")
-            os.write(fd, b"y")
-            read_until(fd, output, b"Second matter")
-
-            # Resolve the first matter from the selected row
-            mark = len(output)
-            os.write(fd, b"r")
-            read_until(fd, output, b"Mark att0001 resolved?")
-            os.write(fd, b"y")
-            read_until(fd, output, b"Second matter")
-            assert b"Fix sink" not in bytes(output[mark:])
-
-            # Drop the remaining matter and return to an empty stream
-            os.write(fd, b"x")
-            read_until(fd, output, b"Mark att0002 dropped?")
-            os.write(fd, b"y")
-            read_until(fd, output, b"No open matters")
 
             # Return to Home
             os.write(fd, b"b")
@@ -1764,7 +1726,7 @@ def test_canonical_attention_read_only() -> None:
             output = bytearray()
             read_until(fd, output, b"Markers:")
             os.write(fd, b"i")
-            read_until(fd, output, b"canonical Attention: read-only")
+            read_until(fd, output, b"Attention: read-only")
             assert b"canonical-attention" in output
             assert b"legacy-attention" not in output
             mark = len(output)

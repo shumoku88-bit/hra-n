@@ -3,15 +3,9 @@
 --  Package body: HRA_N.UI.Attention_TUI
 -------------------------------------------------------------------------------
 
-with HRA_N.Core.Attention; use HRA_N.Core.Attention;
-with HRA_N.Core.Description; use HRA_N.Core.Description;
 with HRA_N.Core.Types; use HRA_N.Core.Types;
-with HRA_N.Core.Validity; use HRA_N.Core.Validity;
-with HRA_N.Application.Attention_Command; use HRA_N.Application.Attention_Command;
 with HRA_N.Application.Attention_Query; use HRA_N.Application.Attention_Query;
 with HRA_N.Application.Frontend_Types; use HRA_N.Application.Frontend_Types;
-with HRA_N.Application.Review; use HRA_N.Application.Review;
-with HRA_N.UI.Line_Edit; use HRA_N.UI.Line_Edit;
 with HRA_N.UI.Output; use HRA_N.UI.Output;
 with HRA_N.UI.Snapshot_Label;
 with HRA_N.UI.Terminal; use HRA_N.UI.Terminal;
@@ -36,122 +30,6 @@ package body HRA_N.UI.Attention_TUI is
       return Pad_Right (Token_String (Row.Id), 10) & "  " &
              Pad_Right (Due_Label (Row.Due), 22) & "  " & Short_Ctx;
    end Row_Text;
-
-   --  Shared raise editor. Empty context cancels; due accepts a date,
-   --  `none`, or blank for undetermined.
-   procedure Run_Raise (Paths : Path_Config; Committed : out Boolean) is
-      Prompt_Row : constant Natural := (if Rows > 2 then Rows - 1 else 0);
-      Ctx_Text : constant String :=
-        Prompt_For (Prompt_Row, "Matter: ", "", False, Max_Description_Length);
-      Due_Text   : constant String :=
-        (if Ctx_Text'Length = 0 then ""
-         else Prompt_For
-           (Prompt_Row, "Due (YYYY-MM-DD, none, blank for unknown): ",
-            "", True));
-      Due        : Attention_Due;
-      Known_Text : constant String := Due_Text;
-   begin
-      Committed := False;
-      if Ctx_Text'Length = 0 then
-         return;
-      elsif Known_Text = "none" then
-         Due := (Kind => No_Due_Date);
-      elsif Known_Text'Length = 0 then
-         Due := (Kind => Due_Undetermined);
-      else
-         declare
-            Parsed : Date_Type;
-         begin
-            if not Parse_Iso_Date (Known_Text, Parsed) then
-               Wait_Key (Prompt_Row, "Due must be YYYY-MM-DD, none, or blank.");
-               return;
-            end if;
-            Due := (Kind => Due_On_Date, Due_Date => Parsed);
-         end;
-      end if;
-
-      declare
-         Intent : constant Raise_Intent :=
-           (Context => Make_Description (Ctx_Text),
-            Due     => Due);
-         Prop_Res : constant Proposal_Result :=
-           Propose_Raise (Paths, Intent);
-      begin
-         if not Prop_Res.Success then
-            Wait_Key
-              (Prompt_Row,
-               "Raise rejected: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
-            return;
-         end if;
-         Curses.Erase;
-         Put_Clipped (0, "ATTENTION RAISE PREVIEW  " & Proposed_Item_Id (Prop_Res.Proposal));
-         Put_Clipped (1, "============================================================");
-         Put_Clipped (3, "Matter     " & Ctx_Text);
-         Put_Clipped (4, "Due        " & Due_Label (Due));
-         if not Confirm (Prompt_Row, "Raise this matter?") then
-            return;
-         end if;
-         declare
-            Receipt : constant Attention_Receipt := Commit (Prop_Res.Proposal);
-         begin
-            if Receipt.Success then
-               Committed := True;
-            else
-               Wait_Key
-                 (Prompt_Row,
-                  "Raise commit rejected: "
-                  & Receipt.Error (1 .. Receipt.Error_Len));
-            end if;
-         end;
-      end;
-   end Run_Raise;
-
-   --  Shared close editor for one retained identity and lifecycle kind.
-   procedure Run_Close
-     (Paths     : Path_Config;
-      Target_Id : Token_Text;
-      Kind      : Closure_Kind;
-      Committed : out Boolean)
-   is
-      Prompt_Row : constant Natural := (if Rows > 2 then Rows - 1 else 0);
-      Kind_Text  : constant String :=
-        (if Kind = Closure_Resolved then "resolved" else "dropped");
-   begin
-      Committed := False;
-      if not Confirm
-        (Prompt_Row,
-         "Mark " & Token_String (Target_Id) & " " & Kind_Text & "?")
-      then
-         return;
-      end if;
-      declare
-         Intent : constant Close_Intent :=
-           (Target_Id => Target_Id,
-            Kind      => Kind,
-            Known_On  => Get_System_Date);
-         Prop_Res : constant Proposal_Result :=
-           Propose_Close (Paths, Intent);
-      begin
-         if not Prop_Res.Success then
-            Wait_Key
-              (Prompt_Row,
-               "Close rejected: " & Prop_Res.Error (1 .. Prop_Res.Error_Len));
-            return;
-         end if;
-         declare
-            Receipt : constant Attention_Receipt := Commit (Prop_Res.Proposal);
-         begin
-            if Receipt.Success then
-               Committed := True;
-            else
-               Wait_Key
-                 (Prompt_Row,
-                  "Close commit rejected: "
-                  & Receipt.Error (1 .. Receipt.Error_Len));
-            end if;
-         end;
-      end;
-   end Run_Close;
 
    procedure Draw (View : Attention_View; Cursor : Positive; Count : out Natural) is
       Capacity : constant Natural := (if Rows > 8 then Rows - 8 else 0);
@@ -207,9 +85,7 @@ package body HRA_N.UI.Attention_TUI is
             "Snapshot: " & HRA_N.UI.Snapshot_Label.Format (View.Snapshot));
          Put_Clipped
            (Rows - 2,
-            (if View.Source = Legacy_Attention and then View.Success
-             then "j/k/wheel: select   n: raise   r: resolve   x: drop   R: reload   b/Esc/q: home"
-             else "canonical Attention: read-only   R: reload   b/Esc/q: home"));
+            "Attention: read-only   R: reload   b/Esc/q: home");
       end if;
       Curses.Refresh;
    end Draw;
@@ -297,43 +173,6 @@ package body HRA_N.UI.Attention_TUI is
                         end if;
                      elsif Key = Character'Pos ('g') then
                         Cursor := 1;
-                     elsif (Key = Character'Pos ('n') or else Key = Character'Pos ('N'))
-                       and then Current_View.Source = Legacy_Attention
-                       and then Current_View.Success then
-                        declare
-                           Done : Boolean := False;
-                        begin
-                           Run_Raise (Current_Paths, Done);
-                           if Done then
-                              Current_Paths :=
-                                Resolve_Paths (Data_Dir_Str (Current_Paths));
-                              Cursor := 1;
-                              Reload;
-                           end if;
-                        end;
-                     elsif (Key = Character'Pos ('r') or else Key = Character'Pos ('x'))
-                       and then Count > 0
-                       and then Current_View.Source = Legacy_Attention
-                       and then Current_View.Success
-                     then
-                        if Current_View.Success and then Cursor <= Current_View.Count then
-                           declare
-                              Done : Boolean := False;
-                           begin
-                              Run_Close
-                                (Current_Paths,
-                                 Current_View.Rows (Cursor).Id,
-                                 (if Key = Character'Pos ('r')
-                                  then Closure_Resolved else Closure_Dropped),
-                                 Done);
-                              if Done then
-                                 Current_Paths :=
-                                   Resolve_Paths (Data_Dir_Str (Current_Paths));
-                                 Cursor := 1;
-                                 Reload;
-                              end if;
-                           end;
-                        end if;
                      elsif Key = Character'Pos ('R')
                        or else HRA_N.UI.TUI_Input.Is_Redraw (Key)
                      then
