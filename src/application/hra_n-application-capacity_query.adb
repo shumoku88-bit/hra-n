@@ -6,7 +6,6 @@
 with Ada.Directories;
 with HRA_N.Application.Canonical_Authority;
 with HRA_N.Storage.Loam_Capacity_Reader;
-with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 
 package body HRA_N.Application.Capacity_Query is
 
@@ -54,10 +53,6 @@ package body HRA_N.Application.Capacity_Query is
       if not Paths.Resolution_Ok then
          Set_Error ("authority resolution failed");
          return View;
-      elsif Paths.Is_Versioned then
-         View.Snapshot :=
-           (Kind     => HRA_N.Application.Frontend_Types.Snapshot_Versioned,
-            Identity => Make_Token (Snapshot_Id_Str (Paths)));
       end if;
 
       declare
@@ -82,18 +77,8 @@ package body HRA_N.Application.Capacity_Query is
                end;
 
             when Legacy_Only =>
-               declare
-                  Policy : constant Policy_Result :=
-                    Read_Policy_File (Policy_Path_Str (Paths));
-               begin
-                  if not Policy.Success then
-                     Set_Error ("cannot query an unadmitted authority snapshot");
-                     return View;
-                  end if;
-
-                  Build_From_Capacities (Policy.Capacities);
-                  return View;
-               end;
+               Set_Error ("canonical capacity.loam authority required");
+               return View;
 
             when Probe_Failed =>
                Set_Error (Authority.Diagnostic (1 .. Authority.Diagnostic_Len));
