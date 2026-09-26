@@ -718,14 +718,15 @@ def main() -> None:
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
 
-            # The old generation's capacity remains readable, but it cannot
-            # open the removed transfer/rebalance editors.
+            # A legacy-only generation cannot supply canonical capacity;
+            # removed editor keys must not activate a new generation.
             current_path = os.path.join(household, ".hra", "CURRENT")
             with open(current_path, "rb") as stream:
                 before_capacity_keys = stream.read()
             os.write(fd, b"e")
             read_until(fd, output, b"Capacity: read-only")
-            assert b"unallocated" in output and b"food" in output
+            assert b"AUTHORITY REJECTED" in output
+            assert b"canonical capacity.loam authority required" in output
             mark = len(output)
             os.write(fd, b"t")
             time.sleep(0.05)

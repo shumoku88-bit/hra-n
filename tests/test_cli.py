@@ -1650,6 +1650,17 @@ class TestHraNCli(unittest.TestCase):
         self.assertIn("books", res_list.stdout)
         self.assertIn("UNMANAGED", res_list.stdout)
 
+    def test_capacity_does_not_read_legacy_policy(self):
+        self.write_report_fixture('')
+        policy = os.path.join(self.test_dir, 'policy.hra')
+        with open(policy, 'a', encoding='utf-8') as stream:
+            stream.write('TRANSFER unallocated Food 100 jpy 2026-09-01\n')
+        rejected = self.run_cmd('capacity')
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn('canonical capacity.loam authority required',
+                      rejected.stdout + rejected.stderr)
+        self.assertNotIn('Food', rejected.stdout + rejected.stderr)
+
     def test_canonical_capacity_transfer_and_rebalance(self):
         # 1. Initialize canonical authority
         self.assertEqual(self.run_cmd("init").returncode, 0)
