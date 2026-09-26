@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-import calendar
+import subprocess
 import datetime
 import re
 import fcntl
@@ -45,210 +45,15 @@ def write_canonical_roles(household: str) -> None:
         )
 
 
-def test_statement_evidence() -> None:
-    """Unknown and conflicting stock evidence must survive cached TUI rendering."""
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    harness = os.path.join(root, "tests", "bin", "tui_harness")
-    today = datetime.date.today().isoformat()
-    for conflict in [False, True]:
-        with tempfile.TemporaryDirectory(prefix="hra_n_statement_pty_") as household:
-            fixtures = {
-                "journal.hra": f'TX e0001 {today} cash:-10 food:10 "synthetic"\n'
-                    + (f"ASSERT a0001 {today} cash:jpy 0\n" if conflict else ""),
-                "policy.hra": "ROLE cash: ASSET\nROLE food: EXPENSE\n"
-                    + ("ZERO-ORIGIN cash:jpy\n" if conflict else ""),
-                "scheduled.hra": "",
-            }
-            for name, text in fixtures.items():
-                with open(os.path.join(household, name), "w", encoding="utf-8") as stream:
-                    stream.write(text)
-            pid, fd = pty.fork()
-            if pid == 0:
-                env = os.environ.copy()
-                env["TERM"] = "xterm-256color"
-                os.execve(harness, [harness, household], env)
-            reaped = False
-            try:
-                fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 80, 160, 0, 0))
-                output = bytearray()
-                read_until(fd, output, b"Markers:")
-                os.write(fd, b"p")
-                read_until(fd, output, b"COHERENCE & VERIFICATION")
-                expected = b"assertion conflicts= 1" if conflict else b"unknown stock origin= 1"
-                assert expected in output, bytes(output)
-                assert b"Net worth unavailable" in output, bytes(output)
-                assert b"NET WORTH (Assets" not in output, bytes(output)
-                assert b"COMPLETE FINANCIAL STATEMENT" not in output, bytes(output)
-                mark = len(output)
-                os.write(fd, b"5")
-                read_until(fd, output, b"NET WORTH (Month-End Stock)")
-                mom = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b" ", bytes(output[mark:]))
-                assert b"Net worth unavailable" in mom, mom
-                assert re.search(rb"NET WORTH \(Month-End Stock\)\s+Unavailable", mom), mom
-                os.write(fd, b"q")
-                read_until(fd, output, b"Evidence")
-                os.write(fd, b"q")
-                deadline = time.monotonic() + 8
-                while time.monotonic() < deadline:
-                    exited, status = os.waitpid(pid, os.WNOHANG)
-                    if exited:
-                        reaped = True
-                        assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
-                        break
-                    ready, _, _ = select.select([fd], [], [], 0.05)
-                    if ready:
-                        try:
-                            output.extend(os.read(fd, 4096))
-                        except OSError:
-                            pass
-                assert reaped, "Statement PTY did not quit"
-            finally:
-                if not reaped:
-                    os.kill(pid, signal.SIGKILL)
-                    os.waitpid(pid, 0)
-                os.close(fd)
-    print("Statement PTY: unknown origin and assertion conflict remain partial")
-
-
-def test_mom_role_change_tui() -> None:
-    """A role change without current-month events must not invent MoM expense."""
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    harness = os.path.join(root, "tests", "bin", "tui_harness")
-    first = datetime.date.today().replace(day=1)
-    prior = first - datetime.timedelta(days=1)
-    if prior.year < 2025:
-        raise AssertionError("MoM PTY specimen needs a supported prior year")
-    with tempfile.TemporaryDirectory(prefix="hra_n_mom_role_pty_") as household:
-        fixtures = {
-            "journal.hra": f"TX e1 {prior} cash:-10 food:10\n",
-            "policy.hra": "ROLE cash: ASSET\n"
-                f"ROLE r1 {prior.replace(day=1)} food EXPENSE\n"
-                f"ROLE r2 {first} food ASSET REPLACES r1\n"
-                "ZERO-ORIGIN cash:jpy food:jpy\n",
-            "scheduled.hra": "",
-        }
-        for name, text in fixtures.items():
-            with open(os.path.join(household, name), "w", encoding="utf-8") as stream:
-                stream.write(text)
-        pid, fd = pty.fork()
-        if pid == 0:
-            env = os.environ.copy()
-            env["TERM"] = "xterm-256color"
-            os.execve(harness, [harness, household], env)
-        reaped = False
-        try:
-            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 80, 160, 0, 0))
-            output = bytearray()
-            read_until(fd, output, b"Markers:")
-            os.write(fd, b"p")
-            read_until(fd, output, b"Esc/q: back")
-            start = len(output)
-            os.write(fd, b"5")
-            read_until(fd, output, b"NET WORTH (Month-End Stock)")
-            text = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b" ", bytes(output[start:]))
-            assert re.search(rb"food\s+0\s+10\s+-10", text), text
-            assert re.search(rb"Total Expense\s+0\s+10\s+-10", text), text
-            assert b"[PARTIAL]" not in text, text
-            os.write(fd, b"6")
-            read_until(fd, output, b"Total Monthly Flow")
-            os.write(fd, b"q")
-            read_until(fd, output, b"Evidence")
-            os.write(fd, b"q")
-            deadline = time.monotonic() + 8
-            while time.monotonic() < deadline:
-                exited, status = os.waitpid(pid, os.WNOHANG)
-                if exited:
-                    reaped = True
-                    assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
-                    break
-                if select.select([fd], [], [], 0.05)[0]:
-                    try:
-                        os.read(fd, 4096)
-                    except OSError:
-                        pass
-            assert reaped, "MoM PTY did not quit"
-        finally:
-            if not reaped:
-                os.kill(pid, signal.SIGKILL)
-                os.waitpid(pid, 0)
-            os.close(fd)
-    print("MoM PTY: role change preserves prior expense without current flow")
-
-
-def test_mom_partial_stock_tui() -> None:
-    """Unknown and unclassified evidence never becomes a MoM stock number."""
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    harness = os.path.join(root, "tests", "bin", "tui_harness")
-    first = datetime.date.today().replace(day=1)
-    prior_day = first - datetime.timedelta(days=1)
-    for current, extra_role, assertion, prior in [
-        ('cash:-10 bank:10', 'ROLE bank: ASSET\n', '', b'Unavailable'),
-        ('cash:-10 unknown:10', '', '', b'Unavailable'),
-        ('cash:-10 food:10', '', f'ASSERT a1 {first} cash:jpy 0\n', b'-5'),
-    ]:
-        with tempfile.TemporaryDirectory(prefix='hra_n_mom_partial_pty_') as household:
-            fixtures = {
-                'journal.hra': f'TX e1 {prior_day} cash:-5 food:5\n'
-                    f'TX e2 {first} {current}\n' + assertion,
-                'policy.hra': 'ROLE cash: ASSET\nROLE food: EXPENSE\n'
-                    + extra_role + 'ZERO-ORIGIN cash:jpy\n',
-                'scheduled.hra': '',
-            }
-            for name, text in fixtures.items():
-                with open(os.path.join(household, name), 'w', encoding='utf-8') as stream:
-                    stream.write(text)
-            pid, fd = pty.fork()
-            if pid == 0:
-                env = os.environ.copy()
-                env['TERM'] = 'xterm-256color'
-                os.execve(harness, [harness, household], env)
-            reaped = False
-            try:
-                fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 80, 160, 0, 0))
-                output = bytearray()
-                read_until(fd, output, b'Markers:')
-                os.write(fd, b'p')
-                read_until(fd, output, b'Esc/q: back')
-                start = len(output)
-                os.write(fd, b'5')
-                read_until(fd, output, b'NET WORTH (Month-End Stock)')
-                text = re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]', b' ', bytes(output[start:]))
-                assert b'[PARTIAL]' in text and b'Net worth unavailable' in text, text
-                assert re.search(rb'NET WORTH \(Month-End Stock\)\s+Unavailable\s+'
-                                 + prior + rb'\s+Unavailable', text), text
-                os.write(fd, b'q')
-                read_until(fd, output, b'Evidence')
-                os.write(fd, b'q')
-                deadline = time.monotonic() + 8
-                while time.monotonic() < deadline:
-                    exited, status = os.waitpid(pid, os.WNOHANG)
-                    if exited:
-                        reaped = True
-                        assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
-                        break
-                    if select.select([fd], [], [], 0.05)[0]:
-                        try:
-                            os.read(fd, 4096)
-                        except OSError:
-                            pass
-                assert reaped, 'Partial MoM PTY did not quit'
-            finally:
-                if not reaped:
-                    os.kill(pid, signal.SIGKILL)
-                    os.waitpid(pid, 0)
-                os.close(fd)
-    print('MoM PTY: unknown/unclassified stock and one-month conflict remain unavailable')
-
-
-def test_report_legacy_admission_tui() -> None:
-    """Malformed Scheduled evidence refuses the legacy report tabs in TUI."""
+def test_report_requires_canonical_tui() -> None:
+    """Valid legacy streams cannot answer in the seven-tab workspace."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     harness = os.path.join(root, 'tests', 'bin', 'tui_harness')
     with tempfile.TemporaryDirectory(prefix='hra_n_report_admission_pty_') as household:
         for name, text in {
             'journal.hra': 'TX e1 2026-09-10 cash:-10 food:10\n',
             'policy.hra': 'ROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n',
-            'scheduled.hra': 'INVALID\n',
+            'scheduled.hra': '',
         }.items():
             with open(os.path.join(household, name), 'w', encoding='utf-8') as stream:
                 stream.write(text)
@@ -261,9 +66,9 @@ def test_report_legacy_admission_tui() -> None:
         try:
             fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 80, 160, 0, 0))
             output = bytearray()
-            read_until(fd, output, b'AUTHORITY REJECTED')
+            read_until(fd, output, b'Markers:')
             os.write(fd, b'p')
-            read_until(fd, output, b'scheduled journal rejected')
+            read_until(fd, output, b'canonical report evidence required')
             for key, selected in ((b'7', b'Audit*'), (b'2', b'* [3] Balances')):
                 start = len(output)
                 os.write(fd, key)
@@ -272,14 +77,14 @@ def test_report_legacy_admission_tui() -> None:
                 read_until(fd, output, selected)
                 assert b'[PASS]' not in output[start:], bytes(output[start:])
             os.write(fd, b'q')
-            read_until(fd, output, b'AUTHORITY REJECTED')
+            read_until(fd, output, b'Evidence')
             os.write(fd, b'q')
             deadline = time.monotonic() + 8
             while time.monotonic() < deadline:
                 exited, status = os.waitpid(pid, os.WNOHANG)
                 if exited:
                     reaped = True
-                    assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 1, status
+                    assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0, status
                     break
                 if select.select([fd], [], [], 0.05)[0]:
                     try:
@@ -292,24 +97,26 @@ def test_report_legacy_admission_tui() -> None:
                 os.kill(pid, signal.SIGKILL)
                 os.waitpid(pid, 0)
             os.close(fd)
-    print('Report PTY: malformed Scheduled evidence rejects across report tabs')
+    print('Report PTY: legacy evidence refused across report tabs')
 
 
-def test_report_rejected_query_tui() -> None:
-    """An overfull query stays rejected across Balance/Audit tab navigation."""
+def test_canonical_budget_report_tui() -> None:
+    """The surviving seven-tab TUI renders a canonical Budget answer."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    binary = os.path.join(root, 'bin', 'hra-n')
     harness = os.path.join(root, 'tests', 'bin', 'tui_harness')
     today = datetime.date.today().isoformat()
-    with tempfile.TemporaryDirectory(prefix='hra_n_report_refusal_pty_') as household:
-        fixtures = {
-            'journal.hra': ''.join(
-                f'TX e{i} {today} cash:-1 locus{i}:1\n' for i in range(1, 130)),
-            'policy.hra': 'ROLE cash: ASSET\nZERO-ORIGIN cash:jpy\n',
-            'scheduled.hra': '',
-        }
-        for name, text in fixtures.items():
-            with open(os.path.join(household, name), 'w', encoding='utf-8') as stream:
-                stream.write(text)
+    with tempfile.TemporaryDirectory(prefix='hra_n_canonical_report_pty_') as household:
+        for args in [
+            ('init',),
+            ('capacity', 'transfer', 'unallocated', 'Food', '100', today),
+            ('route', 'set', 'food', 'Food', 'initial'),
+            ('movement', 'cash', 'food', '10', today, 'expense'),
+        ]:
+            result = subprocess.run([binary, '-d', household, *args],
+                                    capture_output=True, text=True)
+            assert result.returncode == 0, result.stdout + result.stderr
+        assert not os.path.exists(os.path.join(household, '.hra'))
         pid, fd = pty.fork()
         if pid == 0:
             env = os.environ.copy()
@@ -322,18 +129,12 @@ def test_report_rejected_query_tui() -> None:
             read_until(fd, output, b'Markers:')
             os.write(fd, b'p')
             read_until(fd, output, b'Esc/q: back')
-            for key, message in [
-                (b'3', b'Balance query rejected: balance coordinate limit exceeded'),
-                (b'7', b'Audit projection rejected'),
-                (b'3', b'Balance query rejected: balance coordinate limit exceeded'),
-            ]:
-                start = len(output)
-                os.write(fd, key)
-                read_until(fd, output, message)
-                text = bytes(output[start:])
-                # Curses may leave unchanged badge cells on screen without
-                # re-emitting their bytes when switching rejected tabs.
-                assert b'[PASS]' not in text and b'NET WORTH (' not in text, text
+            mark = len(output)
+            os.write(fd, b'2')
+            read_until(fd, output, b'FUNDING & BACKING')
+            text = re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]', b' ', bytes(output[mark:]))
+            assert re.search(rb'Total Budget Envelopes\s+100\s+10\s+90', text), text
+            assert b'SOLVENT' not in text and b'SAFE DAILY TARGET' not in text, text
             os.write(fd, b'q')
             read_until(fd, output, b'Evidence')
             os.write(fd, b'q')
@@ -349,109 +150,13 @@ def test_report_rejected_query_tui() -> None:
                         os.read(fd, 4096)
                     except OSError:
                         pass
-            assert reaped, 'Rejected report PTY did not quit'
+            assert reaped, 'Canonical report PTY did not quit'
         finally:
             if not reaped:
                 os.kill(pid, signal.SIGKILL)
                 os.waitpid(pid, 0)
             os.close(fd)
-    print('Report PTY: Balance/Audit rejection remains visible on cached return')
-
-
-def test_month_end_budget(foreign_capacity: bool = False) -> None:
-    """Cached Budget/Pace/Audit include month end and exclude next month."""
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    harness = os.path.join(root, 'tests', 'bin', 'tui_harness')
-    currency = 'usd' if foreign_capacity else 'jpy'
-    first = datetime.date.today().replace(day=1)
-    last = first.replace(day=calendar.monthrange(first.year, first.month)[1])
-    following = last + datetime.timedelta(days=1)
-    with tempfile.TemporaryDirectory(prefix='hra_n_month_end_pty_') as household:
-        generation = os.path.join(household, '.hra', 'generations', 'g00000001')
-        os.makedirs(generation)
-        fixtures = {
-            'journal.hra': f'TX e1 {last} cash:-10 food:10 "month end"\n'
-                f'TX e2 {following} cash:-50 food:50 "outside"\n',
-            'policy.hra': 'ROLE cash: ASSET\nROLE food: EXPENSE\nZERO-ORIGIN cash:jpy\n'
-                f'TRANSFER unallocated Food 100 {currency} {first}\n'
-                f'TRANSFER unallocated Food 20 jpy {last}\n'
-                f'TRANSFER unallocated Food 500 jpy {following}\n'
-                'ROUTE food INITIAL MANAGED Food\n'
-                f'WINDOW monthly {first} {following}\n',
-            'scheduled.hra': '',
-        }
-        for name, text in fixtures.items():
-            with open(os.path.join(generation, name), 'w', encoding='utf-8') as stream:
-                stream.write(text)
-        # Select only after constructing the complete synthetic generation.
-        selector = os.path.join(household, '.hra', 'CURRENT')
-        with open(selector, 'w', encoding='utf-8') as stream:
-            stream.write('g00000001\n')
-        pid, fd = pty.fork()
-        if pid == 0:
-            env = os.environ.copy()
-            env['TERM'] = 'xterm-256color'
-            os.execve(harness, [harness, household], env)
-        reaped = False
-        try:
-            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 80, 160, 0, 0))
-            output = bytearray()
-            read_until(fd, output, b'Markers:')
-            os.write(fd, b'p')
-            read_until(fd, output, b'Esc/q: back')
-            diagnostic = b'budget queries support jpy capacity only; no conversion is implied'
-            cases = [(key, diagnostic, re.escape(diagnostic)) for key in [b'2', b'4', b'7', b'2']] if foreign_capacity else [
-                (b'2', b'FUNDING & BACKING', rb'Total Budget Envelopes\s+120\s+10\s+110'),
-                (b'4', b'PURPOSE REMAINING CAPACITY', rb'Spent So Far\s*:\s*10 JPY'),
-                (b'7', b'Unavailable: no selected funding coordinates', rb'Unavailable: no selected funding coordinates'),
-                (b'2', b'FUNDING & BACKING', rb'Total Budget Envelopes\s+120\s+10\s+110'),
-            ]
-            for key, marker, expected in cases:
-                start = len(output)
-                os.write(fd, key)
-                read_until(fd, output, marker)
-                # Rendered ASCII fields may be separated by cursor positioning.
-                text = re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]', b' ', bytes(output[start:]))
-                assert re.search(expected, text), text
-                if not foreign_capacity:
-                    assert b'SOLVENT' not in text and b'SAFE DAILY TARGET' not in text, text
-                if foreign_capacity:
-                    assert b'[PASS]' not in text and b'Unallocated Funds' not in text, text
-                    # ncurses does not re-emit identical diagnostic text when
-                    # switching between rejected tabs. Leave through Statement
-                    # so the next tab must visibly replace a different answer.
-                    os.write(fd, b'1')
-                    read_until(fd, output, b'quanta strictly conserved across all events)')
-            os.write(fd, b'q')
-            read_until(fd, output, b'Evidence')
-            if foreign_capacity:
-                os.write(fd, b'c')
-                read_until(fd, output, b'canonical budget authority required')
-                os.write(fd, b'q')
-                read_until(fd, output, b'Evidence')
-            os.write(fd, b'q')
-            deadline = time.monotonic() + 8
-            while time.monotonic() < deadline:
-                exited, status = os.waitpid(pid, os.WNOHANG)
-                if exited:
-                    reaped = True
-                    assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
-                    break
-                ready, _, _ = select.select([fd], [], [], 0.05)
-                if ready:
-                    try:
-                        os.read(fd, 4096)
-                    except OSError:
-                        pass
-            assert reaped, 'Month-end PTY did not quit'
-            with open(selector, encoding='utf-8') as stream:
-                assert stream.read() == 'g00000001\n'
-        finally:
-            if not reaped:
-                os.kill(pid, signal.SIGKILL)
-                os.waitpid(pid, 0)
-            os.close(fd)
-    print(f'Budget PTY: month end, foreign_capacity={foreign_capacity}, cached return passed')
+    print('Report PTY: canonical Budget answer retained')
 
 
 def main() -> None:
@@ -937,42 +642,17 @@ def main() -> None:
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
 
-            # Open Reports workspace with 'p'
+            # The old generation cannot supply canonical report evidence.
+            mark = len(output)
             os.write(fd, b"p")
-            read_until(fd, output, b"Statement")
-            assert b"HRA-N FINANCIAL REPORT WORKSPACE" in output
-            # Switch to Tab 2: Budget Envelopes (funding remains unavailable)
-            os.write(fd, b"2")
-            read_until(fd, output, b"FUNDING & BACKING")
-            assert b"BUDGET & ENVELOPE PROJECTION" in output
-            # Switch to Tab 3: Balances
-            os.write(fd, b"3")
-            read_until(fd, output, b"COORDINATE BALANCES")
-            # Switch to Tab 4: Spending Pace
-            os.write(fd, b"4")
-            read_until(fd, output, b"MONTHLY CAPACITY OBSERVATION")
-            # Switch to Tab 5: MoM Comparison
-            os.write(fd, b"5")
-            read_until(fd, output, b"OVER-MONTH COMPARISON")
-            # Switch to Tab 6: Daily Cash Flow Timeline
-            os.write(fd, b"6")
-            read_until(fd, output, b"DAILY INCOME / EXPENSE FLOW TIMELINE")
-            # Switch to Tab 7: Fail-Closed Audit & Invariants
-            os.write(fd, b"7")
-            read_until(fd, output, b"FAIL-CLOSED AUDIT, INTEGRITY & COHERENCE")
-            # Test tab key cycling (7 -> 1)
-            os.write(fd, b"\t")
-            read_until(fd, output, b"BALANCE SHEET (B/S)")
-            # Test prev month '[' and next month ']'
-            os.write(fd, b"[")
-            read_until(fd, output, b"August")
-            os.write(fd, b"]")
-            read_until(fd, output, b"September")
-            # Test drill-down to Actual_TUI with 'a'
-            os.write(fd, b"a")
-            read_until(fd, output, b"HRA-N ACTUAL")
-            os.write(fd, b"b")
-            read_until(fd, output, b"HRA-N FINANCIAL REPORT WORKSPACE")
+            read_until(fd, output, b"canonical report evidence required")
+            for key in b"234567":
+                os.write(fd, bytes([key]))
+                time.sleep(0.04)
+                while select.select([fd], [], [], 0)[0]:
+                    output.extend(os.read(fd, 4096))
+            assert b"[PASS]" not in output[mark:]
+            assert b"COMPLETE FINANCIAL STATEMENT" not in output[mark:]
             # Return to Home
             os.write(fd, b"q")
             read_until(fd, output, b"Evidence")
@@ -1717,10 +1397,5 @@ if __name__ == "__main__":
     test_canonical_scheduled_tui()
     test_scheduled_unresolved_completion_tui()
     test_scheduled_detail_probe_failure()
-    test_statement_evidence()
-    test_mom_role_change_tui()
-    test_mom_partial_stock_tui()
-    test_report_rejected_query_tui()
-    test_report_legacy_admission_tui()
-    test_month_end_budget()
-    test_month_end_budget(foreign_capacity=True)
+    test_report_requires_canonical_tui()
+    test_canonical_budget_report_tui()
