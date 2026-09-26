@@ -68,7 +68,6 @@ with Test_Scheduled_Command;
 with Test_Balance_Query;
 with Test_Canonical_Balance_Query;
 with Test_Canonical_Activity_Query;
-with Test_Attention_Command;
 with Test_Capacity_Command;
 with Test_Loam_Capacity_Writer;
 with Test_Budget_Query;
@@ -432,11 +431,6 @@ begin
    if Selected ("Test_Budget_Query") then
       Announce ("Test_Budget_Query");
       Test_Budget_Query.Run;
-   end if;
-
-   if Selected ("Test_Attention_Command") then
-      Announce ("Test_Attention_Command");
-      Test_Attention_Command.Run;
    end if;
 
    if Selected ("Test_Policy") then

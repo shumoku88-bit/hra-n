@@ -81,6 +81,19 @@ class TestHraNCli(unittest.TestCase):
         self.assertEqual(open(os.path.join(self.test_dir, 'actual.loam'), 'rb').read(),
                          b'LOAM-NORMALIZED-ACTUAL\t1\n')
 
+    def test_retired_attention_mutations_cannot_write_legacy_policy(self) -> None:
+        self.write_report_fixture('')
+        policy = os.path.join(self.test_dir, 'policy.hra')
+        with open(policy, 'rb') as stream:
+            before = stream.read()
+        for args in (('raise', 'new'), ('resolve', 'att0001'), ('drop', 'att0001')):
+            with self.subTest(args=args):
+                rejected = self.run_cmd('attention', *args)
+                self.assertNotEqual(rejected.returncode, 0)
+                self.assertIn('legacy mutation removed', rejected.stdout + rejected.stderr)
+                with open(policy, 'rb') as stream:
+                    self.assertEqual(stream.read(), before)
+
     def test_attention_independent_authority_and_read_only(self) -> None:
         self.write_report_fixture('TX legacy 2026-09-10 cash:-2 food:2 "Legacy"\n')
         policy = os.path.join(self.test_dir, "policy.hra")
