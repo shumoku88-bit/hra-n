@@ -4,7 +4,6 @@
 -------------------------------------------------------------------------------
 
 with HRA_N.Core.Validity; use HRA_N.Core.Validity;
-with HRA_N.Storage.Policy_Reader; use HRA_N.Storage.Policy_Reader;
 with HRA_N.Storage.Loam_Attention_Reader;
 with HRA_N.Application.Canonical_Authority;
 with Ada.Directories;
@@ -21,7 +20,6 @@ package body HRA_N.Application.Attention_Query is
       use HRA_N.Application.Frontend_Types;
 
       View   : Attention_View;
-      Policy : Policy_Result;
       Memory : Attention_Memory;
       Canonical : HRA_N.Storage.Loam_Attention_Reader.Read_Result;
       use HRA_N.Application.Canonical_Authority;
@@ -38,10 +36,6 @@ package body HRA_N.Application.Attention_Query is
       if not Paths.Resolution_Ok then
          Set_Diagnostic (Paths.Error_Reason (1 .. Paths.Error_Len));
          return View;
-      elsif Paths.Is_Versioned then
-         View.Snapshot :=
-           (Kind     => Snapshot_Versioned,
-            Identity => Make_Token (Snapshot_Id_Str (Paths)));
       end if;
 
       declare
@@ -62,20 +56,12 @@ package body HRA_N.Application.Attention_Query is
             View.Availability := Attention_Available;
             View.Snapshot := (Kind => Snapshot_Unversioned);
             Memory := Canonical.Memory;
-         elsif Authority.State = Canonical_Present then
+         else
             View.Source := Canonical_Unavailable;
             View.Status := Query_Partial;
             View.Success := True;
             Set_Diagnostic ("attention.loam unavailable");
             return View;
-         else
-            Policy := Read_Policy_File (Policy_Path_Str (Paths));
-            if not Policy.Success then
-               Set_Diagnostic ("policy.hra: " & Policy.Error_Reason (1 .. Policy.Error_Len));
-               return View;
-            end if;
-            View.Availability := Attention_Available;
-            Memory := Policy.Attention;
          end if;
       end;
 

@@ -2,7 +2,7 @@
 --  HRA-N: Verified Household Engine
 --  Package: HRA_N.Application.Attention_Query
 --
---  Shared current-open attention query over one admitted snapshot.
+--  Read-only current-open Attention query over canonical evidence.
 --  Storage order is representation order only: no due sorting, no
 --  priority, no selected-day membership. The three due meanings stay
 --  distinct in every rendered row.
@@ -26,11 +26,11 @@ package HRA_N.Application.Attention_Query is
 
    type Row_Array is array (Positive range 1 .. Max_Query_Rows) of Attention_Row;
 
-   type Attention_Source is (Legacy_Attention, Canonical_Attention, Canonical_Unavailable);
+   type Attention_Source is (Canonical_Attention, Canonical_Unavailable);
    type Attention_Availability is (Attention_Unavailable, Attention_Available);
 
    type Attention_View is record
-      Source    : Attention_Source := Legacy_Attention;
+      Source    : Attention_Source := Canonical_Unavailable;
       Availability : Attention_Availability := Attention_Unavailable;
       Status    : Frontend_Types.Query_Status :=
         Frontend_Types.Query_Rejected;

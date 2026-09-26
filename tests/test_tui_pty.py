@@ -796,10 +796,10 @@ def main() -> None:
             os.write(fd, b"b")
             read_until(fd, output, b"Evidence")
 
-            # Attention observation remains available, but the old editor is gone.
+            # No canonical Attention authority: the old Policy cannot answer.
             os.write(fd, b"i")
             read_until(fd, output, b"Attention: read-only")
-            assert b"No open matters" in output
+            assert b"Attention unavailable" in output
 
             # Return to Home
             os.write(fd, b"b")
