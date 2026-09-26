@@ -84,6 +84,12 @@ class TestHraNCli(unittest.TestCase):
     def test_retired_attention_mutations_cannot_write_legacy_policy(self) -> None:
         self.write_report_fixture('')
         policy = os.path.join(self.test_dir, 'policy.hra')
+        with open(policy, 'a', encoding='utf-8') as stream:
+            stream.write('ATTENTION legacy-attention "Legacy matter" nodue\n')
+        view = self.run_cmd('attention')
+        self.assertEqual(view.returncode, 0, view.stdout + view.stderr)
+        self.assertIn('Attention unavailable', view.stdout)
+        self.assertNotIn('legacy-attention', view.stdout)
         with open(policy, 'rb') as stream:
             before = stream.read()
         for args in (('raise', 'new'), ('resolve', 'att0001'), ('drop', 'att0001')):

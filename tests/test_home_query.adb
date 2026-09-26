@@ -60,7 +60,8 @@ package body Test_Home_Query is
              (Paths,
               (Selected_Day => Day));
       begin
-         Assert (View.Status = Query_Complete, "Home query is complete for classified journal");
+         Assert (View.Status = Query_Partial and then not View.Attention_Available,
+                 "Home remains partial without canonical Attention despite classified journal");
          Assert (View.Snapshot.Kind = Snapshot_Versioned,
                  "Home query carries selected snapshot identity");
          Assert (Equal_Token (View.Snapshot.Identity, Make_Token ("g00000001")),
@@ -115,8 +116,8 @@ package body Test_Home_Query is
          View : constant HRA_N.Application.Home_Query.Home_View :=
            HRA_N.Application.Home_Query.Execute (Paths, (Selected_Day => Day));
       begin
-         Assert (View.Status = Query_Complete,
-                 "Superseded unclassified effects do not taint Home");
+         Assert (View.Status = Query_Partial and then not View.Attention_Available,
+                 "Superseded effects do not cure missing canonical Attention");
          Assert_Equal_Int (0, Long_Long_Integer (View.Unresolved_Loci),
                            "Home classification uses current frontier");
       end;
